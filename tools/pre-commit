@@ -12,8 +12,8 @@ for FILE in $STAGED_FILES; do
   }
 done
 
-# total changed lines limit (75 lines) for .cpp and .h files
-CPP_H_FILES=$(echo "$STAGED_FILES" | tr ' ' '\n' | grep -E '\.(cpp|h)$')
+# total changed lines limit (75 lines) for .scala and .java files
+CPP_H_FILES=$(echo "$STAGED_FILES" | tr ' ' '\n' | grep -E '\.(scala|java)$')
 if [ -n "$CPP_H_FILES" ]; then
   TOTAL_LINES=$(($(git diff --cached -- $CPP_H_FILES | grep -c '^+' || echo 0) - $(echo "$CPP_H_FILES" | wc -w)))
   if [ $TOTAL_LINES -gt 75 ]; then
