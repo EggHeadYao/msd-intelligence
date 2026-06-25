@@ -1,0 +1,13 @@
+*
+
+!.gitea/
+!.gitea/**
+!src/
+!src/**
+!tools/
+!tools/**
+!README.md
+!CHANGELOG.md
+!LICENSE
+!.gitignore
+!.gitattributes
