@@ -33,6 +33,7 @@ labels:
   | Lizhi Yuan    |         |                |       |
   | Yunxiang Yao  |         |                |       |
   | Jingkai Zhang |         |                |       |
+  | Zi Ye         |         |                |       |
 
 **Post-sprint meeting:**
 
