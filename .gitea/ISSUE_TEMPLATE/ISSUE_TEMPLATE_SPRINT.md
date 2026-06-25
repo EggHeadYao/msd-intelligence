@@ -27,11 +27,12 @@ labels:
 
 - Who should work on what issue?
 
-  | Developer    | Feature | Time estimated | Issue |
-  | ------------ | ------- | -------------- | ----- |
-  | Ruiyu Jiang  |         |                |       |
-  | Tianyou Zuo  |         |                |       |
-  | Yunxiang Yao |         |                |       |
+  | Developer     | Feature | Time estimated | Issue |
+  | ------------- | ------- | -------------- | ----- |
+  | Ruiyu Jiang   |         |                |       |
+  | Lizhi Yuan    |         |                |       |
+  | Yunxiang Yao  |         |                |       |
+  | Jingkai Zhang |         |                |       |
 
 **Post-sprint meeting:**
 
