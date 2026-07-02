@@ -1,0 +1,27 @@
+{
+  "type": "record",
+  "name": "ArtistDistance",
+  "namespace": "artistdistance.schema",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string"
+    },
+    {
+      "name": "distance",
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null
+    },
+    {
+      "name": "parent",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    }
+  ]
+}
