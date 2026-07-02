@@ -1,0 +1,53 @@
+{
+  "type": "record",
+  "name": "BfsVertex",
+  "namespace": "artistdistance.schema",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string"
+    },
+    {
+      "name": "neighbors",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": []
+    },
+    {
+      "name": "degree",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "name": "distance",
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null
+    },
+    {
+      "name": "parent",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "BfsStatus",
+        "symbols": [
+          "unvisited",
+          "frontier",
+          "visited"
+        ]
+      },
+      "default": "unvisited"
+    }
+  ]
+}
