@@ -2,8 +2,11 @@
 
 !.gitea/
 !.gitea/**
-!src/
-!src/**
+
+!artistdistance/
+!artistdistance/**
+artistdistance/target/
+
 !tools/
 !tools/**
 !README.md
