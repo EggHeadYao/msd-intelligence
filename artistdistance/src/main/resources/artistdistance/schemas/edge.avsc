@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "Edge",
+  "namespace": "artistdistance.schema",
+  "fields": [
+    {
+      "name": "src",
+      "type": "string"
+    },
+    {
+      "name": "dst",
+      "type": "string"
+    }
+  ]
+}
