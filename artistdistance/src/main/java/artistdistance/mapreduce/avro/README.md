@@ -72,3 +72,47 @@ Sample output:
 │   ├── [ 84K]  .part-r-00003.avro.crc
 │   ├── [   0]  _SUCCESS
 │   └── [   8]  ._SUCCESS.crc
+├── [4.0K]  iter-0005
+│   ├── [ 10M]  part-r-00000.avro
+│   ├── [ 84K]  .part-r-00000.avro.crc
+│   ├── [ 10M]  part-r-00001.avro
+│   ├── [ 84K]  .part-r-00001.avro.crc
+│   ├── [ 10M]  part-r-00002.avro
+│   ├── [ 82K]  .part-r-00002.avro.crc
+│   ├── [ 11M]  part-r-00003.avro
+│   ├── [ 85K]  .part-r-00003.avro.crc
+│   ├── [   0]  _SUCCESS
+│   └── [   8]  ._SUCCESS.crc
+├── [4.0K]  iter-0006
+│   ├── [ 10M]  part-r-00000.avro
+│   ├── [ 84K]  .part-r-00000.avro.crc
+│   ├── [ 10M]  part-r-00001.avro
+│   ├── [ 84K]  .part-r-00001.avro.crc
+│   ├── [ 10M]  part-r-00002.avro
+│   ├── [ 82K]  .part-r-00002.avro.crc
+│   ├── [ 11M]  part-r-00003.avro
+│   ├── [ 85K]  .part-r-00003.avro.crc
+│   ├── [   0]  _SUCCESS
+│   └── [   8]  ._SUCCESS.crc
+├── [4.0K]  iter-0007
+│   ├── [ 10M]  part-r-00000.avro
+│   ├── [ 84K]  .part-r-00000.avro.crc
+│   ├── [ 11M]  part-r-00001.avro
+│   ├── [ 84K]  .part-r-00001.avro.crc
+│   ├── [ 10M]  part-r-00002.avro
+│   ├── [ 82K]  .part-r-00002.avro.crc
+│   ├── [ 11M]  part-r-00003.avro
+│   ├── [ 85K]  .part-r-00003.avro.crc
+│   ├── [   0]  _SUCCESS
+│   └── [   8]  ._SUCCESS.crc
+├── [4.0K]  iter-0008
+│   ├── [ 10M]  part-r-00000.avro
+│   ├── [ 84K]  .part-r-00000.avro.crc
+│   ├── [ 11M]  part-r-00001.avro
+│   ├── [ 84K]  .part-r-00001.avro.crc
+│   ├── [ 10M]  part-r-00002.avro
+│   ├── [ 82K]  .part-r-00002.avro.crc
+│   ├── [ 11M]  part-r-00003.avro
+│   ├── [ 85K]  .part-r-00003.avro.crc
+│   ├── [   0]  _SUCCESS
+│   └── [   8]  ._SUCCESS.crc
