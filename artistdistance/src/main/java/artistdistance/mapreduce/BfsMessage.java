@@ -51,4 +51,44 @@ public final class BfsMessage implements Writable {
     return new BfsVertex(id, new ArrayList<>(neighbors), degree, distance, parent, status);
   }
 
+  @Override
+  public void write(DataOutput out) throws IOException {
+    out.writeBoolean(vertex);
+    out.writeBoolean(distance != null);
+    if (distance != null) {
+      out.writeInt(distance);
+    }
+    out.writeBoolean(parent != null);
+    if (parent != null) {
+      out.writeUTF(parent);
+    }
+    if (vertex) {
+      out.writeInt(degree);
+      out.writeInt(neighbors.size());
+      for (String neighbor : neighbors) {
+        out.writeUTF(neighbor);
+      }
+      out.writeUTF(status.name());
+    }
+  }
+
+  @Override
+  public void readFields(DataInput in) throws IOException {
+    vertex = in.readBoolean();
+    distance = in.readBoolean() ? in.readInt() : null;
+    parent = in.readBoolean() ? in.readUTF() : null;
+    if (vertex) {
+      degree = in.readInt();
+      int size = in.readInt();
+      neighbors = new ArrayList<>(size);
+      for (int i = 0; i < size; i++) {
+        neighbors.add(in.readUTF());
+      }
+      status = BfsStatus.valueOf(in.readUTF());
+    } else {
+      degree = 0;
+      neighbors = List.of();
+      status = null;
+    }
+  }
 }
