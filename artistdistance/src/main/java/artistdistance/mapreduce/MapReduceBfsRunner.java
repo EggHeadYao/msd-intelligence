@@ -39,4 +39,58 @@ public final class MapReduceBfsRunner {
     }
     throw new IllegalStateException("BFS reached max iterations without convergence");
   }
+
+  private long runInit(Configuration conf, String input, String output) throws Exception {
+    Job job = Job.getInstance(conf, "artist-distance-avro-bfs-init");
+    job.setJarByClass(MapReduceBfsRunner.class);
+    job.setMapperClass(BfsInitMapper.class);
+    job.setNumReduceTasks(0);
+    job.setInputFormatClass(AvroKeyInputFormat.class);
+    job.setOutputFormatClass(AvroKeyOutputFormat.class);
+    AvroJob.setInputKeySchema(job, Adjacency.getClassSchema());
+    AvroJob.setOutputKeySchema(job, BfsVertex.getClassSchema());
+    FileInputFormat.addInputPath(job, new Path(input));
+    FileOutputFormat.setOutputPath(job, new Path(output));
+    if (!job.waitForCompletion(true)) {
+      throw new IllegalStateException("BFS init job failed");
+    }
+    return job.getCounters().findCounter(BfsInitMapper.Counter.SOURCE_FOUND).getValue();
+  }
+
+  private long runIteration(Configuration conf, String input, String output, int iteration)
+      throws Exception {
+    Job job = Job.getInstance(conf, "artist-distance-avro-bfs-iter-" + iteration);
+    job.setJarByClass(MapReduceBfsRunner.class);
+    job.setMapperClass(BfsIterationMapper.class);
+    job.setReducerClass(BfsIterationReducer.class);
+    job.setMapOutputKeyClass(Text.class);
+    job.setMapOutputValueClass(BfsMessage.class);
+    job.setNumReduceTasks(Math.max(1, conf.getInt(REDUCERS, 4)));
+    job.setInputFormatClass(AvroKeyInputFormat.class);
+    job.setOutputFormatClass(AvroKeyOutputFormat.class);
+    AvroJob.setInputKeySchema(job, BfsVertex.getClassSchema());
+    AvroJob.setOutputKeySchema(job, BfsVertex.getClassSchema());
+    FileInputFormat.addInputPath(job, new Path(input));
+    FileOutputFormat.setOutputPath(job, new Path(output));
+    if (!job.waitForCompletion(true)) {
+      throw new IllegalStateException("BFS iteration job failed: " + iteration);
+    }
+    return job.getCounters().findCounter(BfsIterationReducer.Counter.DISCOVERED).getValue();
+  }
+
+  private void runFinal(Configuration conf, String input, String output) throws Exception {
+    Job job = Job.getInstance(conf, "artist-distance-avro-bfs-final");
+    job.setJarByClass(MapReduceBfsRunner.class);
+    job.setMapperClass(BfsFinalMapper.class);
+    job.setNumReduceTasks(0);
+    job.setInputFormatClass(AvroKeyInputFormat.class);
+    job.setOutputFormatClass(AvroKeyOutputFormat.class);
+    AvroJob.setInputKeySchema(job, BfsVertex.getClassSchema());
+    AvroJob.setOutputKeySchema(job, ArtistDistance.getClassSchema());
+    FileInputFormat.addInputPath(job, new Path(input));
+    FileOutputFormat.setOutputPath(job, new Path(output));
+    if (!job.waitForCompletion(true)) {
+      throw new IllegalStateException("BFS final job failed");
+    }
+  }
 }
