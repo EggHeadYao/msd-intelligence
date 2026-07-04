@@ -12,7 +12,7 @@ public final class AvroMapReduceBfs extends Configured implements Tool {
       System.err.println("Usage: AvroMapReduceBfs <adjacency.avro> <source_artist_id> <output-dir>");
       return 1;
     }
-    new MapReduceBfsRunner().runAvro(getConf(), args[0], args[1], args[2]);
+    new MapReduceBfsRunner().run(getConf(), new AvroBfsFormat(), args[0], args[1], args[2]);
     return 0;
   }
 
