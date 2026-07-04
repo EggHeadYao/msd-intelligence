@@ -1,13 +1,11 @@
-# MapReduce BFS
+# Parquet MapReduce BFS
 
-- `BfsMessage`: Writable value used between the iteration mapper and reducer.
-- `BfsCounter`: Shared Hadoop counters used by Avro and Parquet jobs.
-- `BfsIterationStep`: Shared reducer logic for one BFS iteration.
-- `MapReduceBfsConfig`: Shared configuration keys for source id, max iterations, and reducers.
-- `MapReduceBfsFormat`: Interface for Avro and Parquet job configuration.
-- `MapReduceBfsRunner`: Runs init, iteration, and final MapReduce jobs for one format.
-- `avro/`: Avro MapReduce implementation.
-- `parquet/`: Parquet MapReduce implementation.
+- `ParquetMapReduceBfs`: CLI entry point for running BFS with Parquet input and output.
+- `ParquetBfsFormat`: Configures Parquet input/output formats, schemas, mappers, and reducers.
+- `ParquetBfsInitMapper`: Converts `Adjacency` records into initial `BfsVertex` records.
+- `ParquetBfsIterationMapper`: Emits each vertex and expands frontier vertices to candidate messages.
+- `ParquetBfsIterationReducer`: Merges vertex and candidate messages for one BFS iteration.
+- `ParquetBfsFinalMapper`: Converts final `BfsVertex` records into `ArtistDistance` records.
 
 Sample usage: `ParquetMapReduceBfs <adjacency.parquet> <source_artist_id> <output-dir>`
 
