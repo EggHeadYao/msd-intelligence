@@ -133,3 +133,48 @@ Sample output:
 │   ├── [ 19K]  .part-r-00003.parquet.crc
 │   ├── [   0]  _SUCCESS
 │   └── [   8]  ._SUCCESS.crc
+├── [4.0K]  iter-0007
+│   ├── [ 911]  _common_metadata
+│   ├── [  16]  ._common_metadata.crc
+│   ├── [4.2K]  _metadata
+│   ├── [  44]  ._metadata.crc
+│   ├── [2.3M]  part-r-00000.parquet
+│   ├── [ 19K]  .part-r-00000.parquet.crc
+│   ├── [2.3M]  part-r-00001.parquet
+│   ├── [ 19K]  .part-r-00001.parquet.crc
+│   ├── [2.3M]  part-r-00002.parquet
+│   ├── [ 18K]  .part-r-00002.parquet.crc
+│   ├── [2.3M]  part-r-00003.parquet
+│   ├── [ 19K]  .part-r-00003.parquet.crc
+│   ├── [   0]  _SUCCESS
+│   └── [   8]  ._SUCCESS.crc
+├── [4.0K]  iter-0008
+│   ├── [ 911]  _common_metadata
+│   ├── [  16]  ._common_metadata.crc
+│   ├── [4.2K]  _metadata
+│   ├── [  44]  ._metadata.crc
+│   ├── [2.3M]  part-r-00000.parquet
+│   ├── [ 19K]  .part-r-00000.parquet.crc
+│   ├── [2.3M]  part-r-00001.parquet
+│   ├── [ 19K]  .part-r-00001.parquet.crc
+│   ├── [2.3M]  part-r-00002.parquet
+│   ├── [ 18K]  .part-r-00002.parquet.crc
+│   ├── [2.3M]  part-r-00003.parquet
+│   ├── [ 19K]  .part-r-00003.parquet.crc
+│   ├── [   0]  _SUCCESS
+│   └── [   8]  ._SUCCESS.crc
+├── [4.0K]  iter-0009
+│   ├── [ 911]  _common_metadata
+│   ├── [  16]  ._common_metadata.crc
+│   ├── [4.2K]  _metadata
+│   ├── [  44]  ._metadata.crc
+│   ├── [2.3M]  part-r-00000.parquet
+│   ├── [ 19K]  .part-r-00000.parquet.crc
+│   ├── [2.3M]  part-r-00001.parquet
+│   ├── [ 19K]  .part-r-00001.parquet.crc
+│   ├── [2.3M]  part-r-00002.parquet
+│   ├── [ 18K]  .part-r-00002.parquet.crc
+│   ├── [2.3M]  part-r-00003.parquet
+│   ├── [ 19K]  .part-r-00003.parquet.crc
+│   ├── [   0]  _SUCCESS
+│   └── [   8]  ._SUCCESS.crc
