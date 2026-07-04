@@ -1,6 +1,11 @@
 # Avro MapReduce BFS
 
-Sample usage: `AvroMapReduceBfs <adjacency.avro> <source_artist_id> <output-dir>`
+- `AvroMapReduceBfs`: CLI entry point for Avro input and output.
+- `AvroBfsFormat`: Configures Avro input/output classes and schemas for each job.
+- `AvroBfsInitMapper`: Converts adjacency rows into initial BFS vertices.
+- `AvroBfsIterationMapper`: Keeps each vertex and expands frontier vertices to candidate messages.
+- `AvroBfsIterationReducer`: Merges vertex and candidate messages for one BFS iteration.
+- `AvroBfsFinalMapper`: Converts final BFS vertices into artist-distance output records.
 
 ```bash
 mvn exec:java -Dexec.mainClass=artistdistance.mapreduce.avro.AvroMapReduceBfs -Dexec.args="-Dmapreduce.framework.name=local ../data/artistdistance-output/avro/adjacency.avro ARGUACZ1187FB3F35C ../data/artistdistance-bfs-avro-mapreduce"
