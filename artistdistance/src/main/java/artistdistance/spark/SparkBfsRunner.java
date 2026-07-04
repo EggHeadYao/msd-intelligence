@@ -55,6 +55,58 @@ public final class SparkBfsRunner {
     frontier.unpersist();
   }
 
+  private static Dataset<Row> initialFrontier(Dataset<Row> adjacency, String sourceId) {
+    return adjacency
+        .filter(col("src").equalTo(lit(sourceId)))
+        .select(
+            col("src").alias("id"),
+            lit(0).cast("int").alias("distance"),
+            lit(null).cast("string").alias("parent"));
+  }
+
+  private static Dataset<Row> bestUnvisitedCandidates(
+      Dataset<Row> adjacency, Dataset<Row> visited, Dataset<Row> frontier) {
+    Dataset<Row> f =
+        frontier
+            .select(col("id").alias("frontier_id"), col("distance").alias("frontier_distance"))
+            .alias("f");
+    Dataset<Row> a = adjacency.alias("a");
+    Dataset<Row> candidates =
+        f.join(a, f.col("frontier_id").equalTo(a.col("src")))
+            .select(
+                explode(a.col("neighbors")).alias("id"),
+                f.col("frontier_distance").plus(1).cast("int").alias("distance"),
+                f.col("frontier_id").alias("parent"));
+
+    Dataset<Row> v = visited.select(col("id").alias("visited_id")).alias("v");
+    Dataset<Row> unvisited =
+        candidates
+            .alias("c")
+            .join(v, col("c.id").equalTo(col("v.visited_id")), "left_anti")
+            .select(col("c.id"), col("c.distance"), col("c.parent"));
+
+    return unvisited
+        .groupBy(col("id"))
+        .agg(min(struct(col("distance"), col("parent"))).alias("best"))
+        .select(
+            col("id"),
+            col("best.distance").cast("int").alias("distance"),
+            col("best.parent").cast("string").alias("parent"));
+  }
+
+  private static Dataset<Row> finalDistances(Dataset<Row> adjacency, Dataset<Row> visited) {
+    Dataset<Row> ids = adjacency.select(col("src").alias("artist_id")).alias("a");
+    Dataset<Row> v =
+        visited
+            .select(col("id").alias("visited_id"), col("distance"), col("parent"))
+            .alias("v");
+    return ids.join(v, ids.col("artist_id").equalTo(v.col("visited_id")), "left_outer")
+        .select(
+            ids.col("artist_id").alias("id"),
+            v.col("distance").cast("int").alias("distance"),
+            v.col("parent").cast("string").alias("parent"));
+  }
+
   private static Dataset<Row> checkpoint(Dataset<Row> rows) {
     return rows.localCheckpoint(true);
   }
