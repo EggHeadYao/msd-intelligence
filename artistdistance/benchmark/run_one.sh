@@ -59,3 +59,60 @@ cd "${project_dir}"
 if [[ ! -f "${jar_path}" || ! -d "${deps_dir}" ]]; then
   mvn -q package dependency:copy-dependencies -DincludeScope=runtime >/dev/null
 fi
+
+stop-all.sh >/dev/null
+start-all.sh >/dev/null
+
+hdfs dfs -mkdir -p "$(dirname "${input_path}")" "${hdfs_root}/output" >/dev/null 2>&1
+if ! hdfs dfs -test -e "${input_path}" >/dev/null 2>&1; then
+  hdfs dfs -put "${local_input}" "${input_path}" >/dev/null 2>&1
+fi
+if hdfs dfs -test -e "${output_path}" >/dev/null 2>&1; then
+  echo "output path already exists: ${output_path}" >&2
+  exit 1
+fi
+
+if [[ "${engine}" == "mapreduce" ]]; then
+  libjars="$(find "${deps_dir}" -name '*.jar' | sort | paste -sd, -)"
+  classpath="${jar_path}:$(find "${deps_dir}" -name '*.jar' | sort | paste -sd: -)"
+  set +e
+  HADOOP_CLASSPATH="${classpath}" hadoop jar "${jar_path}" "${main}" \
+    -Dmapreduce.framework.name=yarn \
+    -Dartistdistance.bfs.reducers="${reducers}" \
+    -libjars "${libjars}" \
+    "${input_path}" "${source_id}" "${output_path}" \
+    >"${output_file}" 2>&1
+  command_status=$?
+  set -e
+else
+  spark_jars=()
+  if [[ "${format}" == "avro" ]]; then
+    [[ -f "${spark_avro_jar}" ]] || { echo "spark avro jar does not exist: ${spark_avro_jar}" >&2; exit 1; }
+    spark_jars=(--jars "${spark_avro_jar}")
+  fi
+  set +e
+  spark-submit \
+    --master yarn \
+    --deploy-mode client \
+    --driver-java-options "-Dspark.master=yarn" \
+    --conf "spark.sql.shuffle.partitions=${SPARK_SHUFFLE_PARTITIONS:-32}" \
+    "${spark_jars[@]}" \
+    --class "${main}" \
+    "${jar_path}" \
+    "${input_path}" "${source_id}" "${output_path}" \
+    >"${output_file}" 2>&1
+  command_status=$?
+  set -e
+fi
+
+if [[ "${command_status}" -ne 0 ]]; then
+  cat "${output_file}" >&2
+  exit "${command_status}"
+fi
+
+mapfile -t app_ids < <(grep -o 'application_[0-9_]*' "${output_file}" | sort -u)
+if [[ "${#app_ids[@]}" -eq 0 ]]; then
+  cat "${output_file}" >&2
+  echo "no YARN application id found" >&2
+  exit 1
+fi
