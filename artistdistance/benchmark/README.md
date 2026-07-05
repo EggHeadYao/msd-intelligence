@@ -2,29 +2,65 @@
 
 Run from `p1team02/artistdistance` after Hadoop commands are available:
 
+## `run_one.sh`
+
+Run one engine/format pair:
+
 ```bash
 ./benchmark/run_one.sh mapreduce avro 1
 ./benchmark/run_one.sh mapreduce parquet 1
 ./benchmark/run_one.sh spark avro 1
 ./benchmark/run_one.sh spark parquet 1
+```
+
+Arguments:
+
+- `engine`: `mapreduce` or `spark`.
+- `format`: `avro` or `parquet`.
+- `run_id`: repetition number written to `experiments/results.csv`.
+
+Use `SOURCE_ID` to choose a BFS source artist:
+
+```bash
+SOURCE_ID=AR002UA1187B9A637D ./benchmark/run_one.sh spark parquet 1
+```
+
+## `run_all.sh`
+
+Run all four required combinations:
+
+```bash
 ./benchmark/run_all.sh 3
 ```
 
-- `run_one.sh`: runs one engine/format pair and appends elapsed seconds to `experiments/results.csv`.
-- `run_all.sh`: runs the four required combinations.
-- `SOURCE_ID`: optional environment variable for changing the BFS source artist.
+The optional argument is the number of repetitions. Each repetition runs:
+
+- `mapreduce avro`
+- `mapreduce parquet`
+- `spark avro`
+- `spark parquet`
+
+`SOURCE_ID` also applies to `run_all.sh`.
+
+## Benchmark Workflow
+
+### Restart and Data Setup
 
 `run_one.sh` restarts HDFS and YARN with `stop-all.sh` and `start-all.sh`
-before each submitted task.
+before each submitted task, then waits for HDFS to leave safemode.
 
 Inputs are uploaded to HDFS under `/user/$USER/artistdistance-benchmark/input`.
 Outputs are written to `/user/$USER/artistdistance-benchmark/output`.
+
+### YARN Execution and Timing
 
 MapReduce jobs are submitted with `mapreduce.framework.name=yarn`. Spark jobs
 are submitted with `spark-submit --master yarn`.
 
 Timing is read from `yarn application -status`. MapReduce BFS submits one
 application per BFS job, so its time is the sum of those application durations.
+
+### Verification and Cleanup
 
 After timing is recorded, `run_one.sh` copies the output back to
 `experiments/output`, verifies it against the reference BFS result, and records
