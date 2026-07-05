@@ -1,0 +1,5 @@
+run_id,source_id,engine,format,elapsed_seconds,verified
+1,AR002UA1187B9A637D,mapreduce,avro,713.267,true
+1,AR002UA1187B9A637D,mapreduce,parquet,751.097,true
+1,AR002UA1187B9A637D,spark,avro,87.007,true
+1,AR002UA1187B9A637D,spark,parquet,100.354,true
