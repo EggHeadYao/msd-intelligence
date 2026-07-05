@@ -33,7 +33,7 @@ spark_avro_jar="${HOME}/.m2/repository/org/apache/spark/spark-avro_2.13/4.1.2/sp
 
 mkdir -p "$(dirname "${results_csv}")"
 
-results_header="run_id,source_id,engine,format,elapsed_seconds"
+results_header="run_id,source_id,engine,format,elapsed_seconds,verified"
 if [[ ! -f "${results_csv}" ]]; then
   echo "${results_header}" > "${results_csv}"
 fi
@@ -47,10 +47,14 @@ if [[ "${engine}" == "mapreduce" ]]; then
 else
   main="artistdistance.spark.${format}.${format_class}SparkBfs"
 fi
+verifier="artistdistance.validate.${format_class}BfsOutputVerifier"
 
-output_path="${hdfs_root}/output/$(date -u +"%Y%m%dT%H%M%SZ")-${engine}-${format}-run${run_id}"
+output_name="$(date -u +"%Y%m%dT%H%M%SZ")-${engine}-${format}-run${run_id}"
+output_path="${hdfs_root}/output/${output_name}"
+local_output_dir="${project_dir}/experiments/output/${output_name}"
 output_file="$(mktemp)"
-trap 'rm -f "${output_file}"' EXIT
+verify_output_file="$(mktemp)"
+trap 'rm -f "${output_file}" "${verify_output_file}"' EXIT
 
 [[ -e "${local_input}" ]] || { echo "local input does not exist: ${local_input}" >&2; exit 1; }
 
@@ -59,13 +63,17 @@ cd "${project_dir}"
 if [[ ! -f "${jar_path}" || ! -d "${deps_dir}" ]]; then
   mvn -q package dependency:copy-dependencies -DincludeScope=runtime >/dev/null
 fi
+runtime_classpath="${jar_path}:$(find "${deps_dir}" -name '*.jar' | sort | paste -sd: -)"
 
 stop-all.sh >/dev/null
 start-all.sh >/dev/null
+hdfs dfsadmin -safemode wait >/dev/null 2>&1
 
 hdfs dfs -mkdir -p "$(dirname "${input_path}")" "${hdfs_root}/output" >/dev/null 2>&1
+input_uploaded=false
 if ! hdfs dfs -test -e "${input_path}" >/dev/null 2>&1; then
   hdfs dfs -put "${local_input}" "${input_path}" >/dev/null 2>&1
+  input_uploaded=true
 fi
 if hdfs dfs -test -e "${output_path}" >/dev/null 2>&1; then
   echo "output path already exists: ${output_path}" >&2
@@ -74,9 +82,8 @@ fi
 
 if [[ "${engine}" == "mapreduce" ]]; then
   libjars="$(find "${deps_dir}" -name '*.jar' | sort | paste -sd, -)"
-  classpath="${jar_path}:$(find "${deps_dir}" -name '*.jar' | sort | paste -sd: -)"
   set +e
-  HADOOP_CLASSPATH="${classpath}" hadoop jar "${jar_path}" "${main}" \
+  HADOOP_CLASSPATH="${runtime_classpath}" hadoop jar "${jar_path}" "${main}" \
     -Dmapreduce.framework.name=yarn \
     -Dartistdistance.bfs.reducers="${reducers}" \
     -libjars "${libjars}" \
@@ -111,6 +118,7 @@ if [[ "${command_status}" -ne 0 ]]; then
 fi
 
 mapfile -t app_ids < <(grep -o 'application_[0-9_]*' "${output_file}" | sort -u)
+mapfile -t job_ids < <(grep -o 'job_[0-9_]*' "${output_file}" | sort -u)
 if [[ "${#app_ids[@]}" -eq 0 ]]; then
   cat "${output_file}" >&2
   echo "no YARN application id found" >&2
@@ -137,6 +145,46 @@ for app_id in "${app_ids[@]}"; do
 done
 
 elapsed_seconds="$(awk -v ms="${elapsed_ms}" 'BEGIN { printf "%.3f", ms / 1000 }')"
-echo "${run_id},${source_id},${engine},${format},${elapsed_seconds}" >> "${results_csv}"
 
-echo "${engine}+${format}: ${elapsed_seconds}s"
+mkdir -p "$(dirname "${local_output_dir}")"
+hdfs dfs -copyToLocal "${output_path}" "${local_output_dir}" >/dev/null 2>&1
+verify_input="${local_output_dir}"
+if [[ -d "${local_output_dir}/final" ]]; then
+  verify_input="${local_output_dir}/final"
+fi
+
+set +e
+java -cp "${runtime_classpath}" "${verifier}" "${local_input}" "${verify_input}" "${source_id}" \
+  >"${verify_output_file}" 2>&1
+verify_status=$?
+set -e
+
+if [[ "${verify_status}" -eq 0 ]]; then
+  verified=true
+else
+  verified=false
+fi
+
+echo "${run_id},${source_id},${engine},${format},${elapsed_seconds},${verified}" >> "${results_csv}"
+
+if [[ "${verified}" == "true" ]]; then
+  rm -rf "${local_output_dir}"
+  rmdir "$(dirname "${local_output_dir}")" 2>/dev/null || true
+  hdfs dfs -rm -r -f "${output_path}" >/dev/null 2>&1 || true
+  if [[ "${input_uploaded}" == "true" ]]; then
+    hdfs dfs -rm -f "${input_path}" >/dev/null 2>&1 || true
+    hdfs dfs -rmdir "$(dirname "${input_path}")" "${hdfs_root}/input" >/dev/null 2>&1 || true
+  fi
+  for app_id in "${app_ids[@]}"; do
+    hdfs dfs -rm -r -f "/user/${USER}/.sparkStaging/${app_id}" >/dev/null 2>&1 || true
+  done
+  for job_id in "${job_ids[@]}"; do
+    hdfs dfs -rm -r -f "/tmp/hadoop-yarn/staging/${USER}/.staging/${job_id}" >/dev/null 2>&1 || true
+    hdfs dfs -rm -r -f "/user/${USER}/.staging/${job_id}" >/dev/null 2>&1 || true
+  done
+else
+  cat "${verify_output_file}" >&2
+  exit "${verify_status}"
+fi
+
+echo "${engine}+${format}: ${elapsed_seconds}s verified=${verified}"
