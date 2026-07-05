@@ -116,3 +116,27 @@ if [[ "${#app_ids[@]}" -eq 0 ]]; then
   echo "no YARN application id found" >&2
   exit 1
 fi
+
+elapsed_ms=0
+for app_id in "${app_ids[@]}"; do
+  status="$(yarn application -status "${app_id}" 2>/dev/null)"
+  start_ms="$(printf "%s\n" "${status}" | awk -F: '/Start-Time/ { gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit }')"
+  finish_ms="$(printf "%s\n" "${status}" | awk -F: '/Finish-Time/ { gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit }')"
+  final_state="$(printf "%s\n" "${status}" | awk -F: '/Final-State/ { gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit }')"
+  if [[ "${final_state}" != "SUCCEEDED" ]]; then
+    cat "${output_file}" >&2
+    echo "${app_id} final state is ${final_state}" >&2
+    exit 1
+  fi
+  if [[ -z "${start_ms}" || -z "${finish_ms}" || "${finish_ms}" -le 0 ]]; then
+    cat "${output_file}" >&2
+    echo "cannot read completed YARN timing for ${app_id}" >&2
+    exit 1
+  fi
+  elapsed_ms="$((elapsed_ms + finish_ms - start_ms))"
+done
+
+elapsed_seconds="$(awk -v ms="${elapsed_ms}" 'BEGIN { printf "%.3f", ms / 1000 }')"
+echo "${run_id},${source_id},${engine},${format},${elapsed_seconds}" >> "${results_csv}"
+
+echo "${engine}+${format}: ${elapsed_seconds}s"
