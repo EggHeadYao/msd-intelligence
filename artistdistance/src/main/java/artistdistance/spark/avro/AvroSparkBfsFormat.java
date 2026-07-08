@@ -1,6 +1,8 @@
 package artistdistance.spark.avro;
 
+import artistdistance.schema.ArtistDistance;
 import artistdistance.spark.SparkBfsFormat;
+import org.apache.avro.Schema;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -19,11 +21,12 @@ public final class AvroSparkBfsFormat implements SparkBfsFormat {
 
   @Override
   public void writeArtistDistances(Dataset<Row> distances, String output) {
+    Schema schema = ArtistDistance.getClassSchema();
     distances
         .write()
         .format("avro")
-        .option("recordName", "ArtistDistance")
-        .option("recordNamespace", "artistdistance.schema")
+        .option("recordName", schema.getName())
+        .option("recordNamespace", schema.getNamespace())
         .mode(SaveMode.ErrorIfExists)
         .save(output);
   }
