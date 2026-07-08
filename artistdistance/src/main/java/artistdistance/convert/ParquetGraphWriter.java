@@ -10,6 +10,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.parquet.avro.AvroParquetWriter;
 import org.apache.parquet.hadoop.ParquetFileWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.util.HadoopOutputFile;
 
 public final class ParquetGraphWriter {
   public void write(Path outputDir, SqliteArtistGraphReader reader, List<Adjacency> adjacency) throws Exception {
@@ -33,10 +34,12 @@ public final class ParquetGraphWriter {
   }
 
   private static <T> ParquetWriter<T> writer(Path file, org.apache.avro.Schema schema) throws Exception {
-    return AvroParquetWriter.<T>builder(new org.apache.hadoop.fs.Path(file.toUri()))
+    Configuration conf = new Configuration();
+    org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(file.toUri());
+    return AvroParquetWriter.<T>builder(HadoopOutputFile.fromPath(path, conf))
         .withSchema(schema)
         .withDataModel(SpecificData.get())
-        .withConf(new Configuration())
+        .withConf(conf)
         .withWriteMode(ParquetFileWriter.Mode.OVERWRITE)
         .build();
   }
