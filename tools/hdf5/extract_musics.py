@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
+from multiprocessing import Pool
 from pathlib import Path
 
 import h5py
@@ -134,6 +136,16 @@ def save_checkpoint(path: Path, batch: list[str]) -> None:
             f.write(p + "\n")
 
 
+def worker(
+    path: Path,
+) -> tuple[str, tuple[np.ndarray, list[tuple[str, str]], list[tuple[str, str]]] | None]:
+    """Call process_one_file in a worker process, catching OSError."""
+    try:
+        return str(path), process_one_file(path)
+    except OSError:
+        return str(path), None
+
+
 def flush_batch(
     output_dir: Path,
     batch_idx: int,
@@ -173,12 +185,24 @@ def flush_batch(
 
 def main() -> None:
     """Entry point: walk data root, process each .h5, write batch Parquet files."""
-    if len(sys.argv) != 3:  # noqa: PLR2004  # ruff: noqa: PLR2004
-        print(f"Usage: {sys.argv[0]} <data_root> <output_dir>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("data_root", type=Path, help="Root of HDF5 file tree")
+    parser.add_argument(
+        "output_dir",
+        type=Path,
+        help="Output directory for Parquet files",
+    )
+    parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel worker processes (default: 1)",
+    )
+    args = parser.parse_args()
 
-    data_root: Path = Path(sys.argv[1])
-    output_dir: Path = Path(sys.argv[2])
+    data_root: Path = args.data_root
+    output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path: Path = output_dir / "checkpoint.json"
 
@@ -186,9 +210,11 @@ def main() -> None:
     done: set[str] = load_checkpoint(checkpoint_path)
     remaining: list[Path] = [f for f in all_files if str(f) not in done]
 
+    workers: int = args.workers
     print(
         f"Found {len(all_files)} .h5 files, "
-        f"{len(done)} done, {len(remaining)} remaining",
+        f"{len(done)} done, {len(remaining)} remaining"
+        f"{f', using {workers} workers' if workers > 1 else ''}",
     )
 
     feats_batch: list[np.ndarray] = []
@@ -197,14 +223,18 @@ def main() -> None:
     done_batch: list[str] = []
     batch_idx: int = 0
 
-    for path in remaining:
-        try:
-            feats, sims, terms = process_one_file(path)
-        except OSError:
-            print(f"ERROR processing {path}", file=sys.stderr)
+    source = (
+        Pool(workers).imap_unordered(worker, remaining)
+        if workers > 1
+        else (worker(p) for p in remaining)
+    )
+
+    for path_str, result in source:
+        if result is None:
+            print(f"ERROR processing {path_str}", file=sys.stderr)
             continue
 
-        path_str: str = str(path)
+        feats, sims, terms = result
         feats_batch.append(feats)
         sim_batch.extend(sims)
         term_batch.extend(terms)
