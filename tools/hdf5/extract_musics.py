@@ -16,18 +16,17 @@ BATCH_SIZE: int = 10000
 
 
 def _make_feature_columns() -> list[str]:
-    """Return the 99 column names matching aggregate_segments output order."""
+    """Return the 100 column names matching aggregate_segments output order."""
     cols: list[str] = []
     for prefix in ("pitch", "timbre"):
         for stat in ("mean", "std", "min", "max"):
             cols.extend(f"{prefix}_{stat}_{i}" for i in range(12))
-    cols.append("loudness_mean")
-    cols.append("loudness_std")
-    cols.append("loudness_max")
+    cols.extend(f"loudness_{stat}" for stat in ("mean", "std", "min", "max"))
     return cols
 
 
 FEATURE_COLUMNS: list[str] = _make_feature_columns()
+# 12 * 2 * 4 + 4 = 100 columns
 
 
 def aggregate_segments(
@@ -35,7 +34,7 @@ def aggregate_segments(
     timbre: np.ndarray,
     loudness_max: np.ndarray,
 ) -> np.ndarray:
-    """Aggregate variable-length segment arrays into a fixed 99-dim vector.
+    """Aggregate variable-length segment arrays into a fixed 100-dim vector.
 
     Args:
         pitches: Nx12 float64 array from /analysis/segments_pitches.
@@ -43,10 +42,10 @@ def aggregate_segments(
         loudness_max: N float64 array from /analysis/segments_loudness_max.
 
     Returns:
-        1-D numpy array of length 99 (48 + 48 + 3).
+        1-D numpy array of length 100 (48 + 48 + 4).
         Order: pitches_mean[12], pitches_std[12], pitches_min[12], pitches_max[12],
                timbre_mean[12],  timbre_std[12],  timbre_min[12],  timbre_max[12],
-               loudness_mean, loudness_std, loudness_max_agg.
+               loudness_mean, loudness_std, loudness_min, loudness_max.
 
     """
     result: list[float] = []
@@ -59,10 +58,11 @@ def aggregate_segments(
         result.extend(float(x) for x in np.min(arr, axis=0))
         result.extend(float(x) for x in np.max(arr, axis=0))
     if loudness_max.size == 0:
-        result.extend([0.0, 0.0, 0.0])
+        result.extend([0.0] * 4)
     else:
         result.append(float(np.mean(loudness_max)))
         result.append(float(np.std(loudness_max, ddof=0)))
+        result.append(float(np.min(loudness_max)))
         result.append(float(np.max(loudness_max)))
     return np.array(result, dtype=np.float64)
 
@@ -76,8 +76,8 @@ def process_one_file(
         path: Path to a per-song HDF5 file.
 
     Returns:
-        Tuple of (features_99, similar_pairs, term_pairs).
-        features_99: 1-D float64 numpy array of 99 aggregated segment features.
+        Tuple of (features_100, similar_pairs, term_pairs).
+        features_100: 1-D float64 numpy array of 100 aggregated segment features.
         similar_pairs: List of (track_id, similar_artist_id) with empty strings
                        filtered out.
         term_pairs: List of (track_id, term) with empty strings filtered out.
