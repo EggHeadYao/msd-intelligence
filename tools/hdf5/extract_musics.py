@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -12,7 +11,6 @@ import h5py
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-
 
 BATCH_SIZE: int = 10000
 
@@ -95,7 +93,7 @@ def process_one_file(
 def _decode(val: object) -> str:
     """Decode HDF5 byte strings to Python str, pass through native str."""
     if isinstance(val, bytes | bytearray):
-        return bytes(val).decode("utf-8")
+        return val.decode("utf-8")
     return str(val)
 
 
@@ -108,15 +106,17 @@ def discover_files(root: Path) -> list[Path]:
 
 
 def load_checkpoint(path: Path) -> set[str]:
-    """Load the set of already-processed absolute file paths."""
+    """Load already-processed file paths from a line-delimited file."""
     if not path.exists():
         return set()
-    return set(json.loads(path.read_text()))
+    return {line.rstrip("\n") for line in path.read_text().splitlines() if line}
 
 
-def save_checkpoint(path: Path, done: set[str]) -> None:
-    """Persist the set of processed file paths."""
-    path.write_text(json.dumps(sorted(done)))
+def save_checkpoint(path: Path, batch: list[str]) -> None:
+    """Append a batch of processed file paths to the checkpoint file."""
+    with path.open("a") as f:
+        for p in batch:
+            f.write(p + "\n")
 
 
 def flush_batch(
@@ -154,7 +154,7 @@ def flush_batch(
 
 def main() -> None:
     """Entry point: walk data root, process each .h5, write batch Parquet files."""
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 3:  # ruff: noqa: PLR2004
         print(f"Usage: {sys.argv[0]} <data_root> <output_dir>")
         sys.exit(1)
 
@@ -175,6 +175,7 @@ def main() -> None:
     feats_batch: list[np.ndarray] = []
     sim_batch: list[tuple[str, str]] = []
     term_batch: list[tuple[str, str]] = []
+    done_batch: list[str] = []
     batch_idx: int = 0
 
     for path in remaining:
@@ -184,22 +185,25 @@ def main() -> None:
             print(f"ERROR processing {path}", file=sys.stderr)
             continue
 
+        path_str: str = str(path)
         feats_batch.append(feats)
         sim_batch.extend(sims)
         term_batch.extend(terms)
-        done.add(str(path))
+        done.add(path_str)
+        done_batch.append(path_str)
 
         if len(feats_batch) >= BATCH_SIZE:
             flush_batch(output_dir, batch_idx, feats_batch, sim_batch, term_batch)
-            save_checkpoint(checkpoint_path, done)
+            save_checkpoint(checkpoint_path, done_batch)
             batch_idx += 1
             feats_batch.clear()
             sim_batch.clear()
             term_batch.clear()
+            done_batch.clear()
 
     if feats_batch:
         flush_batch(output_dir, batch_idx, feats_batch, sim_batch, term_batch)
-        save_checkpoint(checkpoint_path, done)
+        save_checkpoint(checkpoint_path, done_batch)
 
     print(f"Done. Processed {len(done)} files total.")
 
