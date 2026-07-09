@@ -15,6 +15,21 @@ import pyarrow.parquet as pq
 BATCH_SIZE: int = 10000
 
 
+def _make_feature_columns() -> list[str]:
+    """Return the 99 column names matching aggregate_segments output order."""
+    cols: list[str] = []
+    for prefix in ("pitch", "timbre"):
+        for stat in ("mean", "std", "min", "max"):
+            cols.extend(f"{prefix}_{stat}_{i}" for i in range(12))
+    cols.append("loudness_mean")
+    cols.append("loudness_std")
+    cols.append("loudness_max")
+    return cols
+
+
+FEATURE_COLUMNS: list[str] = _make_feature_columns()
+
+
 def aggregate_segments(
     pitches: np.ndarray,
     timbre: np.ndarray,
@@ -154,7 +169,7 @@ def flush_batch(
 
 def main() -> None:
     """Entry point: walk data root, process each .h5, write batch Parquet files."""
-    if len(sys.argv) != 3:  # ruff: noqa: PLR2004
+    if len(sys.argv) != 3:  # noqa: PLR2004  # ruff: noqa: PLR2004
         print(f"Usage: {sys.argv[0]} <data_root> <output_dir>")
         sys.exit(1)
 
