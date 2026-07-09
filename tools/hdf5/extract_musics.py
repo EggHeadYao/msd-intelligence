@@ -150,3 +150,59 @@ def flush_batch(
         ),
         str(output_dir / f"terms_{suffix}"),
     )
+
+
+def main() -> None:
+    """Entry point: walk data root, process each .h5, write batch Parquet files."""
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} <data_root> <output_dir>")
+        sys.exit(1)
+
+    data_root: Path = Path(sys.argv[1])
+    output_dir: Path = Path(sys.argv[2])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path: Path = output_dir / "checkpoint.json"
+
+    all_files: list[Path] = discover_files(data_root)
+    done: set[str] = load_checkpoint(checkpoint_path)
+    remaining: list[Path] = [f for f in all_files if str(f) not in done]
+
+    print(
+        f"Found {len(all_files)} .h5 files, "
+        f"{len(done)} done, {len(remaining)} remaining",
+    )
+
+    feats_batch: list[np.ndarray] = []
+    sim_batch: list[tuple[str, str]] = []
+    term_batch: list[tuple[str, str]] = []
+    batch_idx: int = 0
+
+    for path in remaining:
+        try:
+            feats, sims, terms = process_one_file(path)
+        except OSError:
+            print(f"ERROR processing {path}", file=sys.stderr)
+            continue
+
+        feats_batch.append(feats)
+        sim_batch.extend(sims)
+        term_batch.extend(terms)
+        done.add(str(path))
+
+        if len(feats_batch) >= BATCH_SIZE:
+            flush_batch(output_dir, batch_idx, feats_batch, sim_batch, term_batch)
+            save_checkpoint(checkpoint_path, done)
+            batch_idx += 1
+            feats_batch.clear()
+            sim_batch.clear()
+            term_batch.clear()
+
+    if feats_batch:
+        flush_batch(output_dir, batch_idx, feats_batch, sim_batch, term_batch)
+        save_checkpoint(checkpoint_path, done)
+
+    print(f"Done. Processed {len(done)} files total.")
+
+
+if __name__ == "__main__":
+    main()
