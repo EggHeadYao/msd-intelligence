@@ -1,4 +1,5 @@
 # ruff: noqa: T201
+"""Extract scalar fields from msd_summary_file.h5 into a Parquet file."""
 
 from __future__ import annotations
 
@@ -40,12 +41,14 @@ STRING_FIELDS: frozenset[str] = frozenset(
 
 
 def _decode(val: object) -> str:
+    """Decode HDF5 byte strings to Python str, pass through native str."""
     if isinstance(val, bytes | bytearray):
         return bytes(val).decode("utf-8")
     return str(val)
 
 
 def _row_to_dict(row: np.void, fields: tuple[str, ...]) -> dict[str, object]:
+    """Convert one HDF5 compound row into a plain dict, decoding bytes."""
     d: dict[str, object] = {}
     for f in fields:
         v = row[f]
@@ -54,6 +57,15 @@ def _row_to_dict(row: np.void, fields: tuple[str, ...]) -> dict[str, object]:
 
 
 def read_summary(h5: h5py.File) -> pa.Table:
+    """Read all scalar fields, combining the three datasets by position.
+
+    Args:
+        h5: Opened msd_summary_file.h5 handle.
+
+    Returns:
+        PyArrow Table with 1M rows and all scalar columns.
+
+    """
     analysis_rows: np.ndarray = h5["/analysis/songs"][:]
     metadata_rows: np.ndarray = h5["/metadata/songs"][:]
     mb_rows: np.ndarray = h5["/musicbrainz/songs"][:]
@@ -69,6 +81,7 @@ def read_summary(h5: h5py.File) -> pa.Table:
 
 
 def main() -> None:
+    """Entry point: read msd_summary_file.h5 and write songs_scalar_raw.parquet."""
     input_path: Path = Path(sys.argv[1])
     output_path: Path = Path(sys.argv[2])
 
