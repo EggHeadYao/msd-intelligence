@@ -240,6 +240,8 @@ def main() -> None:
         term_batch.extend(terms)
         done.add(path_str)
         done_batch.append(path_str)
+        sys.stdout.write(f"\r[{len(done)}/{len(all_files)}]")
+        sys.stdout.flush()
 
         if len(feats_batch) >= BATCH_SIZE:
             flush_batch(output_dir, batch_idx, feats_batch, sim_batch, term_batch)
