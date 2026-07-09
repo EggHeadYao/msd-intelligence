@@ -1,8 +1,10 @@
-# ruff: noqa: T201
 """Extract segment arrays, similar artists, and artist terms from per-song .h5 files."""
 
 from __future__ import annotations
 
+from pathlib import Path  # noqa: TC003
+
+import h5py
 import numpy as np
 
 
@@ -41,3 +43,48 @@ def aggregate_segments(
         result.append(float(np.std(loudness_max, ddof=0)))
         result.append(float(np.max(loudness_max)))
     return np.array(result, dtype=np.float64)
+
+
+def process_one_file(
+    path: Path,
+) -> tuple[np.ndarray, list[tuple[str, str]], list[tuple[str, str]]]:
+    """Extract aggregated features, similar artists, and terms from one .h5 file.
+
+    Args:
+        path: Path to a per-song HDF5 file.
+
+    Returns:
+        Tuple of (features_99, similar_pairs, term_pairs).
+        features_99: 1-D float64 numpy array of 99 aggregated segment features.
+        similar_pairs: List of (track_id, similar_artist_id) with empty strings
+                       filtered out.
+        term_pairs: List of (track_id, term) with empty strings filtered out.
+
+    """
+    with h5py.File(path, "r") as h5:
+        track_id: str = _decode(h5["/analysis/songs"][0]["track_id"])
+
+        features: np.ndarray = aggregate_segments(
+            h5["/analysis/segments_pitches"][:],
+            h5["/analysis/segments_timbre"][:],
+            h5["/analysis/segments_loudness_max"][:],
+        )
+
+        raw_similar: np.ndarray = h5["/metadata/similar_artists"][:]
+        similar_pairs: list[tuple[str, str]] = [
+            (track_id, _decode(aid)) for aid in raw_similar if _decode(aid)
+        ]
+
+        raw_terms: np.ndarray = h5["/metadata/artist_terms"][:]
+        term_pairs: list[tuple[str, str]] = [
+            (track_id, _decode(t)) for t in raw_terms if _decode(t)
+        ]
+
+    return features, similar_pairs, term_pairs
+
+
+def _decode(val: object) -> str:
+    """Decode HDF5 byte strings to Python str, pass through native str."""
+    if isinstance(val, bytes | bytearray):
+        return bytes(val).decode("utf-8")
+    return str(val)
