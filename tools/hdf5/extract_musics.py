@@ -1,11 +1,20 @@
+# ruff: noqa: T201
 """Extract segment arrays, similar artists, and artist terms from per-song .h5 files."""
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003
+import json
+import os
+import sys
+from pathlib import Path
 
 import h5py
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+
+BATCH_SIZE: int = 10000
 
 
 def aggregate_segments(
@@ -88,3 +97,56 @@ def _decode(val: object) -> str:
     if isinstance(val, bytes | bytearray):
         return bytes(val).decode("utf-8")
     return str(val)
+
+
+def discover_files(root: Path) -> list[Path]:
+    """Walk a directory tree and return all .h5 file paths."""
+    files: list[Path] = []
+    for dirpath, _dirnames, filenames in os.walk(root):
+        files.extend(Path(dirpath) / name for name in filenames if name.endswith(".h5"))
+    return files
+
+
+def load_checkpoint(path: Path) -> set[str]:
+    """Load the set of already-processed absolute file paths."""
+    if not path.exists():
+        return set()
+    return set(json.loads(path.read_text()))
+
+
+def save_checkpoint(path: Path, done: set[str]) -> None:
+    """Persist the set of processed file paths."""
+    path.write_text(json.dumps(sorted(done)))
+
+
+def flush_batch(
+    output_dir: Path,
+    batch_idx: int,
+    feats: list[np.ndarray],
+    sims: list[tuple[str, str]],
+    terms: list[tuple[str, str]],
+) -> None:
+    """Write one batch of accumulated data to Parquet files."""
+    suffix: str = f"{batch_idx:04d}.parquet"
+    pq.write_table(
+        pa.table({"features": np.vstack(feats).tolist()}),
+        str(output_dir / f"features_{suffix}"),
+    )
+    pq.write_table(
+        pa.table(
+            {
+                "track_id": [s[0] for s in sims],
+                "similar_artist_id": [s[1] for s in sims],
+            },
+        ),
+        str(output_dir / f"similar_{suffix}"),
+    )
+    pq.write_table(
+        pa.table(
+            {
+                "track_id": [t[0] for t in terms],
+                "term": [t[1] for t in terms],
+            },
+        ),
+        str(output_dir / f"terms_{suffix}"),
+    )
