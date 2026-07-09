@@ -143,8 +143,12 @@ def flush_batch(
 ) -> None:
     """Write one batch of accumulated data to Parquet files."""
     suffix: str = f"{batch_idx:04d}.parquet"
+    mat: np.ndarray = np.vstack(feats)
+    cols: dict[str, list[float]] = {
+        name: mat[:, i].tolist() for i, name in enumerate(FEATURE_COLUMNS)
+    }
     pq.write_table(
-        pa.table({"features": np.vstack(feats).tolist()}),
+        pa.table(cols),
         str(output_dir / f"features_{suffix}"),
     )
     pq.write_table(
