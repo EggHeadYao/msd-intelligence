@@ -1,71 +1,71 @@
-# ruff: noqa: D100, D103, T201
+# ruff: noqa: T201
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
 import h5py
+import numpy as np  # noqa: TC002  # used at runtime for ndarray iteration
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 EXPECTED_ROWS: int = 1000000
 
+ANALYSIS_FIELDS: tuple[str, ...] = (
+    "track_id",
+    "danceability",
+    "energy",
+    "loudness",
+    "tempo",
+    "duration",
+    "key",
+    "mode",
+    "time_signature",
+)
 
-def read_analysis_songs(h5: h5py.File) -> pa.Table:
-    fields: tuple[str, ...] = (
-        "track_id",
-        "danceability",
-        "energy",
-        "loudness",
-        "tempo",
-        "duration",
-        "key",
-        "mode",
-        "time_signature",
-    )
-    rows: list[dict[str, str | float | int]] = []
-    ds: h5py.Dataset = h5["/analysis/songs"]
-    for i in range(ds.shape[0]):
-        row = ds[i]
-        rows.append({f: row[f] for f in fields})
+METADATA_FIELDS: tuple[str, ...] = (
+    "artist_id",
+    "artist_name",
+    "release",
+    "song_hotttnesss",
+    "artist_hotttnesss",
+    "artist_familiarity",
+    "title",
+)
+
+STRING_FIELDS: frozenset[str] = frozenset(
+    {"track_id", "artist_id", "artist_name", "release", "title"},
+)
+
+
+def _decode(val: object) -> str:
+    if isinstance(val, bytes | bytearray):
+        return bytes(val).decode("utf-8")
+    return str(val)
+
+
+def _row_to_dict(row: np.void, fields: tuple[str, ...]) -> dict[str, object]:
+    d: dict[str, object] = {}
+    for f in fields:
+        v = row[f]
+        d[f] = _decode(v) if f in STRING_FIELDS else v
+    return d
+
+
+def read_summary(h5: h5py.File) -> pa.Table:
+    analysis_rows: np.ndarray = h5["/analysis/songs"][:]
+    metadata_rows: np.ndarray = h5["/metadata/songs"][:]
+    mb_rows: np.ndarray = h5["/musicbrainz/songs"][:]
+
+    rows: list[dict[str, object]] = []
+    for i in range(analysis_rows.shape[0]):
+        d: dict[str, object] = _row_to_dict(analysis_rows[i], ANALYSIS_FIELDS)
+        d.update(_row_to_dict(metadata_rows[i], METADATA_FIELDS))
+        d["year"] = int(mb_rows[i]["year"])
+        rows.append(d)
+
     return pa.Table.from_pylist(rows)
-
-
-def read_metadata_songs(h5: h5py.File) -> pa.Table:
-    fields: tuple[str, ...] = (
-        "track_id",
-        "artist_id",
-        "artist_name",
-        "release",
-        "song_hotttnesss",
-        "artist_hotttnesss",
-        "artist_familiarity",
-        "title",
-    )
-    rows: list[dict[str, str | float | int]] = []
-    ds: h5py.Dataset = h5["/metadata/songs"]
-    for i in range(ds.shape[0]):
-        row = ds[i]
-        rows.append({f: row[f] for f in fields})
-    return pa.Table.from_pylist(rows)
-
-
-def read_musicbrainz_songs(h5: h5py.File) -> pa.Table:
-    rows: list[dict[str, int | str]] = []
-    ds: h5py.Dataset = h5["/musicbrainz/songs"]
-    for i in range(ds.shape[0]):
-        row = ds[i]
-        rows.append({"track_id": row["track_id"], "year": int(row["year"])})
-    return pa.Table.from_pylist(rows)
-
-
-def join_tables(
-    analysis: pa.Table,
-    metadata: pa.Table,
-    musicbrainz: pa.Table,
-) -> pa.Table:
-    joined: pa.Table = analysis.join(metadata, keys="track_id")
-    return joined.join(musicbrainz, keys="track_id")
 
 
 def main() -> None:
@@ -73,11 +73,7 @@ def main() -> None:
     output_path: Path = Path(sys.argv[2])
 
     with h5py.File(input_path, "r") as h5:
-        analysis: pa.Table = read_analysis_songs(h5)
-        metadata: pa.Table = read_metadata_songs(h5)
-        musicbrainz: pa.Table = read_musicbrainz_songs(h5)
-
-    result: pa.Table = join_tables(analysis, metadata, musicbrainz)
+        result: pa.Table = read_summary(h5)
 
     if result.num_rows != EXPECTED_ROWS:
         err: str = f"Expected {EXPECTED_ROWS} rows, got {result.num_rows}"
