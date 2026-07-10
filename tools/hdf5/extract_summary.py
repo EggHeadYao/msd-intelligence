@@ -81,7 +81,7 @@ def read_summary(h5: h5py.File) -> pa.Table:
         raise RuntimeError(msg)
 
     rows: list[dict[str, object]] = []
-    for i in range(analysis_rows.shape[0]):
+    for i in range(n):
         d: dict[str, object] = _row_to_dict(analysis_rows[i], ANALYSIS_FIELDS)
         d.update(_row_to_dict(metadata_rows[i], METADATA_FIELDS))
         d["year"] = int(mb_rows[i]["year"])

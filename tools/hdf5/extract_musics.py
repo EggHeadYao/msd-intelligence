@@ -213,7 +213,7 @@ def main() -> None:
     data_root: Path = args.data_root
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path: Path = output_dir / "checkpoint.json"
+    checkpoint_path: Path = output_dir / "checkpoint.txt"
 
     all_files: list[Path] = discover_files(data_root)
     done: set[str] = load_checkpoint(checkpoint_path)
