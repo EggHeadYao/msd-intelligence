@@ -28,14 +28,14 @@ def _make_feature_columns() -> list[str]:
 
 
 FEATURE_COLUMNS: list[str] = _make_feature_columns()
-# 12 * 2 * 4 + 4 = 100 columns
+# 12 * 2 * 4 + 4 = 100 feature columns (+ has_segments in flush_batch = 101 total)
 
 
 def aggregate_segments(
     pitches: np.ndarray,
     timbre: np.ndarray,
     loudness_max: np.ndarray,
-) -> np.ndarray:
+) -> tuple[np.ndarray, bool]:
     """Aggregate variable-length segment arrays into a fixed 100-dim vector.
 
     Args:
@@ -44,12 +44,12 @@ def aggregate_segments(
         loudness_max: N float64 array from /analysis/segments_loudness_max.
 
     Returns:
-        1-D numpy array of length 100 (48 + 48 + 4).
-        Order: pitches_mean[12], pitches_std[12], pitches_min[12], pitches_max[12],
-               timbre_mean[12],  timbre_std[12],  timbre_min[12],  timbre_max[12],
-               loudness_mean, loudness_std, loudness_min, loudness_max.
+        Tuple of (features_100, has_segments).
+        features_100: 1-D float64 numpy array of length 100.
+        has_segments: True if segments data was present (N > 0).
 
     """
+    has_segments: bool = pitches.size > 0 or timbre.size > 0
     result: list[float] = []
     for arr in (pitches, timbre):
         if arr.size == 0:
@@ -66,20 +66,21 @@ def aggregate_segments(
         result.append(float(np.std(loudness_max, ddof=0)))
         result.append(float(np.min(loudness_max)))
         result.append(float(np.max(loudness_max)))
-    return np.array(result, dtype=np.float64)
+    return np.array(result, dtype=np.float64), has_segments
 
 
 def process_one_file(
     path: Path,
-) -> tuple[np.ndarray, list[tuple[str, str]], list[tuple[str, str]]]:
+) -> tuple[np.ndarray, bool, list[tuple[str, str]], list[tuple[str, str]]]:
     """Extract aggregated features, similar artists, and terms from one .h5 file.
 
     Args:
         path: Path to a per-song HDF5 file.
 
     Returns:
-        Tuple of (features_100, similar_pairs, term_pairs).
+        Tuple of (features_100, has_segments, similar_pairs, term_pairs).
         features_100: 1-D float64 numpy array of 100 aggregated segment features.
+        has_segments: True if segments data was present.
         similar_pairs: List of (track_id, similar_artist_id) with empty strings
                        filtered out.
         term_pairs: List of (track_id, term) with empty strings filtered out.
@@ -88,7 +89,9 @@ def process_one_file(
     with h5py.File(path, "r") as h5:
         track_id: str = _decode(h5["/analysis/songs"][0]["track_id"])
 
-        features: np.ndarray = aggregate_segments(
+        features: np.ndarray
+        has_segments_flag: bool
+        features, has_segments_flag = aggregate_segments(
             h5["/analysis/segments_pitches"][:],
             h5["/analysis/segments_timbre"][:],
             h5["/analysis/segments_loudness_max"][:],
@@ -104,7 +107,7 @@ def process_one_file(
             (track_id, _decode(t)) for t in raw_terms if _decode(t)
         ]
 
-    return features, similar_pairs, term_pairs
+    return features, has_segments_flag, similar_pairs, term_pairs
 
 
 def _decode(val: object) -> str:
@@ -138,7 +141,10 @@ def save_checkpoint(path: Path, batch: list[str]) -> None:
 
 def worker(
     path: Path,
-) -> tuple[str, tuple[np.ndarray, list[tuple[str, str]], list[tuple[str, str]]] | None]:
+) -> tuple[
+    str,
+    tuple[np.ndarray, bool, list[tuple[str, str]], list[tuple[str, str]]] | None,
+]:
     """Call process_one_file in a worker process, catching OSError."""
     try:
         return str(path), process_one_file(path)
@@ -146,10 +152,11 @@ def worker(
         return str(path), None
 
 
-def flush_batch(
+def flush_batch(  # noqa: PLR0913
     output_dir: Path,
     batch_idx: int,
     feats: list[np.ndarray],
+    seg_flags: list[bool],
     sims: list[tuple[str, str]],
     terms: list[tuple[str, str]],
 ) -> None:
@@ -159,6 +166,7 @@ def flush_batch(
     cols: dict[str, list[float]] = {
         name: mat[:, i].tolist() for i, name in enumerate(FEATURE_COLUMNS)
     }
+    cols["has_segments"] = [int(f) for f in seg_flags]
     pq.write_table(
         pa.table(cols),
         str(output_dir / f"features_{suffix}"),
@@ -218,6 +226,7 @@ def main() -> None:
     )
 
     feats_batch: list[np.ndarray] = []
+    seg_flags_batch: list[bool] = []
     sim_batch: list[tuple[str, str]] = []
     term_batch: list[tuple[str, str]] = []
     done_batch: list[str] = []
@@ -234,8 +243,9 @@ def main() -> None:
             print(f"ERROR processing {path_str}", file=sys.stderr)
             continue
 
-        feats, sims, terms = result
+        feats, has_seg, sims, terms = result
         feats_batch.append(feats)
+        seg_flags_batch.append(has_seg)
         sim_batch.extend(sims)
         term_batch.extend(terms)
         done.add(path_str)
@@ -244,16 +254,31 @@ def main() -> None:
         sys.stdout.flush()
 
         if len(feats_batch) >= BATCH_SIZE:
-            flush_batch(output_dir, batch_idx, feats_batch, sim_batch, term_batch)
+            flush_batch(
+                output_dir,
+                batch_idx,
+                feats_batch,
+                seg_flags_batch,
+                sim_batch,
+                term_batch,
+            )
             save_checkpoint(checkpoint_path, done_batch)
             batch_idx += 1
             feats_batch.clear()
+            seg_flags_batch.clear()
             sim_batch.clear()
             term_batch.clear()
             done_batch.clear()
 
     if feats_batch:
-        flush_batch(output_dir, batch_idx, feats_batch, sim_batch, term_batch)
+        flush_batch(
+            output_dir,
+            batch_idx,
+            feats_batch,
+            seg_flags_batch,
+            sim_batch,
+            term_batch,
+        )
         save_checkpoint(checkpoint_path, done_batch)
 
     print(f"Done. Processed {len(done)} files total.")
