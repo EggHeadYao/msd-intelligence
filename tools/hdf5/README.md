@@ -38,6 +38,35 @@ The `features` files track_id enables direct join with the scalar Parquet withou
 
 Checkpoint/resume is supported via a line-delimited `checkpoint.txt`. Restarting with the same output directory skips already-processed files and continues from the next batch index.
 
+### `extract_chores.py`
+
+Exports supplementary MSD files (SQLite databases and delimited text
+tables) to Parquet for cross-validation and alternative data views.
+
+```bash
+python extract_chores.py <AdditionalFiles_dir> <output_dir>
+```
+
+Output:
+
+| Source | Output | Rows |
+|--------|--------|-----:|
+| `track_metadata.db` | `track_metadata.parquet` | 1 000 000 |
+| `artist_term.db` | `artist_term.parquet` | 1 109 381 |
+| `artist_term.db` | `artist_mbtag.parquet` | 24 777 |
+| `tracks_per_year.txt` | `tracks_per_year.parquet` | 515 576 |
+| `artist_location.txt` | `artist_location.parquet` | 13 850 |
+
+The following files are intentionally skipped:
+
+- `artist_similarity.db` -- already converted by the Java `convert`
+  module during P1M1.
+- `unique_artists.txt`, `unique_tracks.txt`, `unique_terms.txt`,
+  `unique_mbtags.txt` -- pure identifier lists already derivable from
+  the extracted Parquet tables (e.g. `SELECT DISTINCT artist_id`
+  yields the same information).  Converting them to Parquet adds no
+  value beyond what `wc -l` provides.
+
 ## 10K Cold-Cache Benchmark
 
 Two sample of 10 000 `.h5` files was drawn from the dataset and processed with both a single worker and 8 parallel workers. 
