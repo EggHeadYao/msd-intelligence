@@ -28,7 +28,7 @@ def _make_feature_columns() -> list[str]:
 
 
 FEATURE_COLUMNS: list[str] = _make_feature_columns()
-# 12 * 2 * 4 + 4 = 100 feature columns (+ has_segments in flush_batch = 101 total)
+# 12 * 2 * 4 + 4 = 100 feature columns (+ has_segments + track_id in flush_batch = 102 total)
 
 
 def aggregate_segments(
@@ -71,14 +71,15 @@ def aggregate_segments(
 
 def process_one_file(
     path: Path,
-) -> tuple[np.ndarray, bool, list[tuple[str, str]], list[tuple[str, str]]]:
+) -> tuple[str, np.ndarray, bool, list[tuple[str, str]], list[tuple[str, str]]]:
     """Extract aggregated features, similar artists, and terms from one .h5 file.
 
     Args:
         path: Path to a per-song HDF5 file.
 
     Returns:
-        Tuple of (features_100, has_segments, similar_pairs, term_pairs).
+        Tuple of (track_id, features_100, has_segments, similar_pairs, term_pairs).
+        track_id: The Echo Nest track ID for this song.
         features_100: 1-D float64 numpy array of 100 aggregated segment features.
         has_segments: True if segments data was present.
         similar_pairs: List of (track_id, similar_artist_id) with empty strings
@@ -107,7 +108,7 @@ def process_one_file(
             (track_id, _decode(t)) for t in raw_terms if _decode(t)
         ]
 
-    return features, has_segments_flag, similar_pairs, term_pairs
+    return track_id, features, has_segments_flag, similar_pairs, term_pairs
 
 
 def _decode(val: object) -> str:
@@ -143,7 +144,7 @@ def worker(
     path: Path,
 ) -> tuple[
     str,
-    tuple[np.ndarray, bool, list[tuple[str, str]], list[tuple[str, str]]] | None,
+    tuple[str, np.ndarray, bool, list[tuple[str, str]], list[tuple[str, str]]] | None,
 ]:
     """Call process_one_file in a worker process, catching OSError."""
     try:
@@ -155,6 +156,7 @@ def worker(
 def flush_batch(  # noqa: PLR0913
     output_dir: Path,
     batch_idx: int,
+    track_ids: list[str],
     feats: list[np.ndarray],
     seg_flags: list[bool],
     sims: list[tuple[str, str]],
@@ -163,9 +165,8 @@ def flush_batch(  # noqa: PLR0913
     """Write one batch of accumulated data to Parquet files."""
     suffix: str = f"{batch_idx:04d}.parquet"
     mat: np.ndarray = np.vstack(feats)
-    cols: dict[str, list[float]] = {
-        name: mat[:, i].tolist() for i, name in enumerate(FEATURE_COLUMNS)
-    }
+    cols: dict[str, object] = {"track_id": track_ids}
+    cols.update({name: mat[:, i].tolist() for i, name in enumerate(FEATURE_COLUMNS)})
     cols["has_segments"] = [int(f) for f in seg_flags]
     pq.write_table(
         pa.table(cols),
@@ -225,6 +226,7 @@ def main() -> None:
         f"{f', using {workers} workers' if workers > 1 else ''}",
     )
 
+    track_ids_batch: list[str] = []
     feats_batch: list[np.ndarray] = []
     seg_flags_batch: list[bool] = []
     sim_batch: list[tuple[str, str]] = []
@@ -243,7 +245,8 @@ def main() -> None:
             print(f"ERROR processing {path_str}", file=sys.stderr)
             continue
 
-        feats, has_seg, sims, terms = result
+        track_id, feats, has_seg, sims, terms = result
+        track_ids_batch.append(track_id)
         feats_batch.append(feats)
         seg_flags_batch.append(has_seg)
         sim_batch.extend(sims)
@@ -257,6 +260,7 @@ def main() -> None:
             flush_batch(
                 output_dir,
                 batch_idx,
+                track_ids_batch,
                 feats_batch,
                 seg_flags_batch,
                 sim_batch,
@@ -264,6 +268,7 @@ def main() -> None:
             )
             save_checkpoint(checkpoint_path, done_batch)
             batch_idx += 1
+            track_ids_batch.clear()
             feats_batch.clear()
             seg_flags_batch.clear()
             sim_batch.clear()
@@ -274,6 +279,7 @@ def main() -> None:
         flush_batch(
             output_dir,
             batch_idx,
+            track_ids_batch,
             feats_batch,
             seg_flags_batch,
             sim_batch,
