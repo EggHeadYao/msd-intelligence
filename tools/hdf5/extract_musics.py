@@ -226,6 +226,10 @@ def main() -> None:
         f"{f', using {workers} workers' if workers > 1 else ''}",
     )
 
+    if not remaining:
+        print(f"Done. Processed {len(done)} files total.")
+        return
+
     batch_idx: int = len(list(output_dir.glob("features_*.parquet")))
 
     track_ids_batch: list[str] = []
