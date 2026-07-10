@@ -44,7 +44,7 @@ STRING_FIELDS: frozenset[str] = frozenset(
 def _decode(val: object) -> str:
     """Decode HDF5 byte strings to Python str, pass through native str."""
     if isinstance(val, bytes | bytearray):
-        return bytes(val).decode("utf-8")
+        return val.decode("utf-8")
     return str(val)
 
 
