@@ -29,6 +29,7 @@ METADATA_FIELDS: tuple[str, ...] = (
     "artist_id",
     "artist_name",
     "release",
+    "song_id",
     "song_hotttnesss",
     "artist_hotttnesss",
     "artist_familiarity",
@@ -36,7 +37,7 @@ METADATA_FIELDS: tuple[str, ...] = (
 )
 
 STRING_FIELDS: frozenset[str] = frozenset(
-    {"track_id", "artist_id", "artist_name", "release", "title"},
+    {"track_id", "artist_id", "artist_name", "release", "song_id", "title"},
 )
 
 
