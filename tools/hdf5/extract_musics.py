@@ -28,7 +28,7 @@ def _make_feature_columns() -> list[str]:
 
 
 FEATURE_COLUMNS: list[str] = _make_feature_columns()
-# 12 * 2 * 4 + 4 = 100 feature columns (+ has_segments + track_id in flush_batch = 102 total)
+# 12 * 2 * 4 + 4 = 100 feature columns (+track_id +has_segments = 102)
 
 
 def aggregate_segments(
@@ -226,13 +226,14 @@ def main() -> None:
         f"{f', using {workers} workers' if workers > 1 else ''}",
     )
 
+    batch_idx: int = len(list(output_dir.glob("features_*.parquet")))
+
     track_ids_batch: list[str] = []
     feats_batch: list[np.ndarray] = []
     seg_flags_batch: list[bool] = []
     sim_batch: list[tuple[str, str]] = []
     term_batch: list[tuple[str, str]] = []
     done_batch: list[str] = []
-    batch_idx: int = 0
 
     source = (
         Pool(workers).imap_unordered(worker, remaining)
