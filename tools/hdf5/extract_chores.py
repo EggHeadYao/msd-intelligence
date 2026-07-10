@@ -45,16 +45,34 @@ def export_artist_term(db_path: Path, output_dir: Path) -> None:
     con.close()
 
 
-def export_sep_txt(path: Path, output_dir: Path, columns: tuple[str, ...]) -> None:
-    """Export a <SEP>-delimited text file to Parquet."""
-    rows: list[dict[str, str]] = []
+def export_sep_txt(
+    path: Path,
+    output_dir: Path,
+    columns: tuple[str, ...],
+    schema: dict[str, type] | None = None,
+) -> None:
+    """Export a <SEP>-delimited text file to Parquet.
+
+    Args:
+        path: Input text file.
+        output_dir: Directory for the output Parquet file.
+        columns: Column names in order.
+        schema: Optional mapping from column name to target type (e.g. int, float).
+                Columns not listed remain as strings.
+
+    """
+    rows: list[dict[str, object]] = []
     with path.open(encoding="utf-8") as f:
         for raw_line in f:
             stripped: str = raw_line.rstrip("\n")
             if not stripped:
                 continue
             parts: list[str] = stripped.split("<SEP>")
-            rows.append(dict(zip(columns, parts, strict=False)))
+            row: dict[str, object] = dict(zip(columns, parts, strict=False))
+            if schema:
+                for col, typ in schema.items():
+                    row[col] = typ(row[col])
+            rows.append(row)
     _write(pa.Table.from_pylist(rows), output_dir / f"{path.stem}.parquet")
 
 
@@ -76,11 +94,13 @@ def main() -> None:
         db_dir / "tracks_per_year.txt",
         out_dir,
         ("year", "track_id", "artist_name", "title"),
+        schema={"year": int},
     )
     export_sep_txt(
         db_dir / "artist_location.txt",
         out_dir,
-        ("artist_id", "latitude", "longitude", "name", "city"),
+        ("artist_id", "latitude", "longitude", "name", "location"),
+        schema={"latitude": float, "longitude": float},
     )
     print("Done.")
 
