@@ -71,6 +71,15 @@ def read_summary(h5: h5py.File) -> pa.Table:
     metadata_rows: np.ndarray = h5["/metadata/songs"][:]
     mb_rows: np.ndarray = h5["/musicbrainz/songs"][:]
 
+    n: int = analysis_rows.shape[0]
+    if metadata_rows.shape[0] != n or mb_rows.shape[0] != n:
+        msg: str = (
+            f"Row count mismatch: analysis={n}, "
+            f"metadata={metadata_rows.shape[0]}, "
+            f"musicbrainz={mb_rows.shape[0]}"
+        )
+        raise RuntimeError(msg)
+
     rows: list[dict[str, object]] = []
     for i in range(analysis_rows.shape[0]):
         d: dict[str, object] = _row_to_dict(analysis_rows[i], ANALYSIS_FIELDS)
