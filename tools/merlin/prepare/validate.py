@@ -175,3 +175,51 @@ def require_type(
 
 def count_distinct(df: DataFrame, col: str) -> int:
     return df.select(col).distinct().count()
+
+
+def validate_schema_contract(tables: dict[str, DataFrame]) -> None:
+    metadata: DataFrame = tables["songs_metadata"]
+    audio: DataFrame = tables["song_audio_features"]
+    song_terms: DataFrame = tables["song_terms"]
+    graph_edges: DataFrame = tables["graph_edges"]
+
+    require_columns(metadata, EXPECTED_METADATA_COLUMNS, "songs_metadata")
+    require_columns(audio, EXPECTED_AUDIO_COLUMNS, "song_audio_features_raw")
+    require_columns(song_terms, EXPECTED_SONG_TERMS_COLUMNS, "song_terms")
+    require_columns(graph_edges, EXPECTED_GRAPH_EDGE_COLUMNS, "graph_edges")
+
+    for col in (
+        "track_id",
+        "song_id",
+        "title",
+        "artist_id",
+        "artist_name",
+        "artist_mbid",
+        "release",
+        "album_key",
+    ):
+        require_type(metadata, "songs_metadata", col, (T.StringType,))
+    for col in ("duration", "song_hotttnesss", "artist_hotttnesss", "artist_familiarity"):
+        require_type(metadata, "songs_metadata", col, (T.NumericType,))
+    for col in ("year", "has_year"):
+        require_type(metadata, "songs_metadata", col, (T.NumericType,))
+
+    require_type(audio, "song_audio_features_raw", "track_id", (T.StringType,))
+    for col in EXPECTED_AUDIO_COLUMNS:
+        if col != "track_id":
+            require_type(audio, "song_audio_features_raw", col, (T.NumericType,))
+
+    for col in EXPECTED_SONG_TERMS_COLUMNS:
+        require_type(song_terms, "song_terms", col, (T.StringType,))
+
+    for col in ("src_type", "src_id", "dst_type", "dst_id", "edge_type"):
+        require_type(graph_edges, "graph_edges", col, (T.StringType,))
+    require_type(graph_edges, "graph_edges", "weight", (T.NumericType,))
+    require_type(graph_edges, "graph_edges", "directed", (T.BooleanType,))
+
+    print(
+        "schema_contract "
+        f"metadata_cols={len(metadata.columns)}, audio_cols={len(audio.columns)}, "
+        f"segment_cols={len(SEGMENT_FEATURE_COLUMNS)}, graph_cols={len(graph_edges.columns)}",
+    )
+
