@@ -265,3 +265,25 @@ def validate_song_tables(tables: dict[str, DataFrame]) -> None:
         "song_audio_features has_segments contains values outside {0,1}",
     )
 
+
+def validate_terms(tables: dict[str, DataFrame]) -> None:
+    song_terms: DataFrame = tables["song_terms"]
+    rows: int = song_terms.count()
+    distinct_tracks: int = count_distinct(song_terms, "track_id")
+    distinct_terms: int = count_distinct(song_terms, "term")
+    null_rows: int = song_terms.where(
+        F.col("track_id").isNull()
+        | F.col("artist_id").isNull()
+        | F.col("term").isNull(),
+    ).count()
+
+    print(
+        "song_terms "
+        f"rows={rows}, distinct_track_id={distinct_tracks}, "
+        f"distinct_terms={distinct_terms}, null_rows={null_rows}",
+    )
+    require(rows > 0, "song_terms is empty")
+    require(distinct_tracks > 0, "song_terms has no tracks")
+    require(distinct_terms > 0, "song_terms has no terms")
+    require(null_rows == 0, "song_terms contains null key fields")
+
