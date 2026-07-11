@@ -12,6 +12,7 @@ EXPECTED_SONGS: int = 1_000_000
 EXPECTED_ARTIST_SIMILARITY_EDGES: int = 2_201_916
 EXPECTED_ARTIST_TAG_EDGES: int = 1_109_381
 EXPECTED_KNOWN_YEAR_SONGS: int = 515_576
+EXPECTED_SONG_SIMILAR_ARTIST_EDGES: int = 99_879_745
 EXPECTED_OUTPUT_DIRS: frozenset[str] = frozenset(
     {
         "songs_metadata.parquet",
@@ -28,6 +29,7 @@ REQUIRED_EDGE_TYPES: frozenset[str] = frozenset(
         "artist_tag",
         "song_year",
         "artist_similarity",
+        "song_similar_artist",
     },
 )
 SEGMENT_FEATURE_COLUMNS: tuple[str, ...] = tuple(
@@ -89,6 +91,7 @@ EXPECTED_EDGE_WEIGHTS: dict[str, float] = {
     "artist_tag": 0.3,
     "song_year": 0.4,
     "artist_similarity": 1.0,
+    "song_similar_artist": 0.5,
 }
 
 
@@ -322,6 +325,10 @@ def validate_graph_edges(tables: dict[str, DataFrame]) -> None:
         counts["artist_similarity"] == EXPECTED_ARTIST_SIMILARITY_EDGES,
         "artist_similarity graph edge count mismatch",
     )
+    require(
+        counts["song_similar_artist"] == EXPECTED_SONG_SIMILAR_ARTIST_EDGES,
+        "song_similar_artist graph edge count mismatch",
+    )
     artist_similarity: DataFrame = graph_edges.where(
         F.col("edge_type") == "artist_similarity",
     )
@@ -348,7 +355,11 @@ def validate_graph_edges(tables: dict[str, DataFrame]) -> None:
 
     bad_directed: int = graph_edges.where(
         ((F.col("edge_type") == "artist_similarity") & (F.col("directed") != F.lit(True)))
-        | ((F.col("edge_type") != "artist_similarity") & (F.col("directed") != F.lit(False))),
+        | ((F.col("edge_type") == "song_similar_artist") & (F.col("directed") != F.lit(True)))
+        | (
+            ~F.col("edge_type").isin("artist_similarity", "song_similar_artist")
+            & (F.col("directed") != F.lit(False))
+        ),
     ).count()
     require(bad_directed == 0, "graph_edges directed flags do not match edge semantics")
 
