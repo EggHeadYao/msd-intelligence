@@ -287,3 +287,83 @@ def validate_terms(tables: dict[str, DataFrame]) -> None:
     require(distinct_terms > 0, "song_terms has no terms")
     require(null_rows == 0, "song_terms contains null key fields")
 
+
+def validate_graph_edges(tables: dict[str, DataFrame]) -> None:
+    graph_edges: DataFrame = tables["graph_edges"]
+    counts: dict[str, int] = {
+        row["edge_type"]: row["count"]
+        for row in graph_edges.groupBy("edge_type").count().collect()
+    }
+    print(f"graph_edges rows={sum(counts.values())}, edge_type_counts={counts}")
+
+    missing: set[str] = set(REQUIRED_EDGE_TYPES) - set(counts)
+    extra: set[str] = set(counts) - set(REQUIRED_EDGE_TYPES)
+    require(not missing, f"graph_edges missing edge types: {sorted(missing)}")
+    require(not extra, f"graph_edges has unexpected edge types: {sorted(extra)}")
+    for edge_type in REQUIRED_EDGE_TYPES:
+        require(counts[edge_type] > 0, f"graph_edges {edge_type} is empty")
+
+    require(counts["song_album"] == EXPECTED_SONGS, "song_album edge count mismatch")
+    require(
+        counts["song_artist"] == EXPECTED_SONGS,
+        "song_artist edge count mismatch",
+    )
+    require(
+        counts["artist_tag"] == EXPECTED_ARTIST_TAG_EDGES,
+        "artist_tag edge count mismatch",
+    )
+    require(
+        counts["song_year"] == EXPECTED_KNOWN_YEAR_SONGS,
+        "song_year edge count mismatch",
+    )
+    require(
+        counts["artist_similarity"] == EXPECTED_ARTIST_SIMILARITY_EDGES,
+        "artist_similarity graph edge count mismatch",
+    )
+    artist_similarity: DataFrame = graph_edges.where(
+        F.col("edge_type") == "artist_similarity",
+    )
+    distinct_artist_similarity_pairs: int = artist_similarity.select(
+        "src_id",
+        "dst_id",
+    ).distinct().count()
+    require(
+        distinct_artist_similarity_pairs == EXPECTED_ARTIST_SIMILARITY_EDGES,
+        "artist_similarity graph edges contain duplicates",
+    )
+
+    bad_node_types: int = graph_edges.where(
+        ~F.col("src_type").isin(*EXPECTED_NODE_TYPES)
+        | ~F.col("dst_type").isin(*EXPECTED_NODE_TYPES),
+    ).count()
+    require(bad_node_types == 0, "graph_edges contains unexpected node types")
+
+    for edge_type, weight in EXPECTED_EDGE_WEIGHTS.items():
+        bad_weight: int = graph_edges.where(
+            (F.col("edge_type") == edge_type) & (F.col("weight") != weight),
+        ).count()
+        require(bad_weight == 0, f"graph_edges {edge_type} has unexpected weights")
+
+    bad_directed: int = graph_edges.where(
+        ((F.col("edge_type") == "artist_similarity") & (F.col("directed") != F.lit(True)))
+        | ((F.col("edge_type") != "artist_similarity") & (F.col("directed") != F.lit(False))),
+    ).count()
+    require(bad_directed == 0, "graph_edges directed flags do not match edge semantics")
+
+    bad_year_edges: int = graph_edges.where(
+        (F.col("edge_type") == "song_year") & (F.col("dst_id") == "0"),
+    ).count()
+    require(bad_year_edges == 0, "song_year contains year=0 edges")
+
+    null_rows: int = graph_edges.where(
+        F.col("src_type").isNull()
+        | F.col("src_id").isNull()
+        | F.col("dst_type").isNull()
+        | F.col("dst_id").isNull()
+        | F.col("edge_type").isNull()
+        | F.col("weight").isNull()
+        | F.col("directed").isNull(),
+    ).count()
+    print(f"graph_edges null_rows={null_rows}")
+    require(null_rows == 0, "graph_edges contains null fields")
+
