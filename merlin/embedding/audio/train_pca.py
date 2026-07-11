@@ -21,3 +21,15 @@ SCALED_FEATURES_COLUMN = "scaled_features"
 PCA_FEATURES_COLUMN = "pca_features"
 EMBEDDING_COLUMN = "embedding"
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the MERLIN C1 PCA audio encoder.")
+    parser.add_argument("--input", type=Path, default=Path("parquets/prepared/song_audio_features_raw.parquet"))
+    parser.add_argument("--output", type=Path, default=Path("parquets/merlin/audio"))
+    parser.add_argument("--target-variance", type=float, default=0.95)
+    parser.add_argument("--fixed-k", type=int, default=0)
+    parser.add_argument("--max-components", type=int, default=0)
+    parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--shuffle-partitions", type=int, default=64)
+    return parser.parse_args()
+
