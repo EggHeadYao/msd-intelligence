@@ -60,3 +60,15 @@ SEGMENT_FEATURE_COLUMNS = (
 )  # All 100 segment aggregate columns used by the audio encoder.
 RAW_AUDIO_COLUMNS = (*RAW_SCALAR_COLUMNS, *SEGMENT_FEATURE_COLUMNS, HAS_SEGMENTS_COLUMN)  # Full raw input schema.
 SEGMENT_FEATURE_COLUMN_SET = frozenset(SEGMENT_FEATURE_COLUMNS)  # Fast segment lookup set.
+
+
+def build_feature_columns(time_signature_columns: tuple[str, ...]) -> tuple[str, ...]:
+    return (
+        *KEY_CIRCULAR_COLUMNS,
+        *LOG_CONTINUOUS_COLUMNS,
+        *CLIPPED_CONTINUOUS_COLUMNS,
+        *PASSTHROUGH_CONTINUOUS_COLUMNS,
+        *PASSTHROUGH_BINARY_COLUMNS,
+        *time_signature_columns,
+        *SEGMENT_FEATURE_COLUMNS,
+    )
