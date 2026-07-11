@@ -129,6 +129,37 @@ def main() -> None:
         projected = pca_model.transform(scaled).select(TRACK_ID_COLUMN, PCA_FEATURES_COLUMN)
         embeddings = add_normalized_embedding(projected, selected_k).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
 
+        args.output.mkdir(parents=True, exist_ok=True)
+        embeddings.write.mode("overwrite").parquet(spark_path(args.output / "song_embeddings_audio.parquet"))
+        scaler_model.write().overwrite().save(spark_path(args.output / "scaler_model"))
+        pca_model.write().overwrite().save(spark_path(args.output / "pca_model"))
+
+        metadata = {
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "input_path": str(args.input),
+            "row_count": row_count,
+            "feature_columns": list(feature_columns),
+            "feature_count": len(feature_columns),
+            "embedding_column": EMBEDDING_COLUMN,
+            "embedding_format": "array<double>",
+            "target_variance": args.target_variance,
+            "fixed_k": args.fixed_k,
+            "limit": args.limit,
+            "max_components": max_components,
+            "selected_k": selected_k,
+            "explained_variance": explained,
+            "cumulative_explained_variance": cumulative(explained),
+            "preprocess": preprocess_metadata,
+            "scaler_mean": vector_to_list(scaler_model.mean),
+            "scaler_std": vector_to_list(scaler_model.std),
+        }
+        write_json(metadata, args.output / "audio_encoder_metadata.json")
+        print(
+            "audio_pca_training_done "
+            f"rows={row_count}, features={len(feature_columns)}, "
+            f"max_components={max_components}, selected_k={selected_k}, "
+            f"explained={metadata['cumulative_explained_variance'][selected_k - 1]:.6f}",
+        )
     finally:
         spark.stop()
 
