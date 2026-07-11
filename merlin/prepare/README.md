@@ -86,11 +86,11 @@ The output directory is recreated on each run; do not point `--output` at the ra
 Run preparation:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/tools/merlin/prepare/prepare.py --input parquets --output parquets/prepared
+spark-submit --driver-memory 4g p1team02/merlin/prepare/prepare.py --input parquets --output parquets/prepared
 ```
 
 Validate outputs:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/tools/merlin/prepare/validate.py --prepared parquets/prepared
+spark-submit --driver-memory 4g p1team02/merlin/prepare/validate.py --prepared parquets/prepared
 ```
