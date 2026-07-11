@@ -151,3 +151,34 @@ def build_song_terms(
         .select("track_id", "artist_id", "term")
     )
 
+
+def build_artist_similarity_edges(inputs: dict[str, DataFrame]) -> DataFrame:
+    return (
+        inputs["artist_similarity_edges"]
+        .select(
+            F.col("src").alias("src_artist_id"),
+            F.col("dst").alias("dst_artist_id"),
+        )
+    )
+
+
+def edge_frame(
+    df: DataFrame,
+    src_type: str,
+    src_col: str,
+    dst_type: str,
+    dst_col: str,
+    edge_type: str,
+    weight: float,
+    directed: bool,
+) -> DataFrame:
+    return df.select(
+        F.lit(src_type).alias("src_type"),
+        F.col(src_col).cast("string").alias("src_id"),
+        F.lit(dst_type).alias("dst_type"),
+        F.col(dst_col).cast("string").alias("dst_id"),
+        F.lit(edge_type).alias("edge_type"),
+        F.lit(weight).cast("double").alias("weight"),
+        F.lit(directed).cast("boolean").alias("directed"),
+    ).where(F.col("src_id").isNotNull() & F.col("dst_id").isNotNull())
+
