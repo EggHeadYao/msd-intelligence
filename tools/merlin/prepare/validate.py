@@ -255,9 +255,11 @@ def validate_song_tables(tables: dict[str, DataFrame]) -> None:
     require(missing_audio == 0, "metadata contains track_id missing from audio")
     require(missing_metadata == 0, "audio contains track_id missing from metadata")
 
-    bad_has_year: int = metadata.where(~F.col("has_year").isin(0, 1)).count()
+    bad_has_year: int = metadata.where(
+        F.col("has_year").isNull() | ~F.col("has_year").isin(0, 1),
+    ).count()
     bad_has_segments: int = tables["song_audio_features"].where(
-        ~F.col("has_segments").isin(0, 1),
+        F.col("has_segments").isNull() | ~F.col("has_segments").isin(0, 1),
     ).count()
     require(bad_has_year == 0, "songs_metadata has_year contains values outside {0,1}")
     require(
