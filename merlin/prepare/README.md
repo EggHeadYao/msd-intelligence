@@ -12,6 +12,7 @@ Prepare raw MSD Parquet files for the MERLIN C1/C2/ranker pipeline.
 - `artist_similarity_edges.parquet`
 - `musics/features_*.parquet` or `_extracted/parquets/musics/features_*.parquet`
 - `musics/terms_*.parquet` or `_extracted/parquets/musics/terms_*.parquet`
+- `musics/similar_*.parquet` or `_extracted/parquets/musics/similar_*.parquet`
 
 ## Outputs
 
@@ -53,7 +54,7 @@ The script writes these prepared tables under the output directory:
   - `track_id`: MSD track id.
   - `artist_id`: MSD artist id attached from metadata.
   - `term`: song-level tag or term.
-- `graph_edges.parquet`: typed graph edges for song-artist, song-album, song-tag, artist-tag, song-year, and directed artist-similarity relations.
+- `graph_edges.parquet`: typed graph edges for song-artist, song-album, song-tag, artist-tag, song-year, directed artist-similarity, and directed song-similar-artist relations.
   **Fields**:
   - `src_type`: source node type, one of `song`, `artist`, `album`, `tag`, or `year`.
   - `src_id`: source node id.
@@ -61,7 +62,16 @@ The script writes these prepared tables under the output directory:
   - `dst_id`: destination node id.
   - `weight`: fixed edge weight used by graph-based features.
   - `directed`: whether the edge keeps directed semantics.
-  - `edge_type`: edge relation type, one of `song_artist`, `song_album`, `song_tag`, `artist_tag`, `song_year`, or `artist_similarity`.
+  - `edge_type`: edge relation type, one of `song_artist`, `song_album`, `song_tag`, `artist_tag`, `song_year`, `artist_similarity`, or `song_similar_artist`.
+
+  **Edge types**:
+  - `song_artist`: undirected song-to-artist edge with weight `1.0`.
+  - `song_album`: undirected song-to-album edge with weight `0.8`.
+  - `song_tag`: undirected song-to-song-level-tag edge with weight `0.6`.
+  - `artist_tag`: undirected artist-to-artist-level-tag edge with weight `0.3`.
+  - `song_year`: undirected song-to-known-year edge with weight `0.4`.
+  - `artist_similarity`: directed artist-to-similar-artist edge with weight `1.0`.
+  - `song_similar_artist`: directed song-to-HDF5-similar-artist edge with weight `0.5`.
 
 Spark writes each `.parquet` output as a dataset directory containing `part-*.parquet` files.
 The output directory is recreated on each run; do not point `--output` at the raw input directory.
@@ -86,11 +96,11 @@ The output directory is recreated on each run; do not point `--output` at the ra
 Run preparation:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/prepare/prepare.py --input parquets --output parquets/prepared
+spark-submit --driver-memory 4g p1team02/merlin/prepare/prepare.py --input parquets --output parquets/prepared --shuffle-partitions 64
 ```
 
 Validate outputs:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/prepare/validate.py --prepared parquets/prepared
+spark-submit --driver-memory 4g p1team02/merlin/prepare/validate.py --prepared parquets/prepared --shuffle-partitions 64
 ```
