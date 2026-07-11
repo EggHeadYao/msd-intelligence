@@ -223,3 +223,45 @@ def validate_schema_contract(tables: dict[str, DataFrame]) -> None:
         f"segment_cols={len(SEGMENT_FEATURE_COLUMNS)}, graph_cols={len(graph_edges.columns)}",
     )
 
+
+def validate_song_tables(tables: dict[str, DataFrame]) -> None:
+    metadata: DataFrame = tables["songs_metadata"]
+    audio: DataFrame = tables["song_audio_features"]
+
+    metadata_count: int = metadata.count()
+    metadata_distinct: int = count_distinct(metadata, "track_id")
+    audio_count: int = audio.count()
+    audio_distinct: int = count_distinct(audio, "track_id")
+
+    print(f"songs_metadata rows={metadata_count}, distinct_track_id={metadata_distinct}")
+    print(f"song_audio_features rows={audio_count}, distinct_track_id={audio_distinct}")
+
+    require(metadata_count == EXPECTED_SONGS, "songs_metadata row count mismatch")
+    require(metadata_distinct == EXPECTED_SONGS, "songs_metadata track_id mismatch")
+    require(audio_count == EXPECTED_SONGS, "song_audio_features row count mismatch")
+    require(audio_distinct == EXPECTED_SONGS, "song_audio_features track_id mismatch")
+
+    missing_audio: int = metadata.select("track_id").join(
+        audio.select("track_id"),
+        "track_id",
+        "left_anti",
+    ).count()
+    missing_metadata: int = audio.select("track_id").join(
+        metadata.select("track_id"),
+        "track_id",
+        "left_anti",
+    ).count()
+    print(f"metadata_minus_audio={missing_audio}, audio_minus_metadata={missing_metadata}")
+    require(missing_audio == 0, "metadata contains track_id missing from audio")
+    require(missing_metadata == 0, "audio contains track_id missing from metadata")
+
+    bad_has_year: int = metadata.where(~F.col("has_year").isin(0, 1)).count()
+    bad_has_segments: int = tables["song_audio_features"].where(
+        ~F.col("has_segments").isin(0, 1),
+    ).count()
+    require(bad_has_year == 0, "songs_metadata has_year contains values outside {0,1}")
+    require(
+        bad_has_segments == 0,
+        "song_audio_features has_segments contains values outside {0,1}",
+    )
+
