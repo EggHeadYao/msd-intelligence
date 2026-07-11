@@ -70,3 +70,59 @@ def add_log_clipped_features(df: DataFrame) -> tuple[DataFrame, dict[str, tuple[
     return df.withColumn(CLIPPED_CONTINUOUS_COLUMNS[0], _clip("loudness", low, high)), thresholds
 
 
+def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
+    means_row = df.where(F.col(HAS_SEGMENTS_COLUMN) == 1).agg(
+        *(F.avg(F.col(column).cast("double")).alias(column) for column in SEGMENT_FEATURE_COLUMNS)
+    ).first()
+    means = {}
+    for column in SEGMENT_FEATURE_COLUMNS:
+        value = means_row[column]
+        mean = float(value) if value is not None else 0.0
+        means[column] = mean if math.isfinite(mean) else 0.0
+    expressions = []
+    for column in df.columns:
+        if column in means:
+            valid = (F.col(HAS_SEGMENTS_COLUMN) == 1) & F.col(column).isNotNull()
+            filled = F.when(valid, F.col(column).cast("double")).otherwise(F.lit(means[column]))
+            expressions.append(filled.alias(column))
+        else:
+            expressions.append(F.col(column))
+    return df.select(*expressions), means
+
+
+def drop_zero_variance_features(
+    df: DataFrame,
+    columns: Sequence[str],
+    eps: float = 0.0,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    aggregates = [
+        item
+        for column in columns
+        for item in (F.min(column).alias(f"{column}__min"), F.max(column).alias(f"{column}__max"))
+    ]
+    stats = df.agg(*aggregates).first()
+    kept = []
+    for column in columns:
+        low, high = stats[f"{column}__min"], stats[f"{column}__max"]
+        if low is not None and high is not None and abs(float(high) - float(low)) > eps:
+            kept.append(column)
+    kept = tuple(kept)
+    dropped = tuple(column for column in columns if column not in kept)
+    return kept, dropped
+
+
+def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...], dict[str, Any]]:
+    df, segment_means = fill_segment_missing_values(df)
+    df = add_key_circular_features(df)
+    df, time_values, time_columns = add_time_signature_one_hot(df)
+    df, clip_bounds = add_log_clipped_features(df)
+    candidates = build_feature_columns(time_columns)
+    features, dropped = drop_zero_variance_features(df, candidates)
+    metadata = {
+        "clip_bounds": clip_bounds,
+        "dropped_features": dropped,
+        "segment_means": segment_means,
+        "time_signature_columns": time_columns,
+        "time_signature_values": time_values,
+    }
+    return df, features, metadata
