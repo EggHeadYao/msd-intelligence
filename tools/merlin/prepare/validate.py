@@ -135,3 +135,43 @@ def read_outputs(spark: SparkSession, prepared_dir: Path) -> dict[str, DataFrame
         "graph_edges": spark.read.parquet(spark_path(prepared_dir / "graph_edges.parquet")),
     }
 
+
+def validate_output_layout(prepared_dir: Path) -> None:
+    actual: set[str] = {
+        path.name for path in prepared_dir.iterdir() if path.is_dir()
+    }
+    missing: set[str] = set(EXPECTED_OUTPUT_DIRS) - actual
+    extra: set[str] = actual - set(EXPECTED_OUTPUT_DIRS)
+    require(not missing, f"prepared directory missing outputs: {sorted(missing)}")
+    require(not extra, f"prepared directory has unexpected outputs: {sorted(extra)}")
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def require_columns(df: DataFrame, expected: tuple[str, ...], table_name: str) -> None:
+    actual: set[str] = set(df.columns)
+    expected_set: set[str] = set(expected)
+    missing: set[str] = expected_set - actual
+    extra: set[str] = actual - expected_set
+    require(not missing, f"{table_name} missing columns: {sorted(missing)}")
+    require(not extra, f"{table_name} has unexpected columns: {sorted(extra)}")
+
+
+def require_type(
+    df: DataFrame,
+    table_name: str,
+    column: str,
+    allowed: tuple[type[T.DataType], ...],
+) -> None:
+    data_type: T.DataType = df.schema[column].dataType
+    require(
+        isinstance(data_type, allowed),
+        f"{table_name}.{column} has type {data_type}, expected {allowed}",
+    )
+
+
+def count_distinct(df: DataFrame, col: str) -> int:
+    return df.select(col).distinct().count()
