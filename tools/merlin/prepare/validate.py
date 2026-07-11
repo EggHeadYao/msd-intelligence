@@ -367,3 +367,22 @@ def validate_graph_edges(tables: dict[str, DataFrame]) -> None:
     print(f"graph_edges null_rows={null_rows}")
     require(null_rows == 0, "graph_edges contains null fields")
 
+
+def main() -> None:
+    args: argparse.Namespace = parse_args()
+    spark: SparkSession = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        validate_output_layout(args.prepared)
+        tables: dict[str, DataFrame] = read_outputs(spark, args.prepared)
+        validate_schema_contract(tables)
+        validate_song_tables(tables)
+        validate_terms(tables)
+        validate_graph_edges(tables)
+        print("MERLIN prepared data validation passed.")
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
