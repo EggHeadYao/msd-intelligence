@@ -85,3 +85,69 @@ def read_inputs(spark: SparkSession, input_dir: Path) -> dict[str, DataFrame]:
         ),
     }
 
+
+def build_songs_metadata(inputs: dict[str, DataFrame]) -> DataFrame:
+    metadata: DataFrame = inputs["track_metadata"].alias("m")
+    scalar: DataFrame = inputs["songs_scalar"].select(
+        "track_id",
+        "song_hotttnesss",
+    ).alias("s")
+
+    return (
+        metadata.join(scalar, "track_id", "inner")
+        .select(
+            F.col("track_id"),
+            F.col("m.song_id"),
+            F.col("m.title"),
+            F.col("m.artist_id"),
+            F.col("m.artist_name"),
+            F.col("m.artist_mbid"),
+            F.col("m.release"),
+            F.concat(
+                F.col("m.artist_id"),
+                F.lit("::"),
+                F.coalesce(F.col("m.release"), F.lit("")),
+            ).alias("album_key"),
+            F.col("m.duration"),
+            F.col("m.year").cast("int").alias("year"),
+            (F.col("m.year") > 0).cast("int").alias("has_year"),
+            F.col("s.song_hotttnesss"),
+            F.col("m.artist_hotttnesss"),
+            F.col("m.artist_familiarity"),
+        )
+    )
+
+
+def build_song_audio_features(inputs: dict[str, DataFrame]) -> DataFrame:
+    scalar_cols: list[str] = [
+        "track_id",
+        "danceability",
+        "energy",
+        "loudness",
+        "tempo",
+        "duration",
+        "key",
+        "mode",
+        "time_signature",
+    ]
+    scalar: DataFrame = inputs["songs_scalar"].select(*scalar_cols)
+    features: DataFrame = inputs["features"]
+
+    feature_cols: list[str] = [c for c in features.columns if c != "track_id"]
+    return (
+        scalar.join(features, "track_id", "inner")
+        .select(*scalar_cols, *[F.col(c) for c in feature_cols])
+    )
+
+
+def build_song_terms(
+    songs_metadata: DataFrame,
+    inputs: dict[str, DataFrame],
+) -> DataFrame:
+    terms: DataFrame = inputs["terms"].select("track_id", "term")
+    songs: DataFrame = songs_metadata.select("track_id", "artist_id")
+    return (
+        terms.join(songs, "track_id", "inner")
+        .select("track_id", "artist_id", "term")
+    )
+
