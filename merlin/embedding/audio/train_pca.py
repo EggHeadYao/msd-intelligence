@@ -88,3 +88,10 @@ def add_normalized_embedding(df: DataFrame, k: int) -> DataFrame:
 def vector_to_list(vector: Vector) -> list[float]:
     return [float(value) for value in vector.toArray()]
 
+
+def write_json(data: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
