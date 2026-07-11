@@ -63,3 +63,25 @@ def parquet_batch_paths(directory: Path, pattern: str) -> list[str]:
         raise FileNotFoundError(f"No files matched {directory / pattern}")
     return [spark_path(path) for path in matches]
 
+
+def read_inputs(spark: SparkSession, input_dir: Path) -> dict[str, DataFrame]:
+    music_dir: Path = resolve_music_dir(input_dir)
+    return {
+        "songs_scalar": spark.read.parquet(
+            spark_path(input_dir / "songs_scalar.parquet"),
+        ),
+        "track_metadata": spark.read.parquet(
+            spark_path(input_dir / "track_metadata.parquet"),
+        ),
+        "artist_term": spark.read.parquet(spark_path(input_dir / "artist_term.parquet")),
+        "artist_similarity_edges": spark.read.parquet(
+            spark_path(input_dir / "artist_similarity_edges.parquet"),
+        ),
+        "features": spark.read.parquet(
+            *parquet_batch_paths(music_dir, "features_*.parquet"),
+        ),
+        "terms": spark.read.parquet(
+            *parquet_batch_paths(music_dir, "terms_*.parquet"),
+        ),
+    }
+
