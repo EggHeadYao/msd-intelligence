@@ -237,6 +237,28 @@ def build_graph_edges(
         False,
     )
 
+    known_years: DataFrame = songs_metadata.where(F.col("year") > 0)
+    song_year: DataFrame = edge_frame(
+        known_years,
+        "song",
+        "track_id",
+        "year",
+        "year",
+        "song_year",
+        0.4,
+        False,
+    )
+
+    artist_similarity: DataFrame = edge_frame(
+        artist_similarity_edges,
+        "artist",
+        "src_artist_id",
+        "artist",
+        "dst_artist_id",
+        "artist_similarity",
+        1.0,
+        True,
+    )
 
     return (
         song_artist.unionByName(song_album)
