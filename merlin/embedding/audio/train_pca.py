@@ -45,3 +45,12 @@ def create_spark(shuffle_partitions: int) -> SparkSession:
 def spark_path(path: Path) -> str:
     return path.resolve().as_uri()
 
+
+def cumulative(values: list[float]) -> list[float]:
+    total = 0.0
+    result = []
+    for value in values:
+        total += float(value)
+        result.append(total)
+    return result
+
