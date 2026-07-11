@@ -119,6 +119,12 @@ def main() -> None:
         scaler_model = scaler.fit(assembled)
         scaled = scaler_model.transform(assembled).select(TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN)
 
+        max_components = args.max_components if args.max_components > 0 else len(feature_columns)
+        max_components = min(max_components, len(feature_columns))
+        pca = PCA(k=max_components, inputCol=SCALED_FEATURES_COLUMN, outputCol=PCA_FEATURES_COLUMN)
+        pca_model = pca.fit(scaled)
+        explained = vector_to_list(pca_model.explainedVariance)
+        selected_k = choose_k(explained, args.target_variance, args.fixed_k)
     finally:
         spark.stop()
 
