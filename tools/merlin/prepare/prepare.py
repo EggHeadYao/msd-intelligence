@@ -32,3 +32,34 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
+def create_spark(shuffle_partitions: int) -> SparkSession:
+    return (
+        SparkSession.builder.appName("MerlinPrepare")
+        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+        .getOrCreate()
+    )
+
+
+def resolve_music_dir(input_dir: Path) -> Path:
+    candidates: tuple[Path, ...] = (
+        input_dir / "musics",
+        input_dir / "_extracted" / "parquets" / "musics",
+    )
+    for candidate in candidates:
+        if list(candidate.glob("features_*.parquet")):
+            return candidate
+    checked: str = ", ".join(str(c) for c in candidates)
+    raise FileNotFoundError(f"No musics/features_*.parquet found under: {checked}")
+
+
+def spark_path(path: Path) -> str:
+    return path.resolve().as_uri()
+
+
+def parquet_batch_paths(directory: Path, pattern: str) -> list[str]:
+    matches: list[Path] = sorted(directory.glob(pattern))
+    if not matches:
+        raise FileNotFoundError(f"No files matched {directory / pattern}")
+    return [spark_path(path) for path in matches]
+
