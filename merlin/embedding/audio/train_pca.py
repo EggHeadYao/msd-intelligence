@@ -125,6 +125,10 @@ def main() -> None:
         pca_model = pca.fit(scaled)
         explained = vector_to_list(pca_model.explainedVariance)
         selected_k = choose_k(explained, args.target_variance, args.fixed_k)
+
+        projected = pca_model.transform(scaled).select(TRACK_ID_COLUMN, PCA_FEATURES_COLUMN)
+        embeddings = add_normalized_embedding(projected, selected_k).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+
     finally:
         spark.stop()
 
