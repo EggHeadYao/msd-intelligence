@@ -83,3 +83,8 @@ def add_normalized_embedding(df: DataFrame, k: int) -> DataFrame:
         )
         .drop(values_col, norm_col)
     )
+
+
+def vector_to_list(vector: Vector) -> list[float]:
+    return [float(value) for value in vector.toArray()]
+
