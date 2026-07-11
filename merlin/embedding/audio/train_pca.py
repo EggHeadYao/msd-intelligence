@@ -63,3 +63,23 @@ def choose_k(explained: list[float], target_variance: float, fixed_k: int) -> in
             return index
     return len(explained)
 
+
+def add_normalized_embedding(df: DataFrame, k: int) -> DataFrame:
+    values_col = "_embedding_values"
+    norm_col = "_embedding_norm"
+    values = F.slice(vector_to_array(F.col(PCA_FEATURES_COLUMN)), 1, k)
+    return (
+        df.withColumn(values_col, values)
+        .withColumn(
+            norm_col,
+            F.sqrt(F.aggregate(F.col(values_col), F.lit(0.0), lambda acc, x: acc + x * x)),
+        )
+        .withColumn(
+            EMBEDDING_COLUMN,
+            F.transform(
+                F.col(values_col),
+                lambda x: F.when(F.col(norm_col) > 0.0, x / F.col(norm_col)).otherwise(F.lit(0.0)),
+            ),
+        )
+        .drop(values_col, norm_col)
+    )
