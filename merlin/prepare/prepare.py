@@ -83,6 +83,9 @@ def read_inputs(spark: SparkSession, input_dir: Path) -> dict[str, DataFrame]:
         "terms": spark.read.parquet(
             *parquet_batch_paths(music_dir, "terms_*.parquet"),
         ),
+        "similar_artists": spark.read.parquet(
+            *parquet_batch_paths(music_dir, "similar_*.parquet"),
+        ),
     }
 
 
@@ -183,12 +186,12 @@ def edge_frame(
     ).where(F.col("src_id").isNotNull() & F.col("dst_id").isNotNull())
 
 
-def build_graph_edges(
+def build_graph_edge_frames(
     songs_metadata: DataFrame,
     song_terms: DataFrame,
     artist_similarity_edges: DataFrame,
     inputs: dict[str, DataFrame],
-) -> DataFrame:
+) -> dict[str, DataFrame]:
     song_artist: DataFrame = edge_frame(
         songs_metadata,
         "song",
@@ -259,18 +262,39 @@ def build_graph_edges(
         1.0,
         True,
     )
-
-    return (
-        song_artist.unionByName(song_album)
-        .unionByName(song_tag)
-        .unionByName(artist_tag)
-        .unionByName(song_year)
-        .unionByName(artist_similarity)
+    song_similar_artist: DataFrame = edge_frame(
+        inputs["similar_artists"],
+        "song",
+        "track_id",
+        "artist",
+        "similar_artist_id",
+        "song_similar_artist",
+        0.5,
+        True,
     )
+
+    return {
+        "song_artist": song_artist,
+        "song_album": song_album,
+        "song_tag": song_tag,
+        "artist_tag": artist_tag,
+        "song_year": song_year,
+        "artist_similarity": artist_similarity,
+        "song_similar_artist": song_similar_artist,
+    }
 
 
 def write_table(df: DataFrame, path: Path) -> None:
     df.write.mode("overwrite").parquet(spark_path(path))
+
+
+def write_graph_edges(edge_frames: dict[str, DataFrame], path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    root_uri: str = spark_path(path)
+    for edge_type, frame in edge_frames.items():
+        frame.drop("edge_type").write.mode("overwrite").parquet(
+            f"{root_uri}/edge_type={edge_type}",
+        )
 
 
 def reset_output_dir(input_dir: Path, output_dir: Path) -> None:
@@ -303,16 +327,14 @@ def write_outputs(
     songs_metadata: DataFrame,
     song_audio_features: DataFrame,
     song_terms: DataFrame,
-    graph_edges: DataFrame,
+    graph_edge_frames: dict[str, DataFrame],
 ) -> None:
     reset_output_dir(input_dir, output_dir)
 
     write_table(songs_metadata, output_dir / "songs_metadata.parquet")
     write_table(song_audio_features, output_dir / "song_audio_features_raw.parquet")
     write_table(song_terms, output_dir / "song_terms.parquet")
-    graph_edges.write.mode("overwrite").partitionBy("edge_type").parquet(
-        spark_path(output_dir / "graph_edges.parquet"),
-    )
+    write_graph_edges(graph_edge_frames, output_dir / "graph_edges.parquet")
 
 
 def main() -> None:
@@ -325,7 +347,7 @@ def main() -> None:
         song_audio_features: DataFrame = build_song_audio_features(inputs)
         song_terms: DataFrame = build_song_terms(songs_metadata, inputs)
         artist_similarity_edges: DataFrame = build_artist_similarity_edges(inputs)
-        graph_edges: DataFrame = build_graph_edges(
+        graph_edge_frames: dict[str, DataFrame] = build_graph_edge_frames(
             songs_metadata,
             song_terms,
             artist_similarity_edges,
@@ -337,7 +359,7 @@ def main() -> None:
             songs_metadata,
             song_audio_features,
             song_terms,
-            graph_edges,
+            graph_edge_frames,
         )
     finally:
         spark.stop()
