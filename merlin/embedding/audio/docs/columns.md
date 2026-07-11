@@ -1,0 +1,27 @@
+# Audio Column Constants
+
+- `TRACK_ID_COLUMN`: Name of the stable song identifier column used to join prepared MERLIN tables and downstream embedding outputs.
+- `KEY_COLUMN`: Name of the raw musical key column, stored as an integer category from 0 to 11 before circular encoding.
+- `MODE_COLUMN`: Name of the raw major/minor mode flag column.
+- `TIME_SIGNATURE_COLUMN`: Name of the raw meter category column before one-hot encoding.
+- `HAS_SEGMENTS_COLUMN`: Name of the binary flag indicating whether segment-level audio arrays were available for a song.
+- `PITCH_DIMS`: Number of pitch-class dimensions extracted from each Echo Nest segment.
+- `TIMBRE_DIMS`: Number of timbre coefficient dimensions extracted from each Echo Nest segment.
+- `SEGMENT_STATS`: Aggregate statistics used for pitch and timbre segment features.
+- `LOUDNESS_STATS`: Aggregate statistics used for segment loudness features.
+- `RAW_CONTINUOUS_COLUMNS`: Raw numeric scalar columns read from `song_audio_features_raw.parquet` before feature transforms.
+- `RAW_CATEGORICAL_COLUMNS`: Raw categorical scalar columns that require derived encodings.
+- `RAW_BINARY_COLUMNS`: Raw binary scalar columns that can be validated as flags.
+- `RAW_SCALAR_COLUMNS`: Non-segment raw columns expected in the audio feature input table.
+- `KEY_CIRCULAR_COLUMNS`: Derived sine and cosine columns used to encode musical key as a circular variable.
+- `LOG_CONTINUOUS_COLUMNS`: Derived continuous columns created with clipped log transforms.
+- `CLIPPED_CONTINUOUS_COLUMNS`: Derived continuous columns created with clipping before scaling.
+- `PASSTHROUGH_CONTINUOUS_COLUMNS`: Raw continuous columns kept as possible model inputs after validation and scaling.
+- `PASSTHROUGH_BINARY_COLUMNS`: Raw binary columns kept as possible model inputs after validation.
+- `TIME_SIGNATURE_ONE_HOT_PREFIX`: Prefix used to name one-hot encoded time signature columns.
+- `PITCH_FEATURE_COLUMNS`: Expanded pitch aggregate feature column names.
+- `TIMBRE_FEATURE_COLUMNS`: Expanded timbre aggregate feature column names.
+- `LOUDNESS_FEATURE_COLUMNS`: Expanded segment loudness aggregate feature column names.
+- `SEGMENT_FEATURE_COLUMNS`: Full ordered list of pitch, timbre, and loudness segment aggregate feature columns.
+- `RAW_AUDIO_COLUMNS`: Full raw audio input schema expected by the audio embedding pipeline.
+- `SEGMENT_FEATURE_COLUMN_SET`: Set version of segment feature names for fast membership checks.
