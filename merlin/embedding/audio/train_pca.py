@@ -95,3 +95,16 @@ def write_json(data: dict[str, Any], path: Path) -> None:
         json.dump(data, handle, indent=2, sort_keys=True)
         handle.write("\n")
 
+
+def main() -> None:
+    args = parse_args()
+    spark = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
