@@ -86,7 +86,7 @@ EXPECTED_EDGE_WEIGHTS: dict[str, float] = {
     "song_artist": 1.0,
     "song_album": 0.8,
     "song_tag": 0.6,
-    "artist_tag": 0.6,
+    "artist_tag": 0.3,
     "song_year": 0.4,
     "artist_similarity": 1.0,
 }

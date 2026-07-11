@@ -233,7 +233,7 @@ def build_graph_edges(
         "tag",
         "term",
         "artist_tag",
-        0.6,
+        0.3,
         False,
     )
 
