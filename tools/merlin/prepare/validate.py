@@ -91,3 +91,22 @@ EXPECTED_EDGE_WEIGHTS: dict[str, float] = {
     "artist_similarity": 1.0,
 }
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Validate prepared MERLIN Parquet tables.",
+    )
+    parser.add_argument(
+        "--prepared",
+        type=Path,
+        default=Path("parquets/prepared"),
+        help="Prepared MERLIN directory (default: parquets/prepared)",
+    )
+    parser.add_argument(
+        "--shuffle-partitions",
+        type=int,
+        default=32,
+        help="Spark SQL shuffle partitions (default: 32)",
+    )
+    return parser.parse_args()
+
