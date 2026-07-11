@@ -315,3 +315,33 @@ def write_outputs(
     )
 
 
+def main() -> None:
+    args: argparse.Namespace = parse_args()
+    spark: SparkSession = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        inputs: dict[str, DataFrame] = read_inputs(spark, args.input)
+        songs_metadata: DataFrame = build_songs_metadata(inputs)
+        song_audio_features: DataFrame = build_song_audio_features(inputs)
+        song_terms: DataFrame = build_song_terms(songs_metadata, inputs)
+        artist_similarity_edges: DataFrame = build_artist_similarity_edges(inputs)
+        graph_edges: DataFrame = build_graph_edges(
+            songs_metadata,
+            song_terms,
+            artist_similarity_edges,
+            inputs,
+        )
+        write_outputs(
+            args.input,
+            args.output,
+            songs_metadata,
+            song_audio_features,
+            song_terms,
+            graph_edges,
+        )
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
