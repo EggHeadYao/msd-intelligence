@@ -105,6 +105,10 @@ def main() -> None:
         if args.limit > 0:
             raw = raw.limit(args.limit)
         row_count = raw.count()
+        processed, feature_columns, preprocess_metadata = preprocess_audio_features(raw)
+
+        assembler = VectorAssembler(inputCols=list(feature_columns), outputCol=FEATURES_COLUMN)
+        assembled = assembler.transform(processed).select(TRACK_ID_COLUMN, FEATURES_COLUMN)
     finally:
         spark.stop()
 
