@@ -10,7 +10,7 @@ from pyspark.sql import functions as F
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Prepare MERLIN Phase 0 tables from raw Parquet files.",
+        description="Prepare MERLIN tables from raw MSD Parquet files.",
     )
     parser.add_argument(
         "--input",
