@@ -101,7 +101,10 @@ def main() -> None:
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     try:
-        
+        raw = spark.read.parquet(spark_path(args.input))
+        if args.limit > 0:
+            raw = raw.limit(args.limit)
+        row_count = raw.count()
     finally:
         spark.stop()
 
