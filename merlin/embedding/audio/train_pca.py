@@ -109,6 +109,16 @@ def main() -> None:
 
         assembler = VectorAssembler(inputCols=list(feature_columns), outputCol=FEATURES_COLUMN)
         assembled = assembler.transform(processed).select(TRACK_ID_COLUMN, FEATURES_COLUMN)
+
+        scaler = StandardScaler(
+            inputCol=FEATURES_COLUMN,
+            outputCol=SCALED_FEATURES_COLUMN,
+            withMean=True,
+            withStd=True,
+        )
+        scaler_model = scaler.fit(assembled)
+        scaled = scaler_model.transform(assembled).select(TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN)
+
     finally:
         spark.stop()
 
