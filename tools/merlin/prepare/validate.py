@@ -50,3 +50,44 @@ AUDIO_SCALAR_COLUMNS: tuple[str, ...] = (
     "mode",
     "time_signature",
 )
+EXPECTED_AUDIO_COLUMNS: tuple[str, ...] = (
+    *AUDIO_SCALAR_COLUMNS,
+    *SEGMENT_FEATURE_COLUMNS,
+    "has_segments",
+)
+EXPECTED_METADATA_COLUMNS: tuple[str, ...] = (
+    "track_id",
+    "song_id",
+    "title",
+    "artist_id",
+    "artist_name",
+    "artist_mbid",
+    "release",
+    "album_key",
+    "duration",
+    "year",
+    "has_year",
+    "song_hotttnesss",
+    "artist_hotttnesss",
+    "artist_familiarity",
+)
+EXPECTED_SONG_TERMS_COLUMNS: tuple[str, ...] = ("track_id", "artist_id", "term")
+EXPECTED_GRAPH_EDGE_COLUMNS: tuple[str, ...] = (
+    "src_type",
+    "src_id",
+    "dst_type",
+    "dst_id",
+    "weight",
+    "directed",
+    "edge_type",
+)
+EXPECTED_NODE_TYPES: frozenset[str] = frozenset({"song", "artist", "album", "tag", "year"})
+EXPECTED_EDGE_WEIGHTS: dict[str, float] = {
+    "song_artist": 1.0,
+    "song_album": 0.8,
+    "song_tag": 0.6,
+    "artist_tag": 0.6,
+    "song_year": 0.4,
+    "artist_similarity": 1.0,
+}
+
