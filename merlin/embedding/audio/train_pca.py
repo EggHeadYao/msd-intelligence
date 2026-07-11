@@ -54,3 +54,12 @@ def cumulative(values: list[float]) -> list[float]:
         result.append(total)
     return result
 
+
+def choose_k(explained: list[float], target_variance: float, fixed_k: int) -> int:
+    if fixed_k > 0:
+        return min(fixed_k, len(explained))
+    for index, value in enumerate(cumulative(explained), start=1):
+        if value >= target_variance:
+            return index
+    return len(explained)
+
