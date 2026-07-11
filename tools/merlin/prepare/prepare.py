@@ -182,3 +182,67 @@ def edge_frame(
         F.lit(directed).cast("boolean").alias("directed"),
     ).where(F.col("src_id").isNotNull() & F.col("dst_id").isNotNull())
 
+
+def build_graph_edges(
+    songs_metadata: DataFrame,
+    song_terms: DataFrame,
+    artist_similarity_edges: DataFrame,
+    inputs: dict[str, DataFrame],
+) -> DataFrame:
+    song_artist: DataFrame = edge_frame(
+        songs_metadata,
+        "song",
+        "track_id",
+        "artist",
+        "artist_id",
+        "song_artist",
+        1.0,
+        False,
+    )
+
+    albums: DataFrame = songs_metadata.where(
+        F.col("release").isNotNull() & (F.col("release") != ""),
+    )
+    song_album: DataFrame = edge_frame(
+        albums,
+        "song",
+        "track_id",
+        "album",
+        "album_key",
+        "song_album",
+        0.8,
+        False,
+    )
+
+    song_tag: DataFrame = edge_frame(
+        song_terms,
+        "song",
+        "track_id",
+        "tag",
+        "term",
+        "song_tag",
+        0.6,
+        False,
+    )
+
+    artist_terms: DataFrame = inputs["artist_term"].select("artist_id", "term")
+    artist_tag: DataFrame = edge_frame(
+        artist_terms,
+        "artist",
+        "artist_id",
+        "tag",
+        "term",
+        "artist_tag",
+        0.6,
+        False,
+    )
+
+
+    return (
+        song_artist.unionByName(song_album)
+        .unionByName(song_tag)
+        .unionByName(artist_tag)
+        .unionByName(song_year)
+        .unionByName(artist_similarity)
+    )
+
