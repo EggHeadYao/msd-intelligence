@@ -110,3 +110,28 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
+def create_spark(shuffle_partitions: int) -> SparkSession:
+    return (
+        SparkSession.builder.appName("MerlinValidate")
+        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+        .getOrCreate()
+    )
+
+
+def spark_path(path: Path) -> str:
+    return path.resolve().as_uri()
+
+
+def read_outputs(spark: SparkSession, prepared_dir: Path) -> dict[str, DataFrame]:
+    return {
+        "songs_metadata": spark.read.parquet(
+            spark_path(prepared_dir / "songs_metadata.parquet"),
+        ),
+        "song_audio_features": spark.read.parquet(
+            spark_path(prepared_dir / "song_audio_features_raw.parquet"),
+        ),
+        "song_terms": spark.read.parquet(spark_path(prepared_dir / "song_terms.parquet")),
+        "graph_edges": spark.read.parquet(spark_path(prepared_dir / "graph_edges.parquet")),
+    }
+
