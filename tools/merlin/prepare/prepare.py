@@ -268,3 +268,50 @@ def build_graph_edges(
         .unionByName(artist_similarity)
     )
 
+
+def write_table(df: DataFrame, path: Path) -> None:
+    df.write.mode("overwrite").parquet(spark_path(path))
+
+
+def reset_output_dir(input_dir: Path, output_dir: Path) -> None:
+    input_root: Path = input_dir.resolve()
+    output_root: Path = output_dir.resolve()
+
+    if output_root == input_root or output_root in input_root.parents:
+        raise ValueError(f"Refusing to overwrite input or parent directory: {output_root}")
+
+    protected_raw_paths: tuple[Path, ...] = (
+        input_root / "songs_scalar.parquet",
+        input_root / "track_metadata.parquet",
+        input_root / "artist_term.parquet",
+        input_root / "artist_similarity_edges.parquet",
+        input_root / "musics",
+        input_root / "_extracted",
+    )
+    for protected in protected_raw_paths:
+        if output_root == protected or protected in output_root.parents:
+            raise ValueError(f"Refusing to overwrite raw input path: {output_root}")
+
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+
+def write_outputs(
+    input_dir: Path,
+    output_dir: Path,
+    songs_metadata: DataFrame,
+    song_audio_features: DataFrame,
+    song_terms: DataFrame,
+    graph_edges: DataFrame,
+) -> None:
+    reset_output_dir(input_dir, output_dir)
+
+    write_table(songs_metadata, output_dir / "songs_metadata.parquet")
+    write_table(song_audio_features, output_dir / "song_audio_features_raw.parquet")
+    write_table(song_terms, output_dir / "song_terms.parquet")
+    graph_edges.write.mode("overwrite").partitionBy("edge_type").parquet(
+        spark_path(output_dir / "graph_edges.parquet"),
+    )
+
+
