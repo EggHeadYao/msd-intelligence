@@ -55,3 +55,26 @@ def validate_layout(output_dir: Path) -> None:
     require(not missing, f"audio output missing files: {missing}")
 
 
+def validate_metadata(metadata: dict[str, Any]) -> int:
+    required = (
+        "row_count",
+        "feature_columns",
+        "feature_count",
+        "selected_k",
+        "explained_variance",
+        "cumulative_explained_variance",
+        "preprocess",
+        "scaler_mean",
+        "scaler_std",
+    )
+    missing = [key for key in required if key not in metadata]
+    require(not missing, f"metadata missing keys: {missing}")
+    selected_k = int(metadata["selected_k"])
+    require(selected_k > 0, "metadata selected_k must be positive")
+    require(len(metadata["feature_columns"]) == int(metadata["feature_count"]), "feature_count mismatch")
+    require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
+    require(len(metadata["scaler_mean"]) == int(metadata["feature_count"]), "scaler_mean length mismatch")
+    require(len(metadata["scaler_std"]) == int(metadata["feature_count"]), "scaler_std length mismatch")
+    return selected_k
+
+
