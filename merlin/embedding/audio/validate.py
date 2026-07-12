@@ -117,3 +117,22 @@ def validate_embeddings(
     require(bad_values == 0, "audio embeddings contain NaN/Inf or non-normalized rows")
 
 
+def main() -> None:
+    args = parse_args()
+    validate_layout(args.output)
+    metadata = read_metadata(args.output / "audio_encoder_metadata.json")
+    selected_k = validate_metadata(metadata)
+    require(int(metadata["row_count"]) == args.expected_rows, "metadata row_count mismatch")
+
+    spark = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        embeddings = spark.read.parquet(spark_path(args.output / "song_embeddings_audio.parquet"))
+        validate_embeddings(embeddings, args.expected_rows, selected_k, args.norm_tolerance)
+        print("MERLIN audio PCA validation passed.")
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
