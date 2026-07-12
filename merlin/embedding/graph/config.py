@@ -9,12 +9,12 @@ SEED: int = 42
 
 # -- Meta-path selection weights (proportional to signal quality) -
 META_PATH_WEIGHTS: dict[str, float] = {
-    "P1": 1.0,  # artist_similarity (strongest signal)
-    "P2": 0.8,  # per-song similar_artist
-    "P3": 0.6,  # per-song tag
-    "P4": 0.4,  # artist-level tag (coarse)
-    "P5": 0.8,  # same album
-    "P6": 0.4,  # same year
+    "P1": 1.2,  # artist_similarity (3-hop, avg_len=39.5, strongest Echo Nest signal)
+    "P2": 0.2,  # per-song similar_artist (most refs are non-MSD artists, avg_len=2.6)
+    "P3": 0.7,  # per-song tag (2-hop, avg_len=39.6)
+    "P4": 0.5,  # artist-level tag (4-hop, coarse but functional)
+    "P5": 1.0,  # same album (2-hop, avg_len=40.0, strongest structural signal)
+    "P6": 0.4,  # same year (partial coverage, year=0 excluded)
 }
 
 # -- Meta-path definitions: ordered edge-type sequences -----------
