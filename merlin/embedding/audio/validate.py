@@ -44,3 +44,14 @@ def read_metadata(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
+def validate_layout(output_dir: Path) -> None:
+    required = (
+        "song_embeddings_audio.parquet",
+        "audio_encoder_metadata.json",
+        "pca_model",
+        "scaler_model",
+    )
+    missing = [name for name in required if not (output_dir / name).exists()]
+    require(not missing, f"audio output missing files: {missing}")
+
+
