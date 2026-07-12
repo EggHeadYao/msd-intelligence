@@ -82,3 +82,38 @@ def write_track_id_mapping(embeddings: DataFrame, output_path: Path) -> None:
     )
 
 
+def flush_batch(index: faiss.IndexFlatIP, batch: list[np.ndarray]) -> None:
+    if batch:
+        index.add(np.vstack(batch))
+
+
+def build_index(
+    embeddings: DataFrame,
+    batch_size: int,
+    expected_dim: int | None,
+) -> faiss.IndexFlatIP:
+    require(batch_size > 0, "batch size must be positive")
+    index: faiss.IndexFlatIP | None = None
+    batch: list[np.ndarray] = []
+    rows = 0
+
+    for row in embeddings.toLocalIterator():
+        vector = np.asarray(row[EMBEDDING_COLUMN], dtype=np.float32)
+        require(vector.ndim == 1, "embedding must be a one-dimensional array")
+        require(np.all(np.isfinite(vector)), "embedding contains NaN or infinite values")
+        if expected_dim is not None:
+            require(vector.shape[0] == expected_dim, "embedding dimension does not match metadata")
+        if index is None:
+            index = faiss.IndexFlatIP(int(vector.shape[0]))
+        else:
+            require(vector.shape[0] == index.d, "embedding dimension changed while building index")
+        batch.append(vector.reshape(1, -1))
+        rows += 1
+        if len(batch) >= batch_size:
+            flush_batch(index, batch)
+            batch.clear()
+
+    require(index is not None, "no embeddings found")
+    flush_batch(index, batch)
+    require(index.ntotal == rows, "FAISS index size does not match processed rows")
+    return index
