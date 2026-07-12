@@ -78,3 +78,42 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     return selected_k
 
 
+def validate_embeddings(
+    embeddings: DataFrame,
+    expected_rows: int,
+    selected_k: int,
+    norm_tolerance: float,
+) -> None:
+    require("track_id" in embeddings.columns, "embeddings missing track_id")
+    require(EMBEDDING_COLUMN in embeddings.columns, f"embeddings missing {EMBEDDING_COLUMN}")
+
+    row_count = embeddings.count()
+    distinct_tracks = embeddings.select("track_id").distinct().count()
+    null_rows = embeddings.where(F.col("track_id").isNull() | F.col(EMBEDDING_COLUMN).isNull()).count()
+    bad_size = embeddings.where(F.size(F.col(EMBEDDING_COLUMN)) != selected_k).count()
+    has_bad_value = F.exists(
+        F.col(EMBEDDING_COLUMN),
+        lambda x: x.isNull() | F.isnan(x) | (x == float("inf")) | (x == float("-inf")),
+    )
+    norm = F.sqrt(
+        F.aggregate(
+            F.col(EMBEDDING_COLUMN),
+            F.lit(0.0),
+            lambda acc, x: acc + x * x,
+        ),
+    )
+    bad_values = embeddings.where(has_bad_value | (F.abs(norm - F.lit(1.0)) > norm_tolerance)).count()
+
+    print(
+        "audio_embeddings "
+        f"rows={row_count}, distinct_track_id={distinct_tracks}, "
+        f"selected_k={selected_k}, null_rows={null_rows}, "
+        f"bad_size={bad_size}, bad_values={bad_values}",
+    )
+    require(row_count == expected_rows, "audio embedding row count mismatch")
+    require(distinct_tracks == expected_rows, "audio embedding track_id mismatch")
+    require(null_rows == 0, "audio embeddings contain null rows")
+    require(bad_size == 0, "audio embeddings have inconsistent dimensions")
+    require(bad_values == 0, "audio embeddings contain NaN/Inf or non-normalized rows")
+
+
