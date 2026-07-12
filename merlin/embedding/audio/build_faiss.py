@@ -68,3 +68,17 @@ def read_embeddings(spark: SparkSession, path: Path, limit: int) -> DataFrame:
     return embeddings.persist(StorageLevel.DISK_ONLY)
 
 
+def write_track_id_mapping(embeddings: DataFrame, output_path: Path) -> None:
+    schema = StructType(
+        (
+            StructField("row_id", LongType(), nullable=False),
+            StructField(TRACK_ID_COLUMN, StringType(), nullable=False),
+        ),
+    )
+    mapping = embeddings.select(TRACK_ID_COLUMN).rdd.map(lambda row: row[0]).zipWithIndex()
+    mapping = mapping.map(lambda item: (int(item[1]), item[0]))
+    embeddings.sparkSession.createDataFrame(mapping, schema).write.mode("overwrite").parquet(
+        spark_path(output_path),
+    )
+
+
