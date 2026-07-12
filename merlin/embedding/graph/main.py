@@ -8,10 +8,21 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
+from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.types import (
+    ArrayType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 from merlin.embedding.graph.config import NUM_WALKS, SEED, WALK_LENGTH
+from merlin.embedding.graph.index import load_and_build_index
+from merlin.embedding.graph.walk import generate_walks_for_partition
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,6 +76,30 @@ def _make_spark() -> SparkSession:
         .config("spark.hadoop.fs.defaultFS", "file:///")
         .getOrCreate()
     )
+
+
+def main() -> None:
+    args = parse_args()
+    spark: SparkSession = _make_spark()
+
+    input_dir: str = args.input
+    output_dir: str = args.output
+    tmp_dir: str = args.tmp_dir
+    r: int = args.walks
+    target_len: int = args.length
+    sample: int = args.sample
+
+    if Path(tmp_dir.replace("file://", "")).exists():
+        shutil.rmtree(tmp_dir.replace("file://", ""))
+
+    # --- Phase A: Build adjacency index ---
+    node_to_int, int_to_node, int_to_type = load_and_build_index(
+        spark,
+        f"{input_dir}/graph_edges.parquet",
+        tmp_dir,
+    )
+
+    spark.stop()
 
 
 if __name__ == "__main__":
