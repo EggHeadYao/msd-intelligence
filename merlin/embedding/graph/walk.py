@@ -74,3 +74,37 @@ def load_adjacency(
             target.setdefault(node_int, {})[edge_type] = (nids, wts)
 
     return song_adj, node_adj
+
+
+def resolve_edge_type(edge_spec: str) -> str:
+    """Strip 'rev:' prefix from an edge-type spec."""
+    if edge_spec.startswith("rev:"):
+        return edge_spec[4:]
+    return edge_spec
+
+
+def pick_neighbor(neighbor_ids: np.ndarray, rng: np.random.Generator) -> int:
+    """Uniform random pick from an int32 neighbor array.  O(1)."""
+    idx: int = rng.integers(0, len(neighbor_ids))
+    return int(neighbor_ids[idx])
+
+
+def _step_dst_is_song(edge_spec: str) -> bool:
+    """True if the destination of this meta-path step is a song node."""
+    is_rev: bool = edge_spec.startswith("rev:")
+    base: str = edge_spec[4:] if is_rev else edge_spec
+    src_type, dst_type = EDGE_SCHEMA[base]
+    neighbor_type: str = src_type if is_rev else dst_type
+    return neighbor_type == "song"
+
+
+def _choose_meta_path(rng: np.random.Generator) -> tuple[str, list[str]]:
+    """Weighted random selection of a meta-path template."""
+    names: list[str] = list(META_PATH_WEIGHTS.keys())
+    weights: np.ndarray = np.array(
+        [META_PATH_WEIGHTS[n] for n in names],
+        dtype=np.float64,
+    )
+    probs: np.ndarray = weights / weights.sum()
+    choice: str = rng.choice(names, p=probs)
+    return choice, META_PATHS[choice]
