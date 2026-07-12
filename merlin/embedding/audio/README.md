@@ -35,3 +35,18 @@ spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate.py \
 - Checks that every embedding has the selected dimension.
 - Checks that embeddings contain no null, NaN, or infinite values.
 - Checks that embeddings are L2-normalized.
+
+## Build FAISS
+
+Build the audio nearest-neighbor index:
+
+```bash
+spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/build_faiss.py \
+  --input parquets/merlin/audio/song_embeddings_audio.parquet \
+  --output parquets/merlin/audio \
+  --shuffle-partitions 64
+```
+
+- `index_audio.faiss`: Stores the FAISS inner-product index over normalized audio embeddings.
+- `index_audio_track_ids.parquet`: Stores `row_id` and `track_id`; `row_id` matches the FAISS vector order.
+
