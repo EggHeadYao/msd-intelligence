@@ -7,7 +7,7 @@ This module trains and validates the PCA-based audio encoder.
 Run from the repository root:
 
 ```bash
-spark-submit p1team02/merlin/embedding/audio/train_pca.py \
+spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/train_pca.py \
   --input parquets/prepared/song_audio_features_raw.parquet \
   --output parquets/merlin/audio \
   --target-variance 0.95 \
@@ -24,7 +24,7 @@ spark-submit p1team02/merlin/embedding/audio/train_pca.py \
 Validate the full output:
 
 ```bash
-spark-submit p1team02/merlin/embedding/audio/validate.py \
+spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate.py \
   --output parquets/merlin/audio \
   --expected-rows 1000000 \
   --shuffle-partitions 64
