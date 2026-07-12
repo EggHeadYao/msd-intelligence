@@ -107,3 +107,63 @@ def build_forward_adjacency(
             fwd_adj.setdefault(src_int, {})[et] = (neighbor_ints, weights_arr)
 
     return fwd_adj
+
+
+def build_reverse_adjacency(
+    edges: DataFrame, node_to_int: dict[str, int]
+) -> dict[int, dict[str, tuple[np.ndarray, np.ndarray]]]:
+    """Build reverse adjacency for intermediate nodes.
+
+    For undirected edges, stores the reverse direction (dst->src).
+    For directed edges, stores only the forward direction.
+    Does NOT truncate -- all neighbors are kept.
+
+    Returns:
+        dict mapping intermediate-node int ID to
+        {edge_type: (neighbor_int_ids, weights)}.
+    """
+    specs: list[tuple[str, str, str]] = [
+        # (edge_type, group_by_col, collect_col)
+        # --- undirected: reverse = group by dst, collect src ---
+        ("song_artist", "dst_id", "src_id"),
+        ("song_album", "dst_id", "src_id"),
+        ("song_tag", "dst_id", "src_id"),
+        ("song_year", "dst_id", "src_id"),
+        # artist_tag: both forward (artist->tags) and reverse (tag->artists)
+        ("artist_tag", "src_id", "dst_id"),
+        ("artist_tag", "dst_id", "src_id"),
+        # --- directed: forward only ---
+        ("artist_similarity", "src_id", "dst_id"),
+    ]
+
+    rev_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+
+    for et, group_col, value_col in specs:
+        part: DataFrame = edges.filter(F.col("edge_type") == et).select(
+            F.col(group_col).alias("node_id"),
+            F.col(value_col).alias("neighbor_id"),
+            F.col("weight"),
+        )
+
+        grouped: DataFrame = part.groupBy("node_id").agg(
+            F.collect_list("neighbor_id").alias("neighbor_strs"),
+            F.collect_list("weight").alias("weights_list"),
+        )
+
+        for row in grouped.collect():
+            node_str: str = row["node_id"]
+            if node_str not in node_to_int:
+                continue
+            node_int: int = node_to_int[node_str]
+
+            neighbor_ints: np.ndarray = np.array(
+                [node_to_int[n] for n in row["neighbor_strs"]],
+                dtype=np.int32,
+            )
+            weights_arr: np.ndarray = np.array(
+                row["weights_list"], dtype=np.float32,
+            )
+
+            rev_adj.setdefault(node_int, {})[et] = (neighbor_ints, weights_arr)
+
+    return rev_adj
