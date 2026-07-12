@@ -99,6 +99,54 @@ def main() -> None:
         tmp_dir,
     )
 
+    # --- Phase B: Load songs & generate walks ---
+    songs_df: DataFrame = spark.read.parquet(
+        f"{input_dir}/songs_metadata.parquet",
+    ).select("track_id")
+    if sample > 0:
+        songs_df = songs_df.limit(sample)
+    song_count: int = songs_df.count()
+    print(f"Generating walks for {song_count} songs (r={r}, L={target_len})")
+
+    bc_vocab = spark.sparkContext.broadcast(node_to_int)
+    bc_tmp = spark.sparkContext.broadcast(tmp_dir)
+
+    def _run_partition(iterator):
+        return generate_walks_for_partition(
+            iterator,
+            bc_tmp.value,
+            bc_vocab.value,
+            r,
+            target_len,
+            SEED,
+        )
+
+    walk_schema = StructType(
+        [
+            StructField("track_id", StringType(), False),
+            StructField("walk_id", IntegerType(), False),
+            StructField("path_name", StringType(), False),
+            StructField("walk_seq", ArrayType(IntegerType()), False),
+            StructField("walk_len", IntegerType(), False),
+        ]
+    )
+
+    walks: DataFrame = spark.createDataFrame(
+        songs_df.rdd.mapPartitions(_run_partition),
+        schema=walk_schema,
+    )
+
+    out_path: str = f"{output_dir}/walk_sequences.parquet"
+    walks.write.mode("overwrite").parquet(out_path)
+
+    total: int = walks.count()
+    distinct: int = walks.select("track_id").distinct().count()
+    print(
+        f"Done: {total} walks for {distinct} songs saved to {out_path}",
+    )
+
+    shutil.rmtree(tmp_dir.replace("file://", ""))
+
     spark.stop()
 
 
