@@ -117,3 +117,35 @@ def build_index(
     flush_batch(index, batch)
     require(index.ntotal == rows, "FAISS index size does not match processed rows")
     return index
+
+
+def main() -> None:
+    args = parse_args()
+    args.output.mkdir(parents=True, exist_ok=True)
+    expected_dim = expected_dimension(args.output)
+
+    spark = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        embeddings = read_embeddings(spark, args.input, args.limit)
+        row_count = embeddings.count()
+        null_rows = embeddings.where(
+            F.col(TRACK_ID_COLUMN).isNull() | F.col(EMBEDDING_COLUMN).isNull(),
+        ).count()
+        require(row_count > 0, "input embedding table is empty")
+        require(null_rows == 0, "input embedding table contains null rows")
+
+        write_track_id_mapping(embeddings, args.output / args.track_ids_name)
+        index = build_index(embeddings, args.batch_size, expected_dim)
+        faiss.write_index(index, str(args.output / args.index_name))
+        print(
+            "audio_faiss_build_done "
+            f"rows={row_count}, dimension={index.d}, index_size={index.ntotal}, "
+            f"index={args.output / args.index_name}, track_ids={args.output / args.track_ids_name}",
+        )
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
