@@ -17,3 +17,5 @@ artistdistance/target/
 !LICENSE
 !.gitignore
 !.gitattributes
+
+__pycache__/
