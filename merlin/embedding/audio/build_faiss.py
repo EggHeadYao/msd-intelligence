@@ -50,3 +50,21 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def expected_dimension(output_dir: Path) -> int | None:
+    metadata_path = output_dir / "audio_encoder_metadata.json"
+    if not metadata_path.exists():
+        return None
+    with metadata_path.open("r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    return int(metadata["selected_k"])
+
+
+def read_embeddings(spark: SparkSession, path: Path, limit: int) -> DataFrame:
+    embeddings = spark.read.parquet(spark_path(path)).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+    if limit > 0:
+        embeddings = embeddings.orderBy(TRACK_ID_COLUMN).limit(limit)
+    else:
+        embeddings = embeddings.orderBy(TRACK_ID_COLUMN)
+    return embeddings.persist(StorageLevel.DISK_ONLY)
+
+
