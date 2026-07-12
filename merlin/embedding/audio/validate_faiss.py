@@ -80,3 +80,47 @@ def validate_mapping(mapping: DataFrame, expected_rows: int) -> None:
     require(stats["null_rows"] == 0, "track-id mapping contains null rows")
 
 
+def sample_queries(
+    mapping: DataFrame,
+    embeddings: DataFrame,
+    query_count: int,
+) -> list[tuple[int, str, list[float]]]:
+    rows = (
+        mapping.orderBy("row_id")
+        .limit(query_count)
+        .join(embeddings.select(TRACK_ID_COLUMN, EMBEDDING_COLUMN), TRACK_ID_COLUMN, "inner")
+        .select("row_id", TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+        .collect()
+    )
+    return [(int(row["row_id"]), row[TRACK_ID_COLUMN], row[EMBEDDING_COLUMN]) for row in rows]
+
+
+def validate_queries(
+    index: faiss.Index,
+    queries: list[tuple[int, str, list[float]]],
+    top_k: int,
+) -> None:
+    require(queries, "no query embeddings found")
+    matrix = np.vstack([np.asarray(row[2], dtype=np.float32).reshape(1, -1) for row in queries])
+    require(matrix.shape[1] == index.d, "query embedding dimension does not match FAISS index")
+    distances, indices = index.search(matrix, min(top_k + 1, index.ntotal))
+
+    for query_index, (row_id, track_id, _) in enumerate(queries):
+        result_ids = [int(value) for value in indices[query_index] if int(value) >= 0]
+        require(result_ids, f"query {track_id} returned no FAISS results")
+        require(
+            all(0 <= value < index.ntotal for value in result_ids),
+            f"query {track_id} returned invalid row ids",
+        )
+        require(row_id in result_ids, f"query {track_id} did not retrieve itself")
+        non_self = [value for value in result_ids if value != row_id]
+        require(
+            len(non_self) >= min(top_k, index.ntotal - 1),
+            f"query {track_id} has too few non-self results",
+        )
+        require(
+            float(distances[query_index][0]) <= 1.0001,
+            "inner-product score is above normalized range",
+        )
+
+
