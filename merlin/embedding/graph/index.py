@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import BinaryType
 
 
 def build_node_vocabulary(
@@ -55,115 +56,113 @@ def build_node_vocabulary(
     return node_to_int, int_to_node, int_to_type
 
 
-def build_forward_adjacency(
-    edges: DataFrame, node_to_int: dict[str, int]
-) -> dict[int, dict[str, tuple[np.ndarray, np.ndarray]]]:
-    """Build per-song forward adjacency from graph edges.
+def _strs_to_int_binary(strs: list, vocab: dict[str, int]) -> bytes:
+    """Convert a list of string node IDs to int32 numpy binary."""
+    return np.array(
+        [vocab[s] for s in strs if s in vocab], dtype=np.int32,
+    ).tobytes()
 
-    Processes each edge_type partition separately to avoid a single
-    huge shuffle.  Returns a dict mapping song_int_id -> {edge_type:
-    (neighbor_int_ids, weights)} where both arrays are numpy int32 /
-    float32 contiguous arrays.
 
-    Only forward direction is stored here.  Reverse (intermediate
-    node -> song) is built separately by build_reverse_adjacency.
+def _floats_to_binary(vals: list) -> bytes:
+    """Convert a list of floats to float32 numpy binary."""
+    return np.array(vals, dtype=np.float32).tobytes()
+
+
+def save_adjacency_parquet(
+    edges: DataFrame,
+    output_dir: str,
+    vocab_bc,
+    specs: list[tuple[str, str, str, str]],
+) -> None:
+    """Build adjacency via DataFrame groupBy and write directly to Parquet.
+
+    Executors write Parquet files directly -- no data collected to
+    driver, avoiding maxResultSize / driver OOM on 100M+ edges.
+
+    Args:
+        edges: graph_edges DataFrame (all edge types).
+        output_dir: directory for output Parquet files.
+        vocab_bc: broadcast variable containing node_to_int dict.
+        specs: list of (edge_type, group_col, value_col, output_name).
     """
-    fwd_edge_types: list[str] = [
-        "song_artist",
-        "song_album",
-        "song_tag",
-        "song_similar_artist",
-        "song_year",
-    ]
+    to_bin_int_udf = F.udf(
+        lambda strs: _strs_to_int_binary(strs, vocab_bc.value), BinaryType(),
+    )
+    to_bin_udf = F.udf(_floats_to_binary, BinaryType())
 
-    fwd_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+    for et, group_col, value_col, out_name in specs:
+        part: DataFrame = edges.filter(F.col("edge_type") == et)
 
-    for et in fwd_edge_types:
-        part: DataFrame = edges.filter(F.col("edge_type") == et).select(
-            F.col("src_id"),
-            F.col("dst_id"),
-            F.col("weight"),
-        )
-
-        grouped: DataFrame = part.groupBy("src_id").agg(
-            F.collect_list("dst_id").alias("neighbor_strs"),
+        grouped: DataFrame = part.groupBy(group_col).agg(
+            F.collect_list(value_col).alias("neighbor_strs"),
             F.collect_list("weight").alias("weights_list"),
         )
 
-        for row in grouped.collect():
-            src_str: str = row["src_id"]
-            if src_str not in node_to_int:
-                continue
-            src_int: int = node_to_int[src_str]
+        out: DataFrame = grouped.select(
+            F.col(group_col).alias("node_str"),
+            to_bin_int_udf(F.col("neighbor_strs")).alias("neighbor_ids"),
+            to_bin_udf(F.col("weights_list")).alias("weights"),
+        )
 
-            neighbor_ints: np.ndarray = np.array(
-                [node_to_int[n] for n in row["neighbor_strs"]],
-                dtype=np.int32,
-            )
-            weights_arr: np.ndarray = np.array(
-                row["weights_list"], dtype=np.float32
-            )
+        out_path: str = f"{output_dir}/{out_name}.parquet"
+        out.write.mode("overwrite").parquet(out_path)
 
-            fwd_adj.setdefault(src_int, {})[et] = (neighbor_ints, weights_arr)
-
-    return fwd_adj
+        cnt: int = out.count()
+        print(f"  {out_name}: {cnt} nodes")
 
 
-def build_reverse_adjacency(
-    edges: DataFrame, node_to_int: dict[str, int]
-) -> dict[int, dict[str, tuple[np.ndarray, np.ndarray]]]:
-    """Build reverse adjacency for intermediate nodes.
+def load_and_build_index(
+    spark: SparkSession,
+    input_path: str,
+    output_dir: str,
+) -> tuple[
+    dict[str, int],
+    dict[int, str],
+    dict[int, str],
+]:
+    """Build adjacency index and save as intermediate Parquet files.
 
-    For undirected edges, stores the reverse direction (dst->src).
-    For directed edges, stores only the forward direction.
-    Does NOT truncate -- all neighbors are kept.
+    Writes one Parquet per edge-type grouping to *output_dir*.
+    Returns vocab mappings for downstream walk generation.
 
     Returns:
-        dict mapping intermediate-node int ID to
-        {edge_type: (neighbor_int_ids, weights)}.
+        node_to_int: string node ID -> integer index.
+        int_to_node: integer index -> string node ID.
+        int_to_type: integer index -> node type string.
     """
-    specs: list[tuple[str, str, str]] = [
-        # (edge_type, group_by_col, collect_col)
-        # --- undirected: reverse = group by dst, collect src ---
-        ("song_artist", "dst_id", "src_id"),
-        ("song_album", "dst_id", "src_id"),
-        ("song_tag", "dst_id", "src_id"),
-        ("song_year", "dst_id", "src_id"),
-        # artist_tag: both forward (artist->tags) and reverse (tag->artists)
-        ("artist_tag", "src_id", "dst_id"),
-        ("artist_tag", "dst_id", "src_id"),
-        # --- directed: forward only ---
-        ("artist_similarity", "src_id", "dst_id"),
+    node_to_int, int_to_node, int_to_type = build_node_vocabulary(
+        spark, input_path,
+    )
+
+    edges: DataFrame = spark.read.parquet(input_path)
+    bc_vocab = spark.sparkContext.broadcast(node_to_int)
+
+    # --- forward adjacency specs ---
+    fwd_specs: list[tuple[str, str, str, str]] = [
+        ("song_artist", "src_id", "dst_id", "fwd_song_artist"),
+        ("song_album", "src_id", "dst_id", "fwd_song_album"),
+        ("song_tag", "src_id", "dst_id", "fwd_song_tag"),
+        ("song_similar_artist", "src_id", "dst_id", "fwd_song_similar_artist"),
+        ("song_year", "src_id", "dst_id", "fwd_song_year"),
     ]
+    save_adjacency_parquet(edges, output_dir, bc_vocab, fwd_specs)
 
-    rev_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+    # --- reverse adjacency specs ---
+    rev_specs: list[tuple[str, str, str, str]] = [
+        ("song_artist", "dst_id", "src_id", "rev_song_artist"),
+        ("song_album", "dst_id", "src_id", "rev_song_album"),
+        ("song_tag", "dst_id", "src_id", "rev_song_tag"),
+        ("song_year", "dst_id", "src_id", "rev_song_year"),
+        ("artist_tag", "src_id", "dst_id", "rev_artist_tag_fwd"),
+        ("artist_tag", "dst_id", "src_id", "rev_artist_tag_rev"),
+        ("artist_similarity", "src_id", "dst_id", "rev_artist_similarity"),
+    ]
+    save_adjacency_parquet(edges, output_dir, bc_vocab, rev_specs)
 
-    for et, group_col, value_col in specs:
-        part: DataFrame = edges.filter(F.col("edge_type") == et).select(
-            F.col(group_col).alias("node_id"),
-            F.col(value_col).alias("neighbor_id"),
-            F.col("weight"),
-        )
+    print(
+        f"Index saved to {output_dir}: "
+        f"{len(node_to_int)} nodes, "
+        f"{len(fwd_specs) + len(rev_specs)} adjacency files",
+    )
 
-        grouped: DataFrame = part.groupBy("node_id").agg(
-            F.collect_list("neighbor_id").alias("neighbor_strs"),
-            F.collect_list("weight").alias("weights_list"),
-        )
-
-        for row in grouped.collect():
-            node_str: str = row["node_id"]
-            if node_str not in node_to_int:
-                continue
-            node_int: int = node_to_int[node_str]
-
-            neighbor_ints: np.ndarray = np.array(
-                [node_to_int[n] for n in row["neighbor_strs"]],
-                dtype=np.int32,
-            )
-            weights_arr: np.ndarray = np.array(
-                row["weights_list"], dtype=np.float32,
-            )
-
-            rev_adj.setdefault(node_int, {})[et] = (neighbor_ints, weights_arr)
-
-    return rev_adj
+    return node_to_int, int_to_node, int_to_type
