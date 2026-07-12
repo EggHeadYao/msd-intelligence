@@ -124,3 +124,34 @@ def validate_queries(
         )
 
 
+def main() -> None:
+    args = parse_args()
+    index_path = args.output / args.index_name
+    mapping_path = args.output / args.track_ids_name
+    require(index_path.exists(), f"missing FAISS index: {index_path}")
+    require(mapping_path.exists(), f"missing track-id mapping: {mapping_path}")
+
+    index = faiss.read_index(str(index_path))
+    selected_k = read_selected_k(args.output)
+    if selected_k is not None:
+        require(index.d == selected_k, "FAISS index dimension does not match selected_k")
+    require(index.ntotal == args.expected_rows, "FAISS index size mismatch")
+
+    spark = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        mapping = spark.read.parquet(spark_path(mapping_path))
+        embeddings = spark.read.parquet(spark_path(args.embeddings))
+        validate_mapping(mapping, args.expected_rows)
+        queries = sample_queries(mapping, embeddings, args.queries)
+        validate_queries(index, queries, args.top_k)
+        print(
+            "audio_faiss_validation_passed "
+            f"rows={index.ntotal}, dimension={index.d}, queries={len(queries)}, top_k={args.top_k}",
+        )
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
