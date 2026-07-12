@@ -20,3 +20,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--norm-tolerance", type=float, default=1e-6)
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     return parser.parse_args()
+
+
+def create_spark(shuffle_partitions: int) -> SparkSession:
+    return (
+        SparkSession.builder.appName("MerlinValidateAudioPCA")
+        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+        .getOrCreate()
+    )
+
+
+def spark_path(path: Path) -> str:
+    return path.resolve().as_uri()
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def read_metadata(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
