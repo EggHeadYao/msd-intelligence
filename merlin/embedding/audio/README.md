@@ -50,3 +50,19 @@ spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/build_faiss.py \
 - `index_audio.faiss`: Stores the FAISS inner-product index over normalized audio embeddings.
 - `index_audio_track_ids.parquet`: Stores `row_id` and `track_id`; `row_id` matches the FAISS vector order.
 
+## Validate FAISS
+
+Validate the saved audio index:
+
+```bash
+spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate_faiss.py \
+  --embeddings parquets/merlin/audio/song_embeddings_audio.parquet \
+  --output parquets/merlin/audio \
+  --expected-rows 1000000 \
+  --shuffle-partitions 64
+```
+
+- Checks that the FAISS index and track-id mapping exist.
+- Checks index size, embedding dimension, mapping size, and mapping uniqueness.
+- Runs sample top-K searches and verifies that query tracks retrieve themselves.
+- Uses inner product because embeddings are L2-normalized, so scores equal cosine similarity.
