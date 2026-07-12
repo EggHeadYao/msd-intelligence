@@ -158,3 +158,44 @@ def _choose_meta_path(rng: np.random.Generator) -> tuple[str, list[str]]:
     probs: np.ndarray = weights / weights.sum()
     choice: str = rng.choice(names, p=probs)
     return choice, META_PATHS[choice]
+
+
+def generate_walks_for_partition(
+    iterator,
+    adj_dir: str,
+    node_to_int: dict[str, int],
+    r: int,
+    target_len: int,
+    seed: int,
+):
+    """mapPartitions callable: generate walks for one partition of songs.
+
+    Each executor loads the adjacency Parquet files once, then
+    generates *r* walks per song in its partition.
+    """
+    song_adj, node_adj = load_adjacency(adj_dir, node_to_int)
+
+    for row in iterator:
+        track_id: str = row.track_id
+        if track_id not in node_to_int:
+            continue
+        song_int: int = node_to_int[track_id]
+
+        for walk_id in range(r):
+            walk_rng = np.random.default_rng(
+                seed + song_int * 1000 + walk_id,
+            )
+            path_name, path_template = _choose_meta_path(walk_rng)
+
+            walk_seq_ints: list[int] = follow_meta_path(
+                song_int, path_template, song_adj, node_adj,
+                walk_rng, target_len=target_len,
+            )
+
+            yield (
+                str(track_id),
+                int(walk_id),
+                str(path_name),
+                [int(x) for x in walk_seq_ints],
+                int(len(walk_seq_ints)),
+            )
