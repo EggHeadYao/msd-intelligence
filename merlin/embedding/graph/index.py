@@ -159,6 +159,18 @@ def load_and_build_index(
     ]
     save_adjacency_parquet(edges, output_dir, bc_vocab, rev_specs)
 
+    # Persist vocab so walk generation can load it without Spark.
+    import json
+    local_dir: str = output_dir.replace("file://", "")
+    vocab_path: str = f"{local_dir}/vocab.json"
+    with open(vocab_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "node_to_int": node_to_int,
+            "int_to_node": {str(k): v for k, v in int_to_node.items()},
+            "int_to_type": {str(k): v for k, v in int_to_type.items()},
+        }, f)
+    print(f"Vocab saved to {vocab_path}")
+
     print(
         f"Index saved to {output_dir}: "
         f"{len(node_to_int)} nodes, "
