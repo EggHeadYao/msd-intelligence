@@ -93,7 +93,7 @@ def main() -> None:
         shutil.rmtree(tmp_dir.replace("file://", ""))
 
     # --- Phase A: Build adjacency index ---
-    node_to_int, int_to_node, int_to_type = load_and_build_index(
+    node_to_int, _, _ = load_and_build_index(
         spark,
         f"{input_dir}/graph_edges.parquet",
         tmp_dir,
