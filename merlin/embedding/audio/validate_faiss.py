@@ -58,3 +58,25 @@ def read_selected_k(output_dir: Path) -> int | None:
     return int(metadata["selected_k"])
 
 
+def validate_mapping(mapping: DataFrame, expected_rows: int) -> None:
+    stats = mapping.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct("row_id").alias("distinct_row_id"),
+        F.countDistinct(TRACK_ID_COLUMN).alias("distinct_track_id"),
+        F.min("row_id").alias("min_row_id"),
+        F.max("row_id").alias("max_row_id"),
+        F.sum(
+            F.when(
+                F.col("row_id").isNull() | F.col(TRACK_ID_COLUMN).isNull(),
+                1,
+            ).otherwise(0),
+        ).alias("null_rows"),
+    ).first()
+    require(stats["rows"] == expected_rows, "track-id mapping row count mismatch")
+    require(stats["distinct_row_id"] == expected_rows, "track-id mapping row_id is not unique")
+    require(stats["distinct_track_id"] == expected_rows, "track-id mapping track_id is not unique")
+    require(stats["min_row_id"] == 0, "track-id mapping must start at row_id 0")
+    require(stats["max_row_id"] == expected_rows - 1, "track-id mapping max row_id mismatch")
+    require(stats["null_rows"] == 0, "track-id mapping contains null rows")
+
+
