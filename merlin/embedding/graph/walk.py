@@ -98,6 +98,56 @@ def _step_dst_is_song(edge_spec: str) -> bool:
     return neighbor_type == "song"
 
 
+def follow_meta_path(
+    start_song: int,
+    path_template: list[str],
+    song_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
+    node_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
+    rng: np.random.Generator,
+    target_len: int = 40,
+) -> list[int]:
+    """Generate one meta-path guided random walk.
+
+    Args:
+        start_song: integer ID of the starting song.
+        path_template: list of edge-type specs (e.g. ["song_tag", "rev:song_tag"]).
+        song_adj: per-song forward adjacency.
+        node_adj: per-intermediate-node reverse adjacency.
+        rng: per-walk numpy random generator.
+        target_len: desired number of song nodes in the output sequence.
+
+    Returns:
+        List of song int IDs representing the walk.  Length may be
+        less than *target_len* if the walk encounters a dead end.
+    """
+    walk_seq: list[int] = [start_song]
+    current_node: int = start_song
+    is_song: bool = True
+    path_len: int = len(path_template)
+
+    # Pre-compute which steps yield song nodes
+    song_steps: list[bool] = [_step_dst_is_song(s) for s in path_template]
+
+    step: int = 0
+    while len(walk_seq) < target_len:
+        edge_spec: str = path_template[step % path_len]
+        base_type: str = resolve_edge_type(edge_spec)
+
+        adj = song_adj if is_song else node_adj
+        entry = adj.get(current_node, {}).get(base_type)
+        if entry is None:
+            break  # dead end
+
+        neighbor_ids, _weights = entry
+        current_node = pick_neighbor(neighbor_ids, rng)
+        is_song = song_steps[step % path_len]
+        if is_song:
+            walk_seq.append(current_node)
+        step += 1
+
+    return walk_seq
+
+
 def _choose_meta_path(rng: np.random.Generator) -> tuple[str, list[str]]:
     """Weighted random selection of a meta-path template."""
     names: list[str] = list(META_PATH_WEIGHTS.keys())
