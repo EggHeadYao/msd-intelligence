@@ -21,7 +21,7 @@ from pyspark.sql.types import (
 )
 
 from merlin.embedding.graph.config import NUM_WALKS, SEED, WALK_LENGTH
-from merlin.embedding.graph.index import load_and_build_index
+from merlin.embedding.graph.index import load_and_build_index, persist_vocabulary
 from merlin.embedding.graph.walk import generate_walks_for_partition
 
 
@@ -138,11 +138,13 @@ def main() -> None:
 
     out_path: str = f"{output_dir}/walk_sequences.parquet"
     walks.write.mode("overwrite").parquet(out_path)
+    vocab_path: str = persist_vocabulary(tmp_dir, output_dir)
 
     total: int = walks.count()
     distinct: int = walks.select("track_id").distinct().count()
     print(
-        f"Done: {total} walks for {distinct} songs saved to {out_path}",
+        f"Done: {total} walks for {distinct} songs saved to {out_path}; "
+        f"vocabulary saved to {vocab_path}",
     )
 
     shutil.rmtree(tmp_dir.replace("file://", ""))

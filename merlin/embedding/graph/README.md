@@ -13,6 +13,7 @@ MERLIN heterogeneous graph for downstream Word2Vec training.
 ## Outputs
 
 - `walk_sequences.parquet` -- one row per walk sequence.
+- `vocab.json` -- durable integer-node vocabulary copied next to the walk dataset before the temporary adjacency index is removed. It contains `node_to_int`, `int_to_node`, and `int_to_type`.
 
   **Schema**:
 
@@ -25,10 +26,11 @@ MERLIN heterogeneous graph for downstream Word2Vec training.
   | `walk_len` | int32 | Actual number of song nodes (<= target length) |
 
   **Note on `walk_seq`**: stored as integer node IDs from the C2 internal
-  vocabulary for compactness.  Downstream Word2Vec training should convert
-  back to string track IDs using `int_to_node` from the index metadata
-  (`vocab.json` under the temp directory).  A single `F.array_transform`
-  call with a broadcast mapping is sufficient.
+  vocabulary for compactness. Downstream Word2Vec can cast these IDs to
+  string tokens for training, then restore original track IDs with
+  `int_to_node` from the durable `vocab.json` in the output directory.
+  The temporary adjacency directory is deleted after a successful run and
+  must not be treated as artifact storage.
 
 ## Architecture
 
@@ -48,6 +50,7 @@ graph_edges.parquet (7 types, 134.7M rows)
         |
         v
   walk_sequences.parquet     --> 3,000,000 rows, ~431 MB
+  vocab.json                 --> durable int32 <-> graph-node mapping
 ```
 
 ### Edge Types

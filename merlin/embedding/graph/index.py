@@ -2,10 +2,39 @@
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
 import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import BinaryType
+
+
+def _local_path(path: str) -> Path:
+    """Convert a plain path or file URI to a local Path."""
+    parsed = urlparse(path)
+    if parsed.scheme not in {"", "file"}:
+        msg = f"Vocabulary persistence requires a local path, got: {path}"
+        raise ValueError(msg)
+    if parsed.scheme == "file":
+        return Path(unquote(parsed.path))
+    return Path(path)
+
+
+def persist_vocabulary(index_dir: str, output_dir: str) -> str:
+    """Copy the temporary vocabulary into the durable walk output directory."""
+    source = _local_path(index_dir) / "vocab.json"
+    if not source.is_file():
+        raise FileNotFoundError(f"Missing C2 vocabulary: {source}")
+
+    destination_dir = _local_path(output_dir)
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / "vocab.json"
+    if source.resolve() != destination.resolve():
+        shutil.copy2(source, destination)
+    return str(destination)
 
 
 def build_node_vocabulary(
@@ -161,9 +190,8 @@ def load_and_build_index(
 
     # Persist vocab so walk generation can load it without Spark.
     import json
-    local_dir: str = output_dir.replace("file://", "")
-    vocab_path: str = f"{local_dir}/vocab.json"
-    with open(vocab_path, "w", encoding="utf-8") as f:
+    vocab_path: Path = _local_path(output_dir) / "vocab.json"
+    with vocab_path.open("w", encoding="utf-8") as f:
         json.dump({
             "node_to_int": node_to_int,
             "int_to_node": {str(k): v for k, v in int_to_node.items()},
