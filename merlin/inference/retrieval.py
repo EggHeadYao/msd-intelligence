@@ -33,3 +33,33 @@ def merge_candidates(groups: Sequence[Sequence[Candidate]], query_track_id: str)
         )
         for track_id, state in merged.items()
     ]
+
+
+@dataclass(slots=True)
+class VectorRetriever(CandidateRetriever):
+    """Adapter around an Audio/Graph nearest-neighbor search function.
+
+    ``search`` owns index-specific details and returns ``(track_id, score)``
+    ordered from best to worst. This keeps FAISS optional at package import time.
+    """
+
+    _name: str
+    search: Callable[[str, int], Sequence[tuple[str, float]]]
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
+        return [
+            Candidate(
+                track_id=track_id,
+                sources=frozenset({self.name}),
+                recall_scores={self.name: float(score)},
+                source_ranks={self.name: rank},
+            )
+            for rank, (track_id, score) in enumerate(
+                self.search(query_track_id, limit + 1), start=1
+            )
+            if track_id != query_track_id
+        ][:limit]
