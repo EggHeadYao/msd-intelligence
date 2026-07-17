@@ -35,6 +35,21 @@ class FaissTrackIndex:
     def contains(self, track_id: str) -> bool:
         return track_id in self._track_to_row
 
+    @classmethod
+    def from_files(
+        cls, index_path: str | Path, mapping_path: str | Path
+    ) -> "FaissTrackIndex":
+        """Load a C1/C2 index and its Parquet row mapping without Spark."""
+        try:
+            import faiss
+        except ImportError as error:
+            raise RuntimeError("loading a FAISS index requires the faiss package") from error
+        index_file = Path(index_path)
+        if not index_file.is_file():
+            raise FileNotFoundError(f"FAISS index does not exist: {index_file}")
+        index = faiss.read_index(str(index_file))
+        return cls(index=index, row_to_track=_load_track_mapping(mapping_path))
+
     def search(self, query_track_id: str, limit: int) -> list[tuple[str, float]]:
         """Return nearest tracks ordered by FAISS inner-product score."""
         if limit <= 0:
@@ -52,3 +67,20 @@ class FaissTrackIndex:
             for result_row, score in zip(row_ids[0], scores[0], strict=True)
             if 0 <= int(result_row) < len(self.row_to_track)
         ]
+
+
+def _load_track_mapping(mapping_path: str | Path) -> tuple[str, ...]:
+    try:
+        import pyarrow.parquet as parquet
+    except ImportError as error:
+        raise RuntimeError("loading a track mapping requires the pyarrow package") from error
+    path = Path(mapping_path)
+    if not path.exists():
+        raise FileNotFoundError(f"FAISS track mapping does not exist: {path}")
+    table = parquet.read_table(path, columns=["row_id", "track_id"])
+    pairs = sorted(zip(table["row_id"].to_pylist(), table["track_id"].to_pylist()))
+    if any(row_id is None or track_id is None for row_id, track_id in pairs):
+        raise ValueError("FAISS track mapping contains null values")
+    if [int(row_id) for row_id, _ in pairs] != list(range(len(pairs))):
+        raise ValueError("FAISS mapping row_id must be contiguous from zero")
+    return tuple(str(track_id) for _, track_id in pairs)
