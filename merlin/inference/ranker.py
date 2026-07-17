@@ -44,5 +44,36 @@ class LogisticRanker:
             intercept=float(artifact["intercept"]),
         )
 
+    @classmethod
+    def mock(cls, feature_schema_version: str, feature_order: Sequence[str]) -> "LogisticRanker":
+        """Create an equal-weight artifact for pipeline integration tests."""
+        size = len(feature_order)
+        return cls(
+            feature_schema_version=feature_schema_version,
+            feature_order=tuple(feature_order),
+            means=(0.0,) * size,
+            stds=(1.0,) * size,
+            coefficients=(1.0,) * size,
+            intercept=0.0,
+        )
+
+    def score(self, features: Mapping[str, float]) -> float:
+        missing = [name for name in self.feature_order if name not in features]
+        if missing:
+            raise ValueError(f"ranker features missing: {missing}")
+        logit = self.intercept
+        for name, mean, std, coefficient in zip(
+            self.feature_order, self.means, self.stds, self.coefficients, strict=True
+        ):
+            value = float(features[name])
+            if not math.isfinite(value):
+                raise ValueError(f"ranker feature {name} is not finite")
+            logit += coefficient * ((value - mean) / std)
+        if logit >= 0.0:
+            return 1.0 / (1.0 + math.exp(-logit))
+        exp_logit = math.exp(logit)
+        return exp_logit / (1.0 + exp_logit)
+
+
 def _floats(values: Sequence[object]) -> tuple[float, ...]:
     return tuple(float(value) for value in values)
