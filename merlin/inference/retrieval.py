@@ -107,3 +107,37 @@ class BfsRetriever(CandidateRetriever):
                         visited.add(neighbor)
                         queue.append((neighbor, distance + 1))
         return result
+
+
+@dataclass(slots=True)
+class TagRetriever(CandidateRetriever):
+    """Adapter for a precomputed TF-IDF artist-neighbor table."""
+
+    track_to_artist: Mapping[str, str]
+    similar_artists: Mapping[str, Sequence[tuple[str, float]]]
+    artist_tracks: Mapping[str, Sequence[str]]
+    per_artist_cap: int = 5
+    _name: str = "tag"
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
+        root = self.track_to_artist.get(query_track_id)
+        if root is None:
+            return []
+        result: list[Candidate] = []
+        for artist, similarity in self.similar_artists.get(root, ()):
+            for track_id in self.artist_tracks.get(artist, ())[: self.per_artist_cap]:
+                if track_id == query_track_id:
+                    continue
+                result.append(Candidate(
+                    track_id=track_id,
+                    sources=frozenset({self.name}),
+                    recall_scores={self.name: float(similarity)},
+                    source_ranks={self.name: len(result) + 1},
+                ))
+                if len(result) == limit:
+                    return result
+        return result
