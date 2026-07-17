@@ -26,3 +26,28 @@ The pipeline rejects a ranker whose `feature_schema_version` differs from its
 feature computer.
 
 The example artifact is only for integration testing. It is not a trained model.
+
+## FAISS artifacts
+
+Install `faiss-cpu`, `numpy`, and `pyarrow` in the inference environment. C1
+and C2 must both publish an inner-product index plus the matching Parquet map:
+
+```text
+index_<space>.faiss
+index_<space>_track_ids.parquet  # row_id: long, track_id: string
+```
+
+Load either embedding space with the same adapter:
+
+```python
+from merlin.inference.faiss_index import FaissTrackIndex
+from merlin.inference.retrieval import VectorRetriever
+
+audio = FaissTrackIndex.from_files("index_audio.faiss", "index_audio_track_ids.parquet")
+graph = FaissTrackIndex.from_files("index_graph.faiss", "index_graph_track_ids.parquet")
+audio_retriever = VectorRetriever("audio", audio.search)
+graph_retriever = VectorRetriever("graph", graph.search)
+```
+
+The mapping must contain exactly one unique track per contiguous row ID from
+zero. Its row order must match the order in which vectors were added to FAISS.
