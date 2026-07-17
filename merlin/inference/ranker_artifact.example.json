@@ -1,0 +1,23 @@
+{
+  "model_type": "logistic_regression",
+  "model_version": "mock-v1",
+  "feature_schema_version": "ranker-v1",
+  "feature_order": [
+    "cos_audio",
+    "cos_graph",
+    "bfs_score",
+    "tag_tfidf_cosine",
+    "same_album",
+    "same_year",
+    "year_gap",
+    "candidate_popularity",
+    "from_audio",
+    "from_graph",
+    "from_bfs",
+    "from_tag"
+  ],
+  "means": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "stds": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  "coefficients": [1, 1, 1, 1, 1, 1, -1, 0.1, 0, 0, 0, 0],
+  "intercept": 0
+}
