@@ -106,7 +106,66 @@ def build(args: argparse.Namespace, spark: SparkSession) -> Path:
         raise ValueError(f"Wrong engineered row count: expected={expected_rows}, actual={row_count}")
     linear = build_linear_view(engineered, state)
 
+    output = (args.output_root / args.feature_version).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    engineered.repartition(args.output_partitions, SPLIT).write.mode("overwrite").partitionBy(SPLIT).parquet(
+        spark_path(output / "engineered_features.parquet")
+    )
+    linear.repartition(args.output_partitions, SPLIT).write.mode("overwrite").partitionBy(SPLIT).parquet(
+        spark_path(output / "linear_vectors.parquet")
+    )
 
+    metadata = {
+        "format_version": 1,
+        "feature_version": args.feature_version,
+        "source": {
+            "dataset_path": str(dataset),
+            "dataset_manifest_sha256": sha256_file(manifest_path),
+            "artist_assignment_sha256": dataset_manifest["artist_assignment_sha256"],
+        },
+        "fit_scope": {"split": TRAIN, "rows": counts[TRAIN]},
+        "counts": {"rows": row_count, "splits": counts},
+        "target": {
+            "source_column": "year",
+            "output_column": "normalized_year",
+            "minimum": 1922,
+            "maximum": 2011,
+            "formula": "(year - 1922) / 89",
+        },
+        "preprocessing_order": [
+            "invalid_to_missing",
+            "train_only_clip_and_segment_statistics",
+            "clip_and_log",
+            "train_only_continuous_imputation",
+            "categorical_encoding",
+            "train_only_variance_filter",
+            "train_only_standardization",
+        ],
+        "preprocessing": state,
+        "outputs": {
+            "engineered_features": {
+                "path": str(output / "engineered_features.parquet"),
+                "columns": list(engineered_columns(state)),
+                "schema": schema_types(engineered),
+            },
+            "linear_vectors": {
+                "path": str(output / "linear_vectors.parquet"),
+                "feature_column": "features",
+                "feature_type": "array<double>",
+                "dimension": len(state["retained_columns"]),
+                "schema": schema_types(linear),
+            },
+        },
+    }
+    write_json(output / "preprocessing_metadata.json", metadata)
+    engineered.unpersist()
+    source.unpersist()
+    print(
+        "year_features_built "
+        f"rows={row_count}, candidates={len(state['candidate_columns'])}, "
+        f"retained={len(state['retained_columns'])}, output={output}"
+    )
+    return output
 
 
 def main() -> None:
