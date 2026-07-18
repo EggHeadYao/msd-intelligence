@@ -36,6 +36,51 @@ def row(index: int, split: str, **overrides):
     return value
 
 
+class PreprocessingTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.spark = (
+            SparkSession.builder.master("local[2]")
+            .appName("YearFeaturePreprocessingTest")
+            .config("spark.sql.shuffle.partitions", "2")
+            .getOrCreate()
+        )
+        cls.spark.sparkContext.setLogLevel("ERROR")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.spark.stop()
+
+    def test_fit_uses_training_rows_only(self):
+        rows = [row(index, "train") for index in range(4)]
+        rows.append(row(9, "validation", tempo=10000.0, time_signature=7))
+        data = self.spark.createDataFrame(rows)
+        state = fit_feature_contract(data.where(F.col("split") == "train"), quantile_error=0.0)
+
+        self.assertNotIn(7, state["time_signature_values"])
+        self.assertLessEqual(state["clip_bounds"]["tempo"][1], 120.0)
+        transformed = transform_features(data.where(F.col("split") == "validation"), state).first()
+        self.assertEqual(transformed["time_signature"], -1)
+        self.assertEqual(transformed["time_signature_unknown"], 1.0)
+        self.assertTrue(math.isfinite(transformed["tempo_log"]))
+
+    def test_missing_segments_use_training_means(self):
+        rows = [row(index, "train") for index in range(3)]
+        missing = row(4, "validation", has_segments=0)
+        missing.update({column: 0.0 for column in SEGMENT_COLUMNS})
+        data = self.spark.createDataFrame([*rows, missing])
+        train = data.where(F.col("split") == "train")
+        state = fit_feature_contract(train, quantile_error=0.0)
+        transformed = transform_features(data.where(F.col("split") == "validation"), state).first()
+
+        self.assertEqual(transformed["has_segments"], 0.0)
+        for column in SEGMENT_COLUMNS:
+            self.assertAlmostEqual(transformed[column], state["segment_means"][column])
+
+    def test_invalid_binary_values_are_rejected(self):
+        data = self.spark.createDataFrame([row(0, "train", mode=3)])
+        with self.assertRaises(ValueError):
+            validate_binary_columns(data)
 
 
 if __name__ == "__main__":
