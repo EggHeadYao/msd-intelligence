@@ -20,6 +20,7 @@ FEATURES_COLUMN = "features"
 SCALED_FEATURES_COLUMN = "scaled_features"
 PCA_FEATURES_COLUMN = "pca_features"
 EMBEDDING_COLUMN = "embedding"
+PCA_DIMENSION = 128
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,8 +28,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", type=Path, default=Path("parquets/prepared/song_audio_features_raw.parquet"))
     parser.add_argument("--output", type=Path, default=Path("parquets/merlin/audio"))
     parser.add_argument("--target-variance", type=float, default=0.95)
-    parser.add_argument("--fixed-k", type=int, default=0)
-    parser.add_argument("--max-components", type=int, default=0)
+    parser.add_argument("--fixed-k", type=int, choices=(PCA_DIMENSION,), default=PCA_DIMENSION)
+    parser.add_argument("--max-components", type=int, choices=(PCA_DIMENSION,), default=PCA_DIMENSION)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     return parser.parse_args()
@@ -119,12 +120,13 @@ def main() -> None:
         scaler_model = scaler.fit(assembled)
         scaled = scaler_model.transform(assembled).select(TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN)
 
-        max_components = args.max_components if args.max_components > 0 else len(feature_columns)
-        max_components = min(max_components, len(feature_columns))
+        max_components = PCA_DIMENSION
+        if len(feature_columns) < PCA_DIMENSION:
+            raise ValueError("C1 requires at least 128 non-constant input features")
         pca = PCA(k=max_components, inputCol=SCALED_FEATURES_COLUMN, outputCol=PCA_FEATURES_COLUMN)
         pca_model = pca.fit(scaled)
         explained = vector_to_list(pca_model.explainedVariance)
-        selected_k = choose_k(explained, args.target_variance, args.fixed_k)
+        selected_k = PCA_DIMENSION
 
         projected = pca_model.transform(scaled).select(TRACK_ID_COLUMN, PCA_FEATURES_COLUMN)
         embeddings = add_normalized_embedding(projected, selected_k).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
