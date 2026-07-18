@@ -70,3 +70,62 @@ def parquet_snapshot(path: Path) -> dict[str, Any]:
     return {"file_count": len(files), "bytes": total_bytes, "sha256": digest.hexdigest()}
 
 
+def read_artist_ids(spark: SparkSession, path: Path) -> DataFrame:
+    return (
+        spark.read.text(spark_path(path))
+        .select(F.trim(F.col("value")).alias(ARTIST_ID))
+        .where(F.col(ARTIST_ID) != "")
+    )
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def assignment_sha256(assignments: DataFrame) -> str:
+    digest = hashlib.sha256()
+    artists = assignments.select(ARTIST_ID, SPLIT).distinct().orderBy(ARTIST_ID).toLocalIterator()
+    for row in artists:
+        digest.update(f"{row[ARTIST_ID]}\t{row[SPLIT]}\n".encode("ascii"))
+    return digest.hexdigest()
+
+
+def split_statistics(supervised: DataFrame) -> dict[str, dict[str, int]]:
+    rows = supervised.groupBy(SPLIT).agg(
+        F.count("*").alias("tracks"),
+        F.countDistinct(ARTIST_ID).alias("artists"),
+    ).collect()
+    return {
+        row[SPLIT]: {"tracks": int(row["tracks"]), "artists": int(row["artists"])}
+        for row in rows
+    }
+
+
+def content_digests(df: DataFrame) -> DataFrame:
+    value_columns = (ARTIST_ID, YEAR, *AUDIO_FEATURE_COLUMNS)
+    serialized = F.to_json(
+        F.struct(*(F.col(column) for column in value_columns)),
+        {"ignoreNullFields": "false"},
+    )
+    return df.select(TRACK_ID, F.sha2(serialized, 256).alias("digest"))
+
+
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionValidateDataset")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        validate(args.dataset.resolve(), spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
