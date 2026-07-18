@@ -49,10 +49,17 @@ def add_scalar_availability(df: DataFrame) -> DataFrame:
     )
     for name, condition in zip(SCALAR_AVAILABILITY_COLUMNS, conditions, strict=True):
         df = df.withColumn(name, condition.cast("double"))
-    return df.withColumn(
+    df = df.withColumn(
         "mode",
         F.when(F.col("has_mode") == 1.0, F.col("mode").cast("double")),
     )
+    for column in ("key_confidence", "mode_confidence", "time_signature_confidence"):
+        value = F.col(column).cast("double")
+        df = df.withColumn(
+            column,
+            F.when(_finite(column), F.least(F.greatest(value, F.lit(0.0)), F.lit(1.0))),
+        )
+    return df
 
 
 def add_key_circular_features(df: DataFrame) -> DataFrame:
