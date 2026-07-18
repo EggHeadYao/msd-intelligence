@@ -58,6 +58,11 @@ class LogisticRanker:
         )
 
     def score(self, features: Mapping[str, float]) -> float:
+        """Return the raw LR margin used for ranking."""
+        return self.raw_margin(features)
+
+    def raw_margin(self, features: Mapping[str, float]) -> float:
+        """Compute ``w*x+b`` after applying the frozen feature scaler."""
         missing = [name for name in self.feature_order if name not in features]
         if missing:
             raise ValueError(f"ranker features missing: {missing}")
@@ -69,10 +74,15 @@ class LogisticRanker:
             if not math.isfinite(value):
                 raise ValueError(f"ranker feature {name} is not finite")
             logit += coefficient * ((value - mean) / std)
-        if logit >= 0.0:
-            return 1.0 / (1.0 + math.exp(-logit))
-        exp_logit = math.exp(logit)
-        return exp_logit / (1.0 + exp_logit)
+        return logit
+
+    def display_score(self, features: Mapping[str, float]) -> float:
+        """Return a sigmoid display score; it is not a calibrated probability."""
+        margin = self.raw_margin(features)
+        if margin >= 0.0:
+            return 1.0 / (1.0 + math.exp(-margin))
+        exp_margin = math.exp(margin)
+        return exp_margin / (1.0 + exp_margin)
 
 
 def _floats(values: Sequence[object]) -> tuple[float, ...]:
