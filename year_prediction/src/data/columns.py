@@ -38,3 +38,44 @@ AUDIO_SCALAR_COLUMNS = (
 )
 
 
+def _indexed_columns(prefix: str, statistics: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        f"{prefix}_{statistic}_{index}"
+        for statistic in statistics
+        for index in range(12)
+    )
+
+
+PITCH_COLUMNS = _indexed_columns("pitch", ("mean", "std", "min", "max"))
+TIMBRE_COLUMNS = _indexed_columns("timbre", ("mean", "std", "min", "max"))
+SEGMENT_LOUDNESS_COLUMNS = (
+    "loudness_mean",
+    "loudness_std",
+    "loudness_min",
+    "loudness_max",
+)
+SEGMENT_FLAG_COLUMN = "has_segments"
+
+AUDIO_FEATURE_COLUMNS = (
+    *AUDIO_SCALAR_COLUMNS,
+    *PITCH_COLUMNS,
+    *TIMBRE_COLUMNS,
+    *SEGMENT_LOUDNESS_COLUMNS,
+    SEGMENT_FLAG_COLUMN,
+)
+AUDIO_INPUT_COLUMNS = (TRACK_ID, *AUDIO_FEATURE_COLUMNS)
+SUPERVISED_COLUMNS = (
+    TRACK_ID,
+    ARTIST_ID,
+    YEAR,
+    *AUDIO_FEATURE_COLUMNS,
+    SPLIT,
+)
+
+AUDIO_TYPE_NAMES = {
+    **{column: "double" for column in AUDIO_FEATURE_COLUMNS},
+    "key": "int",
+    "mode": "int",
+    "time_signature": "int",
+    SEGMENT_FLAG_COLUMN: "bigint",
+}
