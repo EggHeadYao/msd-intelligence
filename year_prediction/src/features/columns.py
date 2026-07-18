@@ -52,3 +52,33 @@ RAW_PREDICTOR_COLUMNS = (
 )
 INPUT_COLUMNS = (TRACK_ID, ARTIST_ID, YEAR, *RAW_PREDICTOR_COLUMNS, SPLIT)
 
+TRANSFORMED_CONTINUOUS_COLUMNS = (
+    "danceability",
+    "energy",
+    "loudness_clipped",
+    "tempo_log",
+    "duration_log",
+    *SEGMENT_COLUMNS,
+)
+KEY_ENCODED_COLUMNS = ("key_sin", "key_cos", "key_unknown")
+TIME_SIGNATURE_UNKNOWN_COLUMN = "time_signature_unknown"
+
+
+def time_signature_column(value: int) -> str:
+    return f"time_signature_{value}"
+
+
+def candidate_columns(time_signature_values: tuple[int, ...]) -> tuple[str, ...]:
+    return (
+        *TRANSFORMED_CONTINUOUS_COLUMNS,
+        *KEY_ENCODED_COLUMNS,
+        MODE_COLUMN,
+        HAS_SEGMENTS_COLUMN,
+        *(time_signature_column(value) for value in time_signature_values),
+        TIME_SIGNATURE_UNKNOWN_COLUMN,
+    )
+
+
+IDENTIFIER_COLUMNS = (TRACK_ID, ARTIST_ID, YEAR, NORMALIZED_YEAR)
+AUDIT_CATEGORY_COLUMNS = (KEY_COLUMN, TIME_SIGNATURE_COLUMN)
+
