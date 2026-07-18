@@ -93,6 +93,7 @@ class BfsRetriever(CandidateRetriever):
     artist_neighbors: Mapping[str, Sequence[str]]
     artist_tracks: Mapping[str, Sequence[str]]
     same_song: Callable[[str, str], bool] = _different_song
+    pair_similarity: Callable[[str, str], float | None] = _zero_similarity
     tag_similarity: Callable[[str, str], float] = _zero_similarity
     max_depth: int = 2
     per_artist_cap: int = 10
@@ -213,7 +214,7 @@ class TagRetriever(CandidateRetriever):
         per_artist_cap: int = 5,
     ) -> TagRetriever:
         """Construct lazy TF-IDF shared-tag recall from prepared datasets."""
-        from .tag_data import find_similar_artists, load_tag_data, load_tag_idf
+        from .tag_data import artist_tag_cosine, find_similar_artists, load_tag_data, load_tag_idf
 
         data = load_tag_data(songs_metadata_path, graph_edges_path)
         idf_values = load_tag_idf(tag_idf_path) if tag_idf_path else None
@@ -232,12 +233,20 @@ class TagRetriever(CandidateRetriever):
             similar_artists=neighbors,
             artist_tracks=data.artist_tracks,
             same_song=same_song,
+            pair_similarity=lambda left, right: artist_tag_cosine(data, left, right, idf_values),
             per_artist_cap=per_artist_cap,
         )
 
     @property
     def name(self) -> str:
         return self._name
+
+    def pair_score(self, left_track_id: str, right_track_id: str) -> float | None:
+        left = self.track_to_artist.get(left_track_id)
+        right = self.track_to_artist.get(right_track_id)
+        if left is None or right is None:
+            return None
+        return self.pair_similarity(left, right)
 
     def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
         root = self.track_to_artist.get(query_track_id)
