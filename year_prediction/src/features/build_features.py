@@ -71,3 +71,57 @@ def split_counts(df: DataFrame) -> dict[str, int]:
         for row in df.groupBy(SPLIT).count().collect()
     }
 
+
+def schema_types(df: DataFrame) -> dict[str, str]:
+    return {field.name: field.dataType.simpleString() for field in df.schema.fields}
+
+
+def build(args: argparse.Namespace, spark: SparkSession) -> Path:
+    dataset = args.dataset.resolve()
+    manifest_path = dataset / "manifest.json"
+    dataset_manifest = read_json(manifest_path)
+    source = spark.read.parquet(spark_path(dataset / "supervised_features.parquet"))
+    if tuple(source.columns) != INPUT_COLUMNS:
+        raise ValueError(f"Unexpected supervised input columns: {source.columns}")
+    source.persist(StorageLevel.MEMORY_AND_DISK)
+    validate_binary_columns(source)
+    counts = split_counts(source)
+    if counts != {
+        name: int(values["tracks"])
+        for name, values in dataset_manifest["counts"]["splits"].items()
+    }:
+        raise ValueError("Input split counts differ from the dataset manifest")
+
+    train = source.where(F.col(SPLIT) == TRAIN)
+    state = fit_feature_contract(
+        train,
+        quantile_error=args.quantile_error,
+        variance_threshold=args.variance_threshold,
+    )
+    engineered = build_engineered_view(transform_features(source, state), state)
+    engineered.persist(StorageLevel.MEMORY_AND_DISK)
+    row_count = engineered.count()
+    expected_rows = int(dataset_manifest["counts"]["labeled_tracks"])
+    if row_count != expected_rows:
+        raise ValueError(f"Wrong engineered row count: expected={expected_rows}, actual={row_count}")
+    linear = build_linear_view(engineered, state)
+
+
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionBuildFeatures")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        build(args, spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
