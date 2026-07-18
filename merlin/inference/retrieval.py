@@ -88,6 +88,7 @@ class BfsRetriever(CandidateRetriever):
     track_to_artist: Mapping[str, str]
     artist_neighbors: Mapping[str, Sequence[str]]
     artist_tracks: Mapping[str, Sequence[str]]
+    same_song: Callable[[str, str], bool] = _different_song
     max_depth: int = 2
     per_artist_cap: int = 10
     _name: str = "bfs"
@@ -98,6 +99,7 @@ class BfsRetriever(CandidateRetriever):
         songs_metadata_path: str,
         artist_edges_path: str,
         *,
+        same_song: Callable[[str, str], bool] = _different_song,
         max_depth: int = 2,
         per_artist_cap: int = 10,
     ) -> BfsRetriever:
@@ -109,6 +111,7 @@ class BfsRetriever(CandidateRetriever):
             track_to_artist=data.track_to_artist,
             artist_neighbors=data.artist_neighbors,
             artist_tracks=data.artist_tracks,
+            same_song=same_song,
             max_depth=max_depth,
             per_artist_cap=per_artist_cap,
         )
@@ -129,7 +132,7 @@ class BfsRetriever(CandidateRetriever):
             if distance > 0:
                 score = 1.0 / (1.0 + distance)
                 for track_id in self.artist_tracks.get(artist, ())[: self.per_artist_cap]:
-                    if track_id != query_track_id:
+                    if track_id != query_track_id and not self.same_song(query_track_id, track_id):
                         result.append(Candidate(
                             track_id=track_id,
                             sources=frozenset({self.name}),
@@ -156,6 +159,7 @@ class TagRetriever(CandidateRetriever):
         | Callable[[str], Sequence[tuple[str, float]]]
     )
     artist_tracks: Mapping[str, Sequence[str]]
+    same_song: Callable[[str, str], bool] = _different_song
     per_artist_cap: int = 5
     _name: str = "tag"
 
@@ -165,6 +169,7 @@ class TagRetriever(CandidateRetriever):
         songs_metadata_path: str,
         artist_terms_path: str,
         *,
+        same_song: Callable[[str, str], bool] = _different_song,
         artist_neighbor_limit: int = 100,
         max_term_artists: int = 5_000,
         per_artist_cap: int = 5,
@@ -186,6 +191,7 @@ class TagRetriever(CandidateRetriever):
             track_to_artist=data.track_to_artist,
             similar_artists=neighbors,
             artist_tracks=data.artist_tracks,
+            same_song=same_song,
             per_artist_cap=per_artist_cap,
         )
 
@@ -205,7 +211,7 @@ class TagRetriever(CandidateRetriever):
         )
         for artist, similarity in neighbors:
             for track_id in self.artist_tracks.get(artist, ())[: self.per_artist_cap]:
-                if track_id == query_track_id:
+                if track_id == query_track_id or self.same_song(query_track_id, track_id):
                     continue
                 result.append(Candidate(
                     track_id=track_id,
