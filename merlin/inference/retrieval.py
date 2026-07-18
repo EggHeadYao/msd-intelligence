@@ -185,15 +185,17 @@ class TagRetriever(CandidateRetriever):
         songs_metadata_path: str,
         artist_terms_path: str,
         *,
+        tag_idf_path: str | None = None,
         same_song: Callable[[str, str], bool] = _different_song,
         artist_neighbor_limit: int = 100,
         max_term_artists: int = 5_000,
         per_artist_cap: int = 5,
     ) -> TagRetriever:
         """Construct lazy TF-IDF shared-tag recall from prepared datasets."""
-        from .tag_data import find_similar_artists, load_tag_data
+        from .tag_data import find_similar_artists, load_tag_data, load_tag_idf
 
         data = load_tag_data(songs_metadata_path, artist_terms_path)
+        idf_values = load_tag_idf(tag_idf_path) if tag_idf_path else None
 
         def neighbors(artist_id: str) -> Sequence[tuple[str, float]]:
             return find_similar_artists(
@@ -201,6 +203,7 @@ class TagRetriever(CandidateRetriever):
                 artist_id,
                 artist_neighbor_limit,
                 max_term_artists=max_term_artists,
+                idf_values=idf_values,
             )
 
         return cls(
