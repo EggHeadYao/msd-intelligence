@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+import json
 import math
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -87,6 +88,7 @@ def find_similar_artists(
     top_k: int,
     *,
     max_term_artists: int = 5_000,
+    idf_values: Mapping[str, float] | None = None,
 ) -> list[tuple[str, float]]:
     """Rank artists by cosine similarity over binary TF-IDF tag vectors."""
     if top_k <= 0 or max_term_artists <= 0:
@@ -97,6 +99,11 @@ def find_similar_artists(
         return []
 
     def idf(term: str) -> float:
+        if idf_values is not None:
+            try:
+                return float(idf_values[term])
+            except KeyError as error:
+                raise ValueError(f"tag IDF artifact is missing term {term!r}") from error
         frequency = len(data.term_artists.get(term, ()))
         return math.log((1.0 + artist_count) / (1.0 + frequency)) + 1.0
 
@@ -121,3 +128,17 @@ def find_similar_artists(
         if candidate_norm > 0.0:
             scored.append((candidate, numerator / (query_norm * candidate_norm)))
     return sorted(scored, key=lambda item: (-item[1], item[0]))[:top_k]
+
+
+def load_tag_idf(path: str | Path) -> dict[str, float]:
+    """Load and validate Person A's frozen artist-term IDF artifact."""
+    with Path(path).open("r", encoding="utf-8") as stream:
+        artifact = json.load(stream)
+    if artifact.get("artifact_type") != "artist_term_idf":
+        raise ValueError("unsupported tag IDF artifact type")
+    values = {str(term): float(value) for term, value in artifact["values"].items()}
+    if not values:
+        raise ValueError("tag IDF artifact must not be empty")
+    if any(not math.isfinite(value) or value <= 0.0 for value in values.values()):
+        raise ValueError("tag IDF values must be finite and positive")
+    return values
