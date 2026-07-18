@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 import math
+from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 
@@ -52,6 +53,32 @@ def build_tag_data(
         artist_terms={key: frozenset(value) for key, value in artist_terms.items()},
         term_artists={key: frozenset(value) for key, value in term_artists.items()},
     )
+
+
+def load_tag_data(
+    songs_metadata_path: str | Path,
+    artist_terms_path: str | Path,
+) -> TagData:
+    """Load the projected song and artist-term Parquet datasets."""
+    songs = _parquet_rows(songs_metadata_path, ("track_id", "artist_id"))
+    terms = _parquet_rows(artist_terms_path, ("artist_id", "term"))
+    return build_tag_data(songs, terms)
+
+
+def _parquet_rows(
+    path: str | Path,
+    columns: tuple[str, str],
+) -> Iterable[tuple[str, str]]:
+    try:
+        import pyarrow.dataset as ds
+    except ImportError as error:
+        raise RuntimeError("loading tag Parquet data requires pyarrow") from error
+
+    dataset = ds.dataset(str(path), format="parquet")
+    for batch in dataset.to_batches(columns=list(columns)):
+        left = batch.column(0).to_pylist()
+        right = batch.column(1).to_pylist()
+        yield from zip(left, right)
 
 
 def find_similar_artists(
