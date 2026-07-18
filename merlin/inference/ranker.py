@@ -45,6 +45,35 @@ class LogisticRanker:
         )
 
     @classmethod
+    def from_artifacts(
+        cls,
+        schema_path: str | Path,
+        scaler_path: str | Path,
+        coefficients_path: str | Path,
+    ) -> "LogisticRanker":
+        """Load the formal split schema, scaler, and LR coefficient artifacts."""
+        schema = _read_json(schema_path)
+        scaler = _read_json(scaler_path)
+        model = _read_json(coefficients_path)
+        version = str(schema["feature_schema_version"])
+        order = tuple(schema["feature_order"])
+        for name, artifact in (("scaler", scaler), ("coefficients", model)):
+            if artifact.get("feature_schema_version") != version:
+                raise ValueError(f"{name} artifact schema version mismatch")
+            if tuple(artifact.get("feature_order", ())) != order:
+                raise ValueError(f"{name} artifact feature order mismatch")
+        if model.get("model_type") != "logistic_regression":
+            raise ValueError("unsupported ranker model_type")
+        return cls(
+            feature_schema_version=version,
+            feature_order=order,
+            means=_floats(scaler["means"]),
+            stds=_floats(scaler["stds"]),
+            coefficients=_floats(model["coefficients"]),
+            intercept=float(model["intercept"]),
+        )
+
+    @classmethod
     def mock(cls, feature_schema_version: str, feature_order: Sequence[str]) -> "LogisticRanker":
         """Create an equal-weight artifact for pipeline integration tests."""
         size = len(feature_order)
@@ -87,3 +116,8 @@ class LogisticRanker:
 
 def _floats(values: Sequence[object]) -> tuple[float, ...]:
     return tuple(float(value) for value in values)
+
+
+def _read_json(path: str | Path) -> dict[str, object]:
+    with Path(path).open("r", encoding="utf-8") as stream:
+        return json.load(stream)
