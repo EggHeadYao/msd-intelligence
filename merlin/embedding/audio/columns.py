@@ -32,15 +32,15 @@ LOG_CONTINUOUS_COLUMNS = ("tempo_log", "duration_log")  # Derived clipped-log co
 CLIPPED_CONTINUOUS_COLUMNS = ("loudness_clipped",)  # Derived clipped loudness column.
 PASSTHROUGH_CONTINUOUS_COLUMNS = (
     "key_confidence", "mode_confidence", "time_signature_confidence",
-    "end_of_fade_in", "start_of_fade_out",
 )
+FADE_RATIO_COLUMNS = ("fade_in_ratio", "fade_out_ratio")
 PASSTHROUGH_BINARY_COLUMNS = (MODE_COLUMN,)
 TIME_SIGNATURE_ONE_HOT_PREFIX = "time_signature_"  # Prefix for meter one-hot columns.
 TIME_SIGNATURE_VALUES = (3, 4, 5, 6, 7)
 TIME_SIGNATURE_UNKNOWN_COLUMN = "time_signature_unknown"
 SCALAR_AVAILABILITY_COLUMNS = (
     "has_loudness", "has_tempo", "has_duration", "has_key", "has_mode",
-    "has_time_signature",
+    "has_time_signature", "has_fade_in_ratio", "has_fade_out_ratio",
 )
 
 
@@ -82,6 +82,7 @@ def build_feature_columns(time_signature_columns: tuple[str, ...]) -> tuple[str,
         *LOG_CONTINUOUS_COLUMNS,
         *CLIPPED_CONTINUOUS_COLUMNS,
         *PASSTHROUGH_CONTINUOUS_COLUMNS,
+        *FADE_RATIO_COLUMNS,
         *PASSTHROUGH_BINARY_COLUMNS,
         *time_signature_columns,
         *SCALAR_AVAILABILITY_COLUMNS,

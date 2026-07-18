@@ -9,6 +9,7 @@ from pyspark.sql import functions as F
 
 from columns import (
     CLIPPED_CONTINUOUS_COLUMNS,
+    FADE_RATIO_COLUMNS,
     KEY_CIRCULAR_COLUMNS,
     KEY_COLUMN,
     LOG_CONTINUOUS_COLUMNS,
@@ -46,6 +47,8 @@ def add_scalar_availability(df: DataFrame) -> DataFrame:
         key_valid,
         mode_valid,
         meter_valid,
+        _finite("duration") & (F.col("duration") > 0) & _finite("end_of_fade_in"),
+        _finite("duration") & (F.col("duration") > 0) & _finite("start_of_fade_out"),
     )
     for name, condition in zip(SCALAR_AVAILABILITY_COLUMNS, conditions, strict=True):
         df = df.withColumn(name, condition.cast("double"))
@@ -59,6 +62,19 @@ def add_scalar_availability(df: DataFrame) -> DataFrame:
             column,
             F.when(_finite(column), F.least(F.greatest(value, F.lit(0.0)), F.lit(1.0))),
         )
+    return df
+
+
+def add_fade_ratios(df: DataFrame) -> DataFrame:
+    duration = F.col("duration").cast("double")
+    ratios = (
+        F.col("end_of_fade_in").cast("double") / duration,
+        (duration - F.col("start_of_fade_out").cast("double")) / duration,
+    )
+    masks = ("has_fade_in_ratio", "has_fade_out_ratio")
+    for column, ratio, mask in zip(FADE_RATIO_COLUMNS, ratios, masks, strict=True):
+        clipped = F.least(F.greatest(ratio, F.lit(0.0)), F.lit(1.0))
+        df = df.withColumn(column, F.when(F.col(mask) == 1.0, clipped))
     return df
 
 
@@ -157,6 +173,7 @@ def fill_scalar_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, floa
         *LOG_CONTINUOUS_COLUMNS,
         *CLIPPED_CONTINUOUS_COLUMNS,
         *PASSTHROUGH_CONTINUOUS_COLUMNS,
+        *FADE_RATIO_COLUMNS,
         *PASSTHROUGH_BINARY_COLUMNS,
     )
     means_row = df.agg(
@@ -197,6 +214,7 @@ def drop_zero_variance_features(
 def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...], dict[str, Any]]:
     df, segment_medians = fill_segment_missing_values(df)
     df = add_scalar_availability(df)
+    df = add_fade_ratios(df)
     df = add_key_circular_features(df)
     df, time_values, time_columns = add_time_signature_one_hot(df)
     df, clip_bounds = add_log_clipped_features(df)
