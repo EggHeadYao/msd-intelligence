@@ -63,6 +63,46 @@ class RidgeMathTest(unittest.TestCase):
             updated_intercept, expected["updated_intercept"], places=12
         )
 
+    def test_analytic_gradient_matches_finite_difference(self) -> None:
+        fixture = self.fixture
+        analytic = ridge_gradient(
+            fixture["features"],
+            fixture["labels"],
+            fixture["weights"],
+            fixture["intercept"],
+            fixture["l2"],
+        )
+        numeric = finite_difference_gradient(
+            fixture["features"],
+            fixture["labels"],
+            fixture["weights"],
+            fixture["intercept"],
+            fixture["l2"],
+            fixture["finite_difference_epsilon"],
+        )
+        error = relative_error([*analytic[0], analytic[1]], [*numeric[0], numeric[1]])
+        self.assertLess(error, fixture["finite_difference_tolerance"])
+
+    def test_intercept_is_not_regularized(self) -> None:
+        fixture = self.fixture
+        without_l2 = ridge_gradient(
+            fixture["features"],
+            fixture["labels"],
+            fixture["weights"],
+            fixture["intercept"],
+            0.0,
+        )
+        with_l2 = ridge_gradient(
+            fixture["features"],
+            fixture["labels"],
+            fixture["weights"],
+            fixture["intercept"],
+            fixture["l2"],
+        )
+        self.assertAlmostEqual(without_l2[1], with_l2[1], places=12)
+        expected_delta = [2.0 * fixture["l2"] * weight for weight in fixture["weights"]]
+        actual_delta = [right - left for left, right in zip(without_l2[0], with_l2[0])]
+        self.assertLess(relative_error(actual_delta, expected_delta), 1e-12)
 
 
 if __name__ == "__main__":
