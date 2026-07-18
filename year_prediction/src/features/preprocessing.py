@@ -52,3 +52,49 @@ def finite_value(column: str) -> Column:
         value,
     )
 
+
+def fit_clip_bounds(df: DataFrame, relative_error: float) -> dict[str, list[float]]:
+    expressions = []
+    for column in CLIP_COLUMNS:
+        valid = finite_value(column)
+        if column == "tempo":
+            valid = F.when(valid > 0.0, valid)
+        expressions.append(valid.alias(column))
+    quantile_rows = df.select(*expressions).approxQuantile(
+        list(CLIP_COLUMNS), [0.01, 0.99], relative_error
+    )
+    bounds: dict[str, list[float]] = {}
+    for column, quantiles in zip(CLIP_COLUMNS, quantile_rows):
+        if len(quantiles) != 2 or not all(math.isfinite(value) for value in quantiles):
+            raise ValueError(f"Cannot fit clipping bounds for {column}")
+        bounds[column] = [float(quantiles[0]), float(quantiles[1])]
+    return bounds
+
+
+def fit_segment_means(df: DataFrame) -> dict[str, float]:
+    source = df.where(F.col(HAS_SEGMENTS_COLUMN) == 1)
+    row = source.agg(*(F.avg(finite_value(column)).alias(column) for column in SEGMENT_COLUMNS)).first()
+    means = {}
+    for column in SEGMENT_COLUMNS:
+        value = row[column]
+        if value is None or not math.isfinite(float(value)):
+            raise ValueError(f"Cannot fit segment mean for {column}")
+        means[column] = float(value)
+    return means
+
+
+def fit_time_signature_values(df: DataFrame) -> tuple[int, ...]:
+    rows = (
+        df.select(F.col(TIME_SIGNATURE_COLUMN).cast("int").alias(TIME_SIGNATURE_COLUMN))
+        .where(F.col(TIME_SIGNATURE_COLUMN) > 0)
+        .distinct()
+        .orderBy(TIME_SIGNATURE_COLUMN)
+        .collect()
+    )
+    return tuple(int(row[TIME_SIGNATURE_COLUMN]) for row in rows)
+
+
+def clipped(value: Column, low: float, high: float) -> Column:
+    return F.when(value.isNotNull(), F.least(F.greatest(value, F.lit(low)), F.lit(high)))
+
+
