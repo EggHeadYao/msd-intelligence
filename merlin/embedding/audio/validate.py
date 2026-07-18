@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -67,8 +68,10 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "merlin_array_feature_count",
         "merlin_raw_view_count",
         "row_count",
+        "input_schema_sha256",
         "feature_columns",
         "feature_count",
+        "feature_order_sha256",
         "embedding_format",
         "selected_k",
         "explained_variance",
@@ -89,6 +92,11 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
     require(selected_k == 128, "C1 embedding dimension must be 128")
     require(len(metadata["feature_columns"]) == int(metadata["feature_count"]), "feature_count mismatch")
+    schema_hash = metadata["input_schema_sha256"]
+    require(isinstance(schema_hash, str) and len(schema_hash) == 64, "invalid input schema hash")
+    feature_text = "\n".join(metadata["feature_columns"])
+    expected_hash = hashlib.sha256(feature_text.encode("utf-8")).hexdigest()
+    require(metadata["feature_order_sha256"] == expected_hash, "feature order hash mismatch")
     require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
     require(len(metadata["scaler_mean"]) == int(metadata["feature_count"]), "scaler_mean length mismatch")
     require(len(metadata["scaler_std"]) == int(metadata["feature_count"]), "scaler_std length mismatch")
