@@ -116,13 +116,23 @@ def add_normalized_embedding(df: DataFrame, k: int) -> DataFrame:
         )
         .withColumn(
             EMBEDDING_COLUMN,
-            F.transform(
-                F.col(values_col),
-                lambda x: F.when(F.col(norm_col) > 0.0, x / F.col(norm_col)).otherwise(F.lit(0.0)),
+            F.when(
+                F.col(norm_col) > 0.0,
+                F.transform(F.col(values_col), lambda x: (x / F.col(norm_col)).cast("float")),
             ),
         )
         .drop(values_col, norm_col)
     )
+
+
+def require_valid_embeddings(df: DataFrame) -> None:
+    values = F.col(EMBEDDING_COLUMN)
+    invalid = df.where(
+        values.isNull()
+        | F.exists(values, lambda x: x.isNull() | F.isnan(x) | (F.abs(x) == float("inf")))
+    ).limit(1).count()
+    if invalid:
+        raise ValueError("C1 PCA produced a zero-norm or non-finite embedding")
 
 
 def vector_to_list(vector: Vector) -> list[float]:
@@ -169,6 +179,7 @@ def main() -> None:
 
         projected = pca_model.transform(scaled).select(TRACK_ID_COLUMN, PCA_FEATURES_COLUMN)
         embeddings = add_normalized_embedding(projected, selected_k).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+        require_valid_embeddings(embeddings)
 
         args.output.mkdir(parents=True, exist_ok=True)
         embeddings.write.mode("overwrite").parquet(spark_path(args.output / "song_embeddings_audio.parquet"))
@@ -188,7 +199,7 @@ def main() -> None:
             "feature_columns": list(feature_columns),
             "feature_count": len(feature_columns),
             "embedding_column": EMBEDDING_COLUMN,
-            "embedding_format": "array<double>",
+            "embedding_format": "array<float32>",
             "target_variance": args.target_variance,
             "fixed_k": args.fixed_k,
             "limit": args.limit,
