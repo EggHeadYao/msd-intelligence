@@ -38,6 +38,10 @@ PASSTHROUGH_BINARY_COLUMNS = (MODE_COLUMN,)
 TIME_SIGNATURE_ONE_HOT_PREFIX = "time_signature_"  # Prefix for meter one-hot columns.
 TIME_SIGNATURE_VALUES = (3, 4, 5, 6, 7)
 TIME_SIGNATURE_UNKNOWN_COLUMN = "time_signature_unknown"
+SCALAR_AVAILABILITY_COLUMNS = (
+    "has_loudness", "has_tempo", "has_duration", "has_key", "has_mode",
+    "has_time_signature",
+)
 
 
 def indexed_feature_columns(
@@ -80,6 +84,7 @@ def build_feature_columns(time_signature_columns: tuple[str, ...]) -> tuple[str,
         *PASSTHROUGH_CONTINUOUS_COLUMNS,
         *PASSTHROUGH_BINARY_COLUMNS,
         *time_signature_columns,
+        *SCALAR_AVAILABILITY_COLUMNS,
         *SEGMENT_FEATURE_COLUMNS,
     )
 

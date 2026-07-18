@@ -12,6 +12,7 @@ from columns import (
     KEY_CIRCULAR_COLUMNS,
     KEY_COLUMN,
     LOG_CONTINUOUS_COLUMNS,
+    SCALAR_AVAILABILITY_COLUMNS,
     SEGMENT_FEATURE_COLUMNS,
     TIME_SIGNATURE_COLUMN,
     TIME_SIGNATURE_UNKNOWN_COLUMN,
@@ -19,6 +20,32 @@ from columns import (
     build_feature_columns,
     time_signature_one_hot_column,
 )
+
+
+def _finite(column: str) -> Column:
+    value = F.col(column).cast("double")
+    return value.isNotNull() & ~F.isnan(value) & (F.abs(value) != float("inf"))
+
+
+def add_scalar_availability(df: DataFrame) -> DataFrame:
+    key_valid = _finite(KEY_COLUMN) & F.col(KEY_COLUMN).cast("int").between(0, 11)
+    key_valid = key_valid & _finite("key_confidence") & (F.col("key_confidence") > 0)
+    mode_valid = F.col("mode").cast("int").isin(0, 1)
+    mode_valid = mode_valid & _finite("mode_confidence") & (F.col("mode_confidence") > 0)
+    meter_valid = F.col(TIME_SIGNATURE_COLUMN).cast("int").isin(*TIME_SIGNATURE_VALUES)
+    meter_valid = meter_valid & _finite("time_signature_confidence")
+    meter_valid = meter_valid & (F.col("time_signature_confidence") > 0)
+    conditions = (
+        _finite("loudness"),
+        _finite("tempo") & (F.col("tempo") > 0),
+        _finite("duration") & (F.col("duration") > 0),
+        key_valid,
+        mode_valid,
+        meter_valid,
+    )
+    for name, condition in zip(SCALAR_AVAILABILITY_COLUMNS, conditions, strict=True):
+        df = df.withColumn(name, condition.cast("double"))
+    return df
 
 
 def add_key_circular_features(df: DataFrame) -> DataFrame:
@@ -121,6 +148,7 @@ def drop_zero_variance_features(
 
 def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...], dict[str, Any]]:
     df, segment_means = fill_segment_missing_values(df)
+    df = add_scalar_availability(df)
     df = add_key_circular_features(df)
     df, time_values, time_columns = add_time_signature_one_hot(df)
     df, clip_bounds = add_log_clipped_features(df)
