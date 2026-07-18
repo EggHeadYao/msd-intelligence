@@ -14,11 +14,6 @@ class _Features:
         return {"score": candidate.recall_scores["audio"]}
 
 
-class _NoRedundancy:
-    def similarity(self, left_track_id, right_track_id):
-        return 0.0
-
-
 class PipelineTest(unittest.TestCase):
     def test_recommend_excludes_query_and_sorts_candidates(self):
         audio = VectorRetriever(
@@ -31,8 +26,6 @@ class PipelineTest(unittest.TestCase):
             retriever_limits={"audio": 3},
             feature_computer=_Features(),
             ranker=ranker,
-            redundancy=_NoRedundancy(),
-            ranker_limit=2,
             final_limit=2,
         )
 
