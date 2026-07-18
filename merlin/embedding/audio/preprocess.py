@@ -9,7 +9,6 @@ from pyspark.sql import functions as F
 
 from columns import (
     CLIPPED_CONTINUOUS_COLUMNS,
-    HAS_SEGMENTS_COLUMN,
     KEY_CIRCULAR_COLUMNS,
     KEY_COLUMN,
     LOG_CONTINUOUS_COLUMNS,
@@ -71,7 +70,7 @@ def add_log_clipped_features(df: DataFrame) -> tuple[DataFrame, dict[str, tuple[
 
 
 def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
-    means_row = df.where(F.col(HAS_SEGMENTS_COLUMN) == 1).agg(
+    means_row = df.agg(
         *(F.avg(F.col(column).cast("double")).alias(column) for column in SEGMENT_FEATURE_COLUMNS)
     ).first()
     means = {}
@@ -82,8 +81,10 @@ def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, flo
     expressions = []
     for column in df.columns:
         if column in means:
-            valid = (F.col(HAS_SEGMENTS_COLUMN) == 1) & F.col(column).isNotNull()
-            filled = F.when(valid, F.col(column).cast("double")).otherwise(F.lit(means[column]))
+            valid = F.col(column).isNotNull() & ~F.isnan(F.col(column).cast("double"))
+            filled = F.when(valid, F.col(column).cast("double")).otherwise(
+                F.lit(means[column])
+            )
             expressions.append(filled.alias(column))
         else:
             expressions.append(F.col(column))
