@@ -192,6 +192,78 @@ def build(args: argparse.Namespace, spark: SparkSession) -> None:
     omitted = [row[ARTIST_ID] for row in omitted_rows]
     require_equal(len(omitted), EXPECTED_OFFICIAL_OMISSIONS, "labeled artists omitted by official files")
 
+    test_marker = official_test.select(ARTIST_ID).withColumn("_official_test", F.lit(True))
+    hash_key = F.concat_ws(":", F.lit(str(args.split_seed)), F.col(ARTIST_ID))
+    validation_bucket_limit = args.validation_percent * 100
+    artist_assignments = (
+        labeled_artists.join(test_marker, ARTIST_ID, "left")
+        .withColumn(
+            SPLIT,
+            F.when(F.col("_official_test"), F.lit(TEST))
+            .when(F.pmod(F.xxhash64(hash_key), F.lit(10_000)) < validation_bucket_limit, F.lit(VALIDATION))
+            .otherwise(F.lit(TRAIN)),
+        )
+        .select(ARTIST_ID, SPLIT)
+        .persist(StorageLevel.MEMORY_AND_DISK)
+    )
+
+    supervised = (
+        labeled_metadata.join(audio, TRACK_ID, "inner")
+        .join(artist_assignments, ARTIST_ID, "inner")
+        .select(TRACK_ID, ARTIST_ID, YEAR, *AUDIO_FEATURE_COLUMNS, SPLIT)
+        .persist(StorageLevel.MEMORY_AND_DISK)
+    )
+    require_equal(supervised.count(), EXPECTED_LABELED_TRACKS, "supervised rows")
+    stats = split_statistics(supervised)
+    require_equal(stats[TEST]["tracks"], EXPECTED_OFFICIAL_TEST_TRACKS, "official test tracks")
+    require_equal(stats[TEST]["artists"], EXPECTED_OFFICIAL_TEST_ARTISTS, "official test artists in output")
+
+    output = args.output.resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    supervised.repartition(SPLIT).write.mode("overwrite").partitionBy(SPLIT).parquet(
+        spark_path(output / "supervised_features.parquet")
+    )
+    supervised.select(TRACK_ID, ARTIST_ID, SPLIT).repartition(SPLIT).write.mode("overwrite").partitionBy(SPLIT).parquet(
+        spark_path(output / "split_assignments.parquet")
+    )
+
+    train_sha = sha256_file(args.train_artists)
+    test_sha = sha256_file(args.test_artists)
+    manifest = {
+        "format_version": 1,
+        "year_contract": {"minimum": MIN_YEAR, "maximum": MAX_YEAR, "unlabeled_value": 0},
+        "config": {
+            "split_seed": args.split_seed,
+            "validation_percent": args.validation_percent,
+            "validation_hash": "pmod(xxhash64(seed + ':' + artist_id), 10000)",
+        },
+        "sources": {
+            "metadata": {"path": str(args.metadata.resolve()), **parquet_snapshot(args.metadata)},
+            "audio": {"path": str(args.audio.resolve()), **parquet_snapshot(args.audio)},
+            "official_split_commit": OFFICIAL_SPLIT_COMMIT,
+            "official_train": {"path": str(args.train_artists.resolve()), "sha256": train_sha},
+            "official_test": {"path": str(args.test_artists.resolve()), "sha256": test_sha},
+        },
+        "counts": {
+            "input_tracks": EXPECTED_INPUT_ROWS,
+            "labeled_tracks": EXPECTED_LABELED_TRACKS,
+            "unlabeled_tracks": EXPECTED_UNLABELED_TRACKS,
+            "labeled_artists": EXPECTED_LABELED_ARTISTS,
+            "official_split_omitted_artists": omitted,
+            "splits": stats,
+        },
+        "schema": {
+            "identifiers": {TRACK_ID: "string", ARTIST_ID: "string"},
+            "label": {YEAR: "int"},
+            "predictors": AUDIO_TYPE_NAMES,
+            "partition": {SPLIT: "string"},
+        },
+        "artist_assignment_sha256": assignment_sha256(artist_assignments),
+    }
+    with (output / "manifest.json").open("w", encoding="ascii") as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
 
 
 def main() -> None:
