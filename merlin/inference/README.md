@@ -84,3 +84,24 @@ The mapping must contain exactly one unique track per contiguous row ID from
 zero. Its row order must match the order in which vectors were added to FAISS.
 The existing 71D Audio index and old-graph artifacts are historical v1 inputs;
 they may be used for adapter tests but must not be used for final evaluation.
+
+## Cold Audio-only queries
+
+Cold queries use a separate path and must provide a C1-compatible 128D audio
+embedding. They never invoke Graph, BFS, Tag, LR, or MMR:
+
+```python
+from merlin.inference import ColdAudioPipeline
+from merlin.inference.loaders import load_audio_index
+
+cold = ColdAudioPipeline(load_audio_index(), track_to_song)
+recommendations, audit = cold.recommend_with_audit(
+    query_embedding,
+    query_song_id="optional-song-id",
+)
+```
+
+The adapter converts to float32, rejects non-finite and zero-norm vectors, L2
+normalizes, overfetches 3001 Audio neighbors, filters the query/same-song items,
+keeps at most 1000 candidates, and returns the top 20 by C1 cosine. Transforming
+raw 563D features into this embedding remains a C1 artifact responsibility.
