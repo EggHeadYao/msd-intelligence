@@ -125,6 +125,73 @@ def require_equal(actual: int, expected: int, label: str) -> None:
         raise ValueError(f"{label}: expected {expected}, got {actual}")
 
 
+def build(args: argparse.Namespace, spark: SparkSession) -> None:
+    if not 0 < args.validation_percent < 100:
+        raise ValueError("--validation-percent must be between 1 and 99")
+    require_equal(int(sha256_file(args.train_artists) == OFFICIAL_TRAIN_SHA256), 1, "train split checksum")
+    require_equal(int(sha256_file(args.test_artists) == OFFICIAL_TEST_SHA256), 1, "test split checksum")
+
+    metadata = spark.read.parquet(spark_path(args.metadata)).select(TRACK_ID, ARTIST_ID, YEAR)
+    audio_raw = spark.read.parquet(spark_path(args.audio))
+    assert_schema(audio_raw, {TRACK_ID: "string", **AUDIO_TYPE_NAMES})
+    audio = audio_raw.select(*AUDIO_INPUT_COLUMNS)
+    assert_schema(metadata, {TRACK_ID: "string", ARTIST_ID: "string", YEAR: "int"})
+    metadata.persist(StorageLevel.MEMORY_AND_DISK)
+    audio.persist(StorageLevel.MEMORY_AND_DISK)
+
+    valid_year = F.col(YEAR).between(MIN_YEAR, MAX_YEAR)
+    invalid_year = F.col(YEAR).isNull() | (F.col(YEAR) < 0) | ((F.col(YEAR) > 0) & ~valid_year)
+    metadata_stats = metadata.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.sum(F.when(F.col(TRACK_ID).isNull() | (F.col(TRACK_ID) == ""), 1).otherwise(0)).alias("bad_track_ids"),
+        F.sum(F.when(F.col(YEAR) == 0, 1).otherwise(0)).alias("unlabeled"),
+        F.sum(F.when(valid_year, 1).otherwise(0)).alias("labeled"),
+        F.sum(F.when(invalid_year, 1).otherwise(0)).alias("invalid_years"),
+        F.countDistinct(F.when(valid_year, F.col(ARTIST_ID))).alias("labeled_artists"),
+    ).first()
+    audio_stats = audio.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.sum(F.when(F.col(TRACK_ID).isNull() | (F.col(TRACK_ID) == ""), 1).otherwise(0)).alias("bad_track_ids"),
+    ).first()
+    for row, label in ((metadata_stats, "metadata"), (audio_stats, "audio")):
+        require_equal(int(row["rows"]), EXPECTED_INPUT_ROWS, f"{label} rows")
+        require_equal(int(row["tracks"]), EXPECTED_INPUT_ROWS, f"{label} unique tracks")
+        require_equal(int(row["bad_track_ids"]), 0, f"{label} invalid track IDs")
+    require_equal(int(metadata_stats["unlabeled"]), EXPECTED_UNLABELED_TRACKS, "unlabeled tracks")
+    require_equal(int(metadata_stats["labeled"]), EXPECTED_LABELED_TRACKS, "labeled tracks")
+    require_equal(int(metadata_stats["invalid_years"]), 0, "invalid years")
+    require_equal(int(metadata_stats["labeled_artists"]), EXPECTED_LABELED_ARTISTS, "labeled artists")
+    input_intersection = metadata.select(TRACK_ID).join(
+        audio.select(TRACK_ID), TRACK_ID, "inner"
+    ).count()
+    require_equal(input_intersection, EXPECTED_INPUT_ROWS, "input track intersection")
+
+    labeled_metadata = metadata.where(valid_year).select(TRACK_ID, ARTIST_ID, YEAR)
+    bad_artists = labeled_metadata.where(F.col(ARTIST_ID).isNull() | (F.col(ARTIST_ID) == "")).count()
+    require_equal(bad_artists, 0, "invalid labeled artist IDs")
+    labeled_artists = labeled_metadata.select(ARTIST_ID).distinct().persist(StorageLevel.MEMORY_AND_DISK)
+
+    official_train = read_artist_ids(spark, args.train_artists).persist(StorageLevel.MEMORY_AND_DISK)
+    official_test = read_artist_ids(spark, args.test_artists).persist(StorageLevel.MEMORY_AND_DISK)
+    require_equal(official_train.count(), EXPECTED_OFFICIAL_TRAIN_ARTISTS, "official train artists")
+    require_equal(official_train.distinct().count(), EXPECTED_OFFICIAL_TRAIN_ARTISTS, "distinct official train artists")
+    require_equal(official_test.count(), EXPECTED_OFFICIAL_TEST_ARTISTS, "official test artists")
+    require_equal(official_test.distinct().count(), EXPECTED_OFFICIAL_TEST_ARTISTS, "distinct official test artists")
+    require_equal(official_train.join(official_test, ARTIST_ID, "inner").count(), 0, "official split overlap")
+
+    official_union = official_train.union(official_test).distinct()
+    unknown_official = official_union.join(
+        labeled_artists, ARTIST_ID, "left_anti"
+    ).count()
+    require_equal(unknown_official, 0, "official artists absent from labeled data")
+    omitted_rows = labeled_artists.join(
+        official_union, ARTIST_ID, "left_anti"
+    ).orderBy(ARTIST_ID).collect()
+    omitted = [row[ARTIST_ID] for row in omitted_rows]
+    require_equal(len(omitted), EXPECTED_OFFICIAL_OMISSIONS, "labeled artists omitted by official files")
+
 
 
 def main() -> None:
