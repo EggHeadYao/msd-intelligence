@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Callable, Mapping
+
+from .feature_schema import RANKER_V2_SCHEMA_VERSION
+from .types import Candidate
 
 
 PairLookup = Callable[[str, str], float | None]
@@ -35,3 +39,56 @@ class FeatureFillValues:
 
     def get(self, feature_name: str) -> float:
         return float(self.values.get(feature_name, 0.0))
+
+
+@dataclass(frozen=True, slots=True)
+class RankerV2FeatureComputer:
+    """Compute v2 features for every candidate in the canonical union."""
+
+    tracks: Mapping[str, TrackMetadataV2]
+    signals: PairSignalLookups
+    fills: FeatureFillValues = field(default_factory=FeatureFillValues)
+    schema_version: str = RANKER_V2_SCHEMA_VERSION
+
+    def compute(self, query_track_id: str, candidate: Candidate) -> Mapping[str, float]:
+        candidate_id = candidate.track_id
+        audio_raw = _finite(self.signals.audio(query_track_id, candidate_id))
+        graph_raw = _finite(self.signals.graph(query_track_id, candidate_id))
+        bfs_raw = _finite(self.signals.bfs(query_track_id, candidate_id))
+        tags_raw = _finite(self.signals.tags(query_track_id, candidate_id))
+        audio = self._fill("cos_audio", audio_raw)
+        graph = self._fill("cos_graph", graph_raw)
+        bfs = self._fill("bfs_score", bfs_raw)
+        tags = self._fill("tag_tfidf_cosine", tags_raw)
+
+        query = self.tracks.get(query_track_id, TrackMetadataV2())
+        other = self.tracks.get(candidate_id, TrackMetadataV2())
+        has_release = query.release_id is not None and other.release_id is not None
+        has_year = query.year is not None and other.year is not None
+        year_gap_raw = float(abs(query.year - other.year)) if has_year else None
+        year_gap = self._fill("year_gap", year_gap_raw)
+        return {
+            "cos_audio": audio,
+            "cos_graph": graph,
+            "has_graph": float(graph_raw is not None),
+            "bfs_score": bfs,
+            "has_bfs": float(bfs_raw is not None),
+            "tag_tfidf_cosine": tags,
+            "has_tags": float(tags_raw is not None),
+            "same_release": float(has_release and query.release_id == other.release_id),
+            "has_release": float(has_release),
+            "year_gap": year_gap,
+            "has_year": float(has_year),
+            "audio_tag_interaction": audio * tags,
+            "graph_bfs_interaction": graph * bfs,
+        }
+
+    def _fill(self, name: str, value: float | None) -> float:
+        return self.fills.get(name) if value is None else value
+
+
+def _finite(value: float | None) -> float | None:
+    if value is None:
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
