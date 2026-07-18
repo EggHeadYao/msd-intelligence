@@ -20,6 +20,35 @@ class TagData:
     term_artists: Mapping[str, frozenset[str]]
 
 
+def artist_tag_cosine(
+    data: TagData,
+    left_artist: str,
+    right_artist: str,
+    idf_values: Mapping[str, float] | None = None,
+) -> float | None:
+    """Compute exact binary TF-IDF cosine for one artist pair."""
+    left = data.artist_terms.get(left_artist)
+    right = data.artist_terms.get(right_artist)
+    if not left or not right or not data.artist_terms:
+        return None
+
+    def idf(term: str) -> float:
+        if idf_values is not None:
+            try:
+                return float(idf_values[term])
+            except KeyError as error:
+                raise ValueError(f"tag IDF artifact is missing term {term!r}") from error
+        frequency = len(data.term_artists.get(term, ()))
+        return math.log((1.0 + len(data.artist_terms)) / (1.0 + frequency)) + 1.0
+
+    numerator = sum(idf(term) ** 2 for term in left & right)
+    left_norm = math.sqrt(sum(idf(term) ** 2 for term in left))
+    right_norm = math.sqrt(sum(idf(term) ** 2 for term in right))
+    if left_norm <= 0.0 or right_norm <= 0.0:
+        return None
+    return numerator / (left_norm * right_norm)
+
+
 def build_tag_data(
     songs: Iterable[tuple[str, str]],
     terms: Iterable[tuple[str, str]],
