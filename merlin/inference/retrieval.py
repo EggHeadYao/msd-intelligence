@@ -10,6 +10,10 @@ from .interfaces import CandidateRetriever
 from .types import Candidate
 
 
+def _different_song(_left: str, _right: str) -> bool:
+    return False
+
+
 def merge_candidates(groups: Sequence[Sequence[Candidate]], query_track_id: str) -> list[Candidate]:
     """Union candidates by track ID while preserving all recall evidence."""
     merged: dict[str, dict[str, object]] = {}
@@ -45,24 +49,36 @@ class VectorRetriever(CandidateRetriever):
 
     _name: str
     search: Callable[[str, int], Sequence[tuple[str, float]]]
+    same_song: Callable[[str, str], bool] = _different_song
+    overfetch_factor: int = 3
 
     @property
     def name(self) -> str:
         return self._name
 
     def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
-        return [
-            Candidate(
+        if limit <= 0 or self.overfetch_factor <= 0:
+            raise ValueError("vector recall limits must be positive")
+        result: list[Candidate] = []
+        seen: set[str] = set()
+        neighbors = self.search(query_track_id, self.overfetch_factor * limit + 1)
+        for track_id, score in neighbors:
+            if (
+                track_id == query_track_id
+                or track_id in seen
+                or self.same_song(query_track_id, track_id)
+            ):
+                continue
+            seen.add(track_id)
+            result.append(Candidate(
                 track_id=track_id,
                 sources=frozenset({self.name}),
                 recall_scores={self.name: float(score)},
-                source_ranks={self.name: rank},
-            )
-            for rank, (track_id, score) in enumerate(
-                self.search(query_track_id, limit + 1), start=1
-            )
-            if track_id != query_track_id
-        ][:limit]
+                source_ranks={self.name: len(result) + 1},
+            ))
+            if len(result) == limit:
+                break
+        return result
 
 
 @dataclass(slots=True)
