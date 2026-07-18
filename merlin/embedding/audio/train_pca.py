@@ -30,6 +30,7 @@ SCALED_FEATURES_COLUMN = "scaled_features"
 PCA_FEATURES_COLUMN = "pca_features"
 EMBEDDING_COLUMN = "embedding"
 PCA_DIMENSION = 128
+MODEL_READY_SCHEMA_VERSION = "c1_model_ready_v2"
 
 
 def parse_args() -> argparse.Namespace:
@@ -210,6 +211,7 @@ def main() -> None:
             "merlin_schema_version": "3.0",
             "shared_audio_contract_version": CONTRACT_VERSION,
             "c1_feature_version": 2,
+            "model_ready_schema_version": MODEL_READY_SCHEMA_VERSION,
             "shared_audio_feature_count": SHARED_FEATURE_COUNT,
             "merlin_array_feature_count": MERLIN_ARRAY_FEATURE_COUNT,
             "merlin_raw_view_count": MERLIN_RAW_VIEW_COUNT,
@@ -219,6 +221,7 @@ def main() -> None:
             "feature_columns": list(feature_columns),
             "feature_order_sha256": sha256_text("\n".join(feature_columns)),
             "feature_count": len(feature_columns),
+            "permanent_dropped_fields": ["danceability", "energy"],
             "embedding_column": EMBEDDING_COLUMN,
             "embedding_format": "array<float32>",
             "target_variance": args.target_variance,

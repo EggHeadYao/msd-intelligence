@@ -64,6 +64,7 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "merlin_schema_version",
         "shared_audio_contract_version",
         "c1_feature_version",
+        "model_ready_schema_version",
         "shared_audio_feature_count",
         "merlin_array_feature_count",
         "merlin_raw_view_count",
@@ -71,6 +72,7 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "input_schema_sha256",
         "feature_columns",
         "feature_count",
+        "permanent_dropped_fields",
         "feature_order_sha256",
         "embedding_format",
         "selected_k",
@@ -86,6 +88,8 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(metadata["merlin_schema_version"] == "3.0", "wrong MERLIN schema version")
     require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")
     require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
+    require(metadata["model_ready_schema_version"] == "c1_model_ready_v2", "wrong model schema")
+    require(metadata["permanent_dropped_fields"] == ["danceability", "energy"], "wrong dropped fields")
     require(int(metadata["shared_audio_feature_count"]) == 628, "shared feature count mismatch")
     require(int(metadata["merlin_array_feature_count"]) == 552, "array feature count mismatch")
     require(int(metadata["merlin_raw_view_count"]) == 563, "raw view count mismatch")
