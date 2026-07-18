@@ -73,6 +73,18 @@ def validate_raw_input(df: DataFrame) -> int:
         preview = ", ".join(non_numeric[:10])
         raise TypeError(f"C1 raw features must be numeric: {preview}")
 
+    numeric_values = F.array(*(
+        F.col(column).cast("double") for column in RAW_AUDIO_COLUMNS
+        if column != TRACK_ID_COLUMN
+    ))
+    has_non_finite = F.exists(
+        numeric_values,
+        lambda value: value.isNotNull()
+        & (F.isnan(value) | (F.abs(value) == float("inf"))),
+    )
+    if df.where(has_non_finite).limit(1).count():
+        raise ValueError("C1 raw input contains NaN or infinite feature values")
+
     row_count = df.count()
     if row_count == 0:
         raise ValueError("C1 raw input is empty")
