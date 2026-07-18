@@ -276,12 +276,12 @@ If held-out values help fit preprocessing, evaluation has already seen the answe
 \begin{columns}[T,onlytextwidth]
 	\small
 	\setlength{\leftmargini}{1em}
-	\column{.47\textwidth}
+	\column{.44\textwidth}
 	\begin{block}{Linear view}
 	\begin{itemize}
-		\setlength{\itemsep}{1pt}
+		\setlength{\itemsep}{2pt}
 		\item Imputed engineered numerics.
-		\item Numeric encodings for key and meter.
+		\item Numeric encodings for key.
 		\item Fixed-order standardized vector.
 		\item Ridge, PCA, RFF, and Huber.
 	\end{itemize}
@@ -290,6 +290,7 @@ If held-out values help fit preprocessing, evaluation has already seen the answe
 	\column{.49\textwidth}
 	\begin{block}{Tree view}
 	\begin{itemize}
+		\setlength{\itemsep}{2pt}
 		\item Same cleaned and imputed source.
 		\item Unscaled continuous columns.
 		\item Key and meter remain categorical.
@@ -301,6 +302,8 @@ If held-out values help fit preprocessing, evaluation has already seen the answe
 \medskip
 
 Normalization helps when input scales are not commensurate.~{\scriptsize\autocite{guyon2003selection}} PCA is learned only from the linear train view.~{\scriptsize\autocite{jolliffe2016pca}} LightGBM supplies the histogram-based tree comparison.~{\scriptsize\autocite{ke2017lightgbm}}
+
+\medskip
 
 \begin{block}{Shared contract}
 Both views freeze the same predictors, missing-value rules, transform order, feature order, and fitted statistics. IDs remain for audit only.
