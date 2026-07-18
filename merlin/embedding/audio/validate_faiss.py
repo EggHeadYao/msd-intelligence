@@ -9,6 +9,8 @@ import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from shared_contract import CONTRACT_VERSION
+
 
 TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
@@ -49,13 +51,19 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def read_selected_k(output_dir: Path) -> int | None:
+def read_selected_k(output_dir: Path) -> int:
     metadata_path = output_dir / "audio_encoder_metadata.json"
-    if not metadata_path.exists():
-        return None
+    require(metadata_path.exists(), f"missing C1 encoder metadata: {metadata_path}")
     with metadata_path.open("r", encoding="utf-8") as handle:
         metadata = json.load(handle)
-    return int(metadata["selected_k"])
+    required = ("shared_audio_contract_version", "c1_feature_version", "selected_k", "embedding_format")
+    missing = [key for key in required if key not in metadata]
+    require(not missing, f"C1 encoder metadata missing keys: {missing}")
+    require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")
+    require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
+    require(int(metadata["selected_k"]) == 128, "C1 FAISS dimension must be 128")
+    require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
+    return 128
 
 
 def validate_mapping(mapping: DataFrame, expected_rows: int) -> None:
@@ -133,8 +141,7 @@ def main() -> None:
 
     index = faiss.read_index(str(index_path))
     selected_k = read_selected_k(args.output)
-    if selected_k is not None:
-        require(index.d == selected_k, "FAISS index dimension does not match selected_k")
+    require(index.d == selected_k, "FAISS index dimension does not match selected_k")
     require(index.ntotal == args.expected_rows, "FAISS index size mismatch")
 
     spark = create_spark(args.shuffle_partitions)
