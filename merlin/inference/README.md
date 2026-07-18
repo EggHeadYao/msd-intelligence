@@ -80,6 +80,27 @@ verifies the 128D `IndexFlatIP`, row count, contract version, index hash, and
 mapping hash before exposing search. C2 must provide its frozen graph contract
 before the equivalent production graph loader is enabled.
 
+## Production assembly
+
+The full pipeline has one fail-closed entry point. C2 must supply its frozen
+manifest key and version explicitly:
+
+```python
+from merlin.inference import load_inference_pipeline
+
+pipeline = load_inference_pipeline(
+    graph_contract_key="c2_graph_version",
+    graph_contract_version="<frozen-version>",
+)
+recommendations = pipeline.recommend(query_track_id)
+```
+
+Assembly validates both FAISS lineages, the canonical candidate-policy
+manifest, Ranker schema/scaler/coefficients hashes and parent hashes, then loads
+same-song identity from prepared metadata. BFS and Tag consume only the typed
+`artist_similarity` and `artist_term` partitions of canonical
+`parquets_new/prepared/graph_edges.parquet`.
+
 The mapping must contain exactly one unique track per contiguous row ID from
 zero. Its row order must match the order in which vectors were added to FAISS.
 The existing 71D Audio index and old-graph artifacts are historical v1 inputs;
