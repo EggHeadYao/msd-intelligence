@@ -14,6 +14,10 @@ def _different_song(_left: str, _right: str) -> bool:
     return False
 
 
+def _zero_similarity(_left: str, _right: str) -> float:
+    return 0.0
+
+
 def merge_candidates(groups: Sequence[Sequence[Candidate]], query_track_id: str) -> list[Candidate]:
     """Union candidates by track ID while preserving all recall evidence."""
     merged: dict[str, dict[str, object]] = {}
@@ -89,6 +93,7 @@ class BfsRetriever(CandidateRetriever):
     artist_neighbors: Mapping[str, Sequence[str]]
     artist_tracks: Mapping[str, Sequence[str]]
     same_song: Callable[[str, str], bool] = _different_song
+    tag_similarity: Callable[[str, str], float] = _zero_similarity
     max_depth: int = 2
     per_artist_cap: int = 10
     _name: str = "bfs"
@@ -100,6 +105,7 @@ class BfsRetriever(CandidateRetriever):
         artist_edges_path: str,
         *,
         same_song: Callable[[str, str], bool] = _different_song,
+        tag_similarity: Callable[[str, str], float] = _zero_similarity,
         max_depth: int = 2,
         per_artist_cap: int = 10,
     ) -> BfsRetriever:
@@ -112,6 +118,7 @@ class BfsRetriever(CandidateRetriever):
             artist_neighbors=data.artist_neighbors,
             artist_tracks=data.artist_tracks,
             same_song=same_song,
+            tag_similarity=tag_similarity,
             max_depth=max_depth,
             per_artist_cap=per_artist_cap,
         )
@@ -125,28 +132,37 @@ class BfsRetriever(CandidateRetriever):
         if root is None:
             return []
         queue = deque([(root, 0)])
-        visited = {root}
-        result: list[Candidate] = []
-        while queue and len(result) < limit:
+        distances = {root: 0}
+        while queue:
             artist, distance = queue.popleft()
-            if distance > 0:
-                score = 1.0 / (1.0 + distance)
-                for track_id in self.artist_tracks.get(artist, ())[: self.per_artist_cap]:
-                    if track_id != query_track_id and not self.same_song(query_track_id, track_id):
-                        result.append(Candidate(
-                            track_id=track_id,
-                            sources=frozenset({self.name}),
-                            recall_scores={self.name: score},
-                            source_ranks={self.name: len(result) + 1},
-                        ))
-                        if len(result) == limit:
-                            break
             if distance < self.max_depth:
                 for neighbor in self.artist_neighbors.get(artist, ()):
-                    if neighbor not in visited:
-                        visited.add(neighbor)
+                    if neighbor not in distances:
+                        distances[neighbor] = distance + 1
                         queue.append((neighbor, distance + 1))
-        return result
+
+        ordered: list[tuple[int, float, str]] = []
+        for artist, distance in distances.items():
+            if distance == 0:
+                continue
+            similarity = float(self.tag_similarity(root, artist))
+            tracks = sorted(
+                track_id for track_id in self.artist_tracks.get(artist, ())
+                if track_id != query_track_id and not self.same_song(query_track_id, track_id)
+            )[: self.per_artist_cap]
+            ordered.extend((distance, similarity, track_id) for track_id in tracks)
+        ordered.sort(key=lambda item: (item[0], -item[1], item[2]))
+        return [
+            Candidate(
+                track_id=track_id,
+                sources=frozenset({self.name}),
+                recall_scores={self.name: 1.0 / (1.0 + distance)},
+                source_ranks={self.name: rank},
+            )
+            for rank, (distance, _similarity, track_id) in enumerate(
+                ordered[:limit], start=1
+            )
+        ]
 
 
 @dataclass(slots=True)
