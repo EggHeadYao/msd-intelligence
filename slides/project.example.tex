@@ -1,0 +1,108 @@
+\documentclass{beamer}
+
+\usepackage{focs-slides}
+
+\title{Presentation Topic}
+\author{Team member names}
+\date{Spring 2023}
+\course{MATH214}
+
+% bibliography file
+\addbibresource{project.bib}
+
+\definecolor{darkblue}{HTML}{6666dd} 
+\definecolor{darkslategray}{HTML}{2f4f4f} 
+%\colortheme{green!42!black}
+%\colortheme{orange!85!black}
+%\colortheme{darkblue}
+%\colortheme{pink!80!black}
+%\colortheme{orange!85!white!90!black}
+\colortheme{darkslategray}
+
+\begin{document}
+
+\maketitle
+
+% table of contents
+%\toc{enum}
+%\toc{mindmap}
+
+\section{First section}
+
+\begin{frame}{Sample frame}
+
+Bullet points:
+\begin{itemize}
+	\item first element is in \R 
+	\item second is in \C
+	\item third is to show how to open and close ``quotes'' in \LaTeX
+\end{itemize}
+
+\medskip
+
+Numbered list:
+\begin{enumerate}
+	\item first 
+	\item second
+	\item last but not least, only label equations that are reused
+\end{enumerate}
+
+\end{frame}
+
+\section{Second section}
+
+\begin{frame}{Typesetting math content}
+		
+\begin{theorem}
+		If $\sigma$ and $\tau$ are two permutations of $\llbracket 1,n\rrbracket$, then $\varepsilon (\sigma\tau)=\varepsilon(\sigma)\varepsilon(\tau)$, and $\varepsilon$ is a group homomorphism from $\mathcal S_n$ to $(\{-1,1\},\times)$.
+\end{theorem}
+
+\begin{proof}
+		For $A=(a_{i,j})_{1\le i,j\le n}$, $\det A$ is often denoted
+		\[
+			\det A = 
+			\begin{vmatrix}
+				a_{1,1} & \cdots & a_{1,j} & \cdots & a_{1,n}\\
+				\vdots  &        & \vdots  &        & \vdots\\
+				a_{i,1} & \cdots & a_{i,j} & \cdots & a_{i,n}\\
+				\vdots  &        & \vdots  &        & \vdots\\
+				a_{n,1} & \cdots & a_{n,j} & \cdots & a_{n,n}\\
+			\end{vmatrix}.
+		\]
+
+\end{proof}
+
+\end{frame}
+
+\begin{frame}{Include a picture}
+
+\begin{columns}[T,onlytextwidth]
+
+	\column{.4\halfwidth}
+	
+	\centering
+	\includegraphics[width=\columnwidth]{course}
+
+	\column{1.6\halfwidth}
+
+	\begin{example}
+
+    Two columns aligned to the top with a picture on the left and a citation.~\autocite{ece475}
+	
+  \end{example}
+
+\end{columns}
+		
+\end{frame}
+
+\section{Bibliography}
+
+\begin{frame}[allowframebreaks]{References}
+
+    \printbibliography[heading=none]
+
+\end{frame}
+
+\thankframe
+
+\end{document}
