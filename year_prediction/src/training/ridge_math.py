@@ -73,3 +73,61 @@ def ridge_gradient(
         for value, weight in zip(gradient, weights)
     ]
     return gradient, intercept_gradient / count
+
+
+def finite_difference_gradient(
+    features: Matrix,
+    labels: Vector,
+    weights: Vector,
+    intercept: float,
+    l2: float,
+    epsilon: float,
+) -> tuple[list[float], float]:
+    if epsilon <= 0 or not math.isfinite(epsilon):
+        raise ValueError("epsilon must be positive and finite")
+    gradient = []
+    for index in range(len(weights)):
+        lower = list(weights)
+        upper = list(weights)
+        lower[index] -= epsilon
+        upper[index] += epsilon
+        gradient.append(
+            (
+                ridge_loss(features, labels, upper, intercept, l2)
+                - ridge_loss(features, labels, lower, intercept, l2)
+            )
+            / (2.0 * epsilon)
+        )
+    intercept_gradient = (
+        ridge_loss(features, labels, weights, intercept + epsilon, l2)
+        - ridge_loss(features, labels, weights, intercept - epsilon, l2)
+    ) / (2.0 * epsilon)
+    return gradient, intercept_gradient
+
+
+def gradient_step(
+    weights: Vector,
+    intercept: float,
+    gradient: Vector,
+    intercept_gradient: float,
+    learning_rate: float,
+) -> tuple[list[float], float]:
+    if len(weights) != len(gradient):
+        raise ValueError("weight and gradient dimensions differ")
+    if learning_rate <= 0 or not math.isfinite(learning_rate):
+        raise ValueError("learning_rate must be positive and finite")
+    updated_weights = [
+        weight - learning_rate * value
+        for weight, value in zip(weights, gradient)
+    ]
+    return updated_weights, intercept - learning_rate * intercept_gradient
+
+
+def relative_error(left: Vector, right: Vector) -> float:
+    if len(left) != len(right):
+        raise ValueError("vector dimensions differ")
+    difference = math.sqrt(sum((a - b) ** 2 for a, b in zip(left, right)))
+    scale = math.sqrt(sum(a * a for a in left)) + math.sqrt(
+        sum(b * b for b in right)
+    )
+    return difference / max(scale, 1e-15)
