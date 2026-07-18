@@ -14,7 +14,7 @@ from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
-DEFAULT_AUDIO_DIR = Path("parquets/merlin/audio")
+DEFAULT_AUDIO_DIR = Path("parquets/merlin_v2/audio")
 
 
 def parse_args() -> argparse.Namespace:

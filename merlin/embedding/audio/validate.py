@@ -15,7 +15,7 @@ EMBEDDING_COLUMN = "embedding"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate MERLIN C1 PCA audio outputs.")
-    parser.add_argument("--output", type=Path, default=Path("parquets/merlin/audio"))
+    parser.add_argument("--output", type=Path, default=Path("parquets/merlin_v2/audio"))
     parser.add_argument("--expected-rows", type=int, default=EXPECTED_SONGS)
     parser.add_argument("--norm-tolerance", type=float, default=1e-6)
     parser.add_argument("--shuffle-partitions", type=int, default=64)

@@ -12,7 +12,7 @@ from pyspark.sql import functions as F
 
 TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
-DEFAULT_AUDIO_DIR = Path("parquets/merlin/audio")
+DEFAULT_AUDIO_DIR = Path("parquets/merlin_v2/audio")
 
 
 def parse_args() -> argparse.Namespace:
