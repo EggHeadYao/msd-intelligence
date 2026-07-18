@@ -264,6 +264,13 @@ def build(args: argparse.Namespace, spark: SparkSession) -> None:
         json.dump(manifest, handle, indent=2, sort_keys=True)
         handle.write("\n")
 
+    supervised.unpersist()
+    artist_assignments.unpersist()
+    official_train.unpersist()
+    official_test.unpersist()
+    labeled_artists.unpersist()
+    metadata.unpersist()
+    audio.unpersist()
 
 
 def main() -> None:
