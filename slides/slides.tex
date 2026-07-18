@@ -35,7 +35,138 @@
 
 \section{Year Prediction}
 
-\begin{frame}{Year Prediction}
+\begin{frame}{Year prediction starts with the data contract}
+
+\begin{center}
+\textbf{Question:} can audio statistics estimate a song's release year?
+
+\medskip
+
+$1{,}000{,}000$ tracks
+$\longrightarrow$ valid labels
+$\longrightarrow$ audio-only baseline
+$\longrightarrow$ artist-safe evaluation
+\end{center}
+
+\begin{itemize}
+	\item Our controlled baseline asks how much year signal exists in audio alone, following the original MSD task.~{\scriptsize\autocite{bertinmahieux2011million}}
+	\item Metadata can be evaluated later as a separate extension, as proposed by the MSD authors.~{\scriptsize\autocite{bertinmahieux2011million}}
+	\item Every model must see the same rows, fields, and split for a meaningful comparison.
+\end{itemize}
+
+\medskip
+
+\begin{block}{Intuition}
+A lower error is useful only when it comes from a better model, rather than a different dataset boundary.
+\end{block}
+
+\end{frame}
+
+\begin{frame}{Step 1: define valid supervision}
+
+\begin{columns}[T,onlytextwidth]
+	\column{.47\textwidth}
+	\textbf{Label contract}
+
+	\medskip
+	\begin{tabular}{l r}
+		\textbf{Label state} & \textbf{Tracks} \\
+		\hline
+		$1922 \leq y \leq 2011$ & $515{,}576$ \\
+		$y=0$ (unknown) & $484{,}424$ \\
+		Other positive & $0$ \\
+	\end{tabular}
+
+	\medskip
+	$y=0$ means unknown, not a historical year; it remains unlabeled. MSD reports $515{,}576$ dated tracks spanning 1922--2011.~{\scriptsize\autocite{bertinmahieux2011million}}
+
+	\column{.49\textwidth}
+	\textbf{Feature contract}
+
+	\medskip
+	\begin{itemize}
+		\item Join on the unique track ID.
+		\item Baseline: 109 raw acoustic predictors.
+		\item IDs support grouping and audits, never prediction.
+		\item Metadata is a separate ablation; year-derived features are forbidden.
+	\end{itemize}
+\end{columns}
+
+\medskip
+\medskip
+\medskip
+
+\textbf{Why?} Unknown years cannot train regression. Fixed inputs prevent IDs or metadata proxies from replacing acoustic evidence.
+
+\end{frame}
+
+\begin{frame}{Step 2: split artists, not songs}
+
+\begin{columns}[T,onlytextwidth]
+	\column{.46\textwidth}
+	\begin{block}{Song-random split}
+	Songs by one artist can appear in both train and test. Voice and production style become shortcuts, making test error too optimistic.~{\scriptsize\autocite{flexer2007artist}}
+	\end{block}
+
+	\column{.50\textwidth}
+	\begin{block}{Artist-disjoint split}
+	The MSD year task splits artists rather than songs to avoid the ``producer effect.'' Test artists are therefore unseen during training.~{\scriptsize\autocite{bertinmahieux2011million}}
+	\end{block}
+\end{columns}
+
+\medskip
+\medskip
+\medskip
+
+\centering
+\begin{tabular}{l r r l}
+	\textbf{Split} & \textbf{Artists} & \textbf{Tracks} & \textbf{Role} \\
+	\hline
+	Train & $22{,}867$ & $420{,}013$ & Fit all learned parameters \\
+	Validation & $2{,}534$ & $46{,}127$ & Select models and settings \\
+	Test & $2{,}822$ & $49{,}436$ & One frozen final evaluation \\
+\end{tabular}
+
+\medskip
+
+The official test has $2{,}822$ artists and $49{,}436$ tracks.~{\scriptsize\autocite{msdYearTask}} We preserve it and hash all non-test artists into train or validation.
+
+\end{frame}
+
+\begin{frame}{Step 3: freeze a fair model comparison}
+
+\begin{columns}[T,onlytextwidth]
+	\column{.47\textwidth}
+	\textbf{The contract freezes}
+	\begin{itemize}
+		\item which rows have valid labels;
+		\item the primary audio feature set;
+		\item artist-level split membership.
+	\end{itemize}
+
+	\column{.49\textwidth}
+	\textbf{Every model shares}
+	\begin{itemize}
+		\item the same prediction task;
+		\item the same available evidence;
+		\item the same unseen-artist test.
+	\end{itemize}
+\end{columns}
+
+\medskip
+
+\begin{center}
+\small
+\begin{tabular}{c c c c c}
+	\textbf{Train} & & \textbf{Validation} & & \textbf{Test} \\
+	fit preprocessing and models & $\longrightarrow$ & choose designs & $\longrightarrow$ & report once
+\end{tabular}
+\end{center}
+
+\begin{block}{Data contract goal}
+Documenting a dataset's motivation, composition, creation, and intended use improves transparency between dataset creators and consumers.~{\scriptsize\autocite{gebru2021datasheets}}
+\end{block}
+
 \end{frame}
 
 \section{Bibliography}
