@@ -58,12 +58,26 @@ def build_tag_data(
 
 def load_tag_data(
     songs_metadata_path: str | Path,
-    artist_terms_path: str | Path,
+    graph_edges_path: str | Path,
 ) -> TagData:
-    """Load the projected song and artist-term Parquet datasets."""
+    """Load metadata and canonical artist-term graph edges."""
     songs = _parquet_rows(songs_metadata_path, ("track_id", "artist_id"))
-    terms = _parquet_rows(artist_terms_path, ("artist_id", "term"))
+    terms = _graph_edge_rows(graph_edges_path, "artist_term")
     return build_tag_data(songs, terms)
+
+
+def _graph_edge_rows(path: str | Path, edge_type: str) -> Iterable[tuple[str, str]]:
+    try:
+        import pyarrow.dataset as ds
+    except ImportError as error:
+        raise RuntimeError("loading Tag graph edges requires pyarrow") from error
+    dataset = ds.dataset(str(path), format="parquet", partitioning="hive")
+    scanner = dataset.scanner(
+        columns=["src_id", "dst_id"],
+        filter=ds.field("edge_type") == edge_type,
+    )
+    for batch in scanner.to_batches():
+        yield from zip(batch.column(0).to_pylist(), batch.column(1).to_pylist())
 
 
 def _parquet_rows(

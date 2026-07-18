@@ -183,7 +183,7 @@ class TagRetriever(CandidateRetriever):
     def from_parquet(
         cls,
         songs_metadata_path: str,
-        artist_terms_path: str,
+        graph_edges_path: str,
         *,
         tag_idf_path: str | None = None,
         same_song: Callable[[str, str], bool] = _different_song,
@@ -194,7 +194,7 @@ class TagRetriever(CandidateRetriever):
         """Construct lazy TF-IDF shared-tag recall from prepared datasets."""
         from .tag_data import find_similar_artists, load_tag_data, load_tag_idf
 
-        data = load_tag_data(songs_metadata_path, artist_terms_path)
+        data = load_tag_data(songs_metadata_path, graph_edges_path)
         idf_values = load_tag_idf(tag_idf_path) if tag_idf_path else None
 
         def neighbors(artist_id: str) -> Sequence[tuple[str, float]]:
