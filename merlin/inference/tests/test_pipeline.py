@@ -15,6 +15,23 @@ class _Features:
 
 
 class PipelineTest(unittest.TestCase):
+    def test_recall_reports_source_shortage_and_unique_count(self):
+        audio = VectorRetriever("audio", lambda _query, _limit: [("one", 0.8)])
+        pipeline = MerlinPipeline(
+            retrievers=[audio],
+            retriever_limits={"audio": 3},
+            feature_computer=_Features(),
+            ranker=LogisticRanker.mock("test-v1", ["score"]),
+            final_limit=2,
+        )
+
+        candidates, audit = pipeline.recall("query")
+
+        self.assertEqual([item.track_id for item in candidates], ["one"])
+        self.assertEqual(audit.source_counts, {"audio": 1})
+        self.assertEqual(audit.source_shortages, {"audio": 2})
+        self.assertEqual(audit.unique_candidates, 1)
+
     def test_vector_recall_overfetches_and_filters_same_song(self):
         requested = []
 
