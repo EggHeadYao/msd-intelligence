@@ -23,6 +23,8 @@ from columns import (
     time_signature_one_hot_column,
 )
 
+NEAR_ZERO_RANGE_EPSILON = 1e-12
+
 
 def _finite(column: str) -> Column:
     value = F.col(column).cast("double")
@@ -166,7 +168,7 @@ def fill_scalar_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, floa
 def drop_zero_variance_features(
     df: DataFrame,
     columns: Sequence[str],
-    eps: float = 0.0,
+    eps: float = NEAR_ZERO_RANGE_EPSILON,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     aggregates = [
         item
@@ -196,6 +198,7 @@ def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...]
     metadata = {
         "clip_bounds": clip_bounds,
         "dropped_features": dropped,
+        "near_zero_range_epsilon": NEAR_ZERO_RANGE_EPSILON,
         "segment_means": segment_means,
         "scalar_means": scalar_means,
         "time_signature_columns": time_columns,
