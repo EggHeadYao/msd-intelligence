@@ -50,6 +50,23 @@ class BfsRetrievalTest(unittest.TestCase):
         self.assertEqual([item.recall_scores["bfs"] for item in candidates], [0.5, 1 / 3])
         self.assertEqual([item.source_ranks["bfs"] for item in candidates], [1, 2])
 
+    def test_orders_equal_distance_by_tags_then_track_id(self):
+        data = build_bfs_data(
+            [("q", "a"), ("b2", "b"), ("b1", "b"), ("c1", "c")],
+            [("a", "b"), ("a", "c")],
+        )
+        retriever = BfsRetriever(
+            data.track_to_artist,
+            data.artist_neighbors,
+            data.artist_tracks,
+            same_song=lambda _query, track: track == "b2",
+            tag_similarity=lambda _root, artist: {"b": 0.8, "c": 0.4}[artist],
+        )
+
+        candidates = retriever.retrieve("q", limit=10)
+
+        self.assertEqual([item.track_id for item in candidates], ["b1", "c1"])
+
     def test_rejects_conflicting_track_artist_rows(self):
         with self.assertRaisesRegex(ValueError, "multiple artists"):
             build_bfs_data([("q", "a"), ("q", "b")], [])
