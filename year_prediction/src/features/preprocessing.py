@@ -98,3 +98,63 @@ def clipped(value: Column, low: float, high: float) -> Column:
     return F.when(value.isNotNull(), F.least(F.greatest(value, F.lit(low)), F.lit(high)))
 
 
+def transform_before_imputation(df: DataFrame, state: dict[str, Any]) -> DataFrame:
+    bounds = state["clip_bounds"]
+    replacements = {column: finite_value(column) for column in ("danceability", "energy")}
+    for column in SEGMENT_COLUMNS:
+        valid = (F.col(HAS_SEGMENTS_COLUMN) == 1) & finite_value(column).isNotNull()
+        replacements[column] = F.when(valid, finite_value(column)).otherwise(
+            F.lit(state["segment_means"][column])
+        )
+    loudness = finite_value("loudness")
+    tempo = F.when(finite_value("tempo") > 0.0, finite_value("tempo"))
+    duration = finite_value("duration")
+    clipped_duration = clipped(duration, *bounds["duration"])
+    return df.select(
+        *(replacements.get(column, F.col(column)).alias(column) for column in df.columns),
+        clipped(loudness, *bounds["loudness"]).alias("loudness_clipped"),
+        F.log1p(clipped(tempo, *bounds["tempo"])).alias("tempo_log"),
+        F.when(
+            clipped_duration.isNotNull(),
+            F.log1p(F.greatest(clipped_duration, F.lit(0.0))),
+        ).alias("duration_log"),
+    )
+
+
+def fit_imputation_means(df: DataFrame) -> dict[str, float]:
+    row = df.agg(*(F.avg(F.col(column)).alias(column) for column in TRANSFORMED_CONTINUOUS_COLUMNS)).first()
+    means = {}
+    for column in TRANSFORMED_CONTINUOUS_COLUMNS:
+        value = row[column]
+        if value is None or not math.isfinite(float(value)):
+            raise ValueError(f"Cannot fit imputation mean for {column}")
+        means[column] = float(value)
+    return means
+
+
+def add_encodings(df: DataFrame, state: dict[str, Any]) -> DataFrame:
+    known_key = F.col(KEY_COLUMN).cast("int").between(0, 11)
+    angle = F.col(KEY_COLUMN).cast("double") * F.lit(2.0 * math.pi / 12.0)
+    values = tuple(state["time_signature_values"])
+    known_time = F.col(TIME_SIGNATURE_COLUMN).cast("int").isin(*values) if values else F.lit(False)
+    replacements = {
+        KEY_COLUMN: F.when(known_key, F.col(KEY_COLUMN).cast("int")).otherwise(UNKNOWN_CATEGORY),
+        TIME_SIGNATURE_COLUMN: F.when(
+            known_time, F.col(TIME_SIGNATURE_COLUMN).cast("int")
+        ).otherwise(UNKNOWN_CATEGORY),
+    }
+    return df.select(
+        *(replacements.get(column, F.col(column)).alias(column) for column in df.columns),
+        F.when(known_key, F.sin(angle)).otherwise(0.0).alias(KEY_ENCODED_COLUMNS[0]),
+        F.when(known_key, F.cos(angle)).otherwise(0.0).alias(KEY_ENCODED_COLUMNS[1]),
+        F.when(known_key, 0.0).otherwise(1.0).alias(KEY_ENCODED_COLUMNS[2]),
+        *(
+            (F.col(TIME_SIGNATURE_COLUMN).cast("int") == value)
+            .cast("double")
+            .alias(time_signature_column(value))
+            for value in values
+        ),
+        F.when(known_time, 0.0).otherwise(1.0).alias(TIME_SIGNATURE_UNKNOWN_COLUMN),
+    )
+
+
