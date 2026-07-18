@@ -68,14 +68,17 @@ index_<space>_manifest.json
 Load either embedding space with the same adapter:
 
 ```python
-from merlin.inference.faiss_index import FaissTrackIndex
+from merlin.inference.loaders import load_audio_index
 from merlin.inference.retrieval import VectorRetriever
 
-audio = FaissTrackIndex.from_files("index_audio.faiss", "index_audio_track_ids.parquet")
-graph = FaissTrackIndex.from_files("index_graph.faiss", "index_graph_track_ids.parquet")
+audio = load_audio_index()  # parquets_new/merlin/audio, shared_audio_628_v1
 audio_retriever = VectorRetriever("audio", audio.search)
-graph_retriever = VectorRetriever("graph", graph.search)
 ```
+
+The production loader requires the index, mapping, and manifest together. It
+verifies the 128D `IndexFlatIP`, row count, contract version, index hash, and
+mapping hash before exposing search. C2 must provide its frozen graph contract
+before the equivalent production graph loader is enabled.
 
 The mapping must contain exactly one unique track per contiguous row ID from
 zero. Its row order must match the order in which vectors were added to FAISS.
