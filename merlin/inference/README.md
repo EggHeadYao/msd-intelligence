@@ -8,7 +8,7 @@ require Spark or FAISS.
 
 1. `CandidateRetriever` implementations nominate Audio, Graph, BFS, and Tag candidates.
 2. `merge_candidates` unions candidates and preserves source evidence.
-3. `PairFeatureComputer` produces named `ranker-v1` pair features.
+3. `PairFeatureComputer` produces named `ranker-v2` pair features.
 4. `LogisticRanker` standardizes features in artifact order and scores them.
 5. The top 50 are reranked by MMR to produce the final top 20.
 
