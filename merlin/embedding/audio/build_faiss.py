@@ -101,6 +101,8 @@ def build_index(
         vector = np.asarray(row[EMBEDDING_COLUMN], dtype=np.float32)
         require(vector.ndim == 1, "embedding must be a one-dimensional array")
         require(np.all(np.isfinite(vector)), "embedding contains NaN or infinite values")
+        norm = float(np.linalg.norm(vector))
+        require(np.isfinite(norm) and abs(norm - 1.0) <= 1e-5, "embedding is not unit normalized")
         if expected_dim is not None:
             require(vector.shape[0] == expected_dim, "embedding dimension does not match metadata")
         if index is None:
