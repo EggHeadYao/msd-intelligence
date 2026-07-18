@@ -78,6 +78,7 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "selected_k",
         "explained_variance",
         "cumulative_explained_variance",
+        "pca_128_below_90_percent",
         "preprocess",
         "scaler_mean",
         "scaler_std",
@@ -102,6 +103,11 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     expected_hash = hashlib.sha256(feature_text.encode("utf-8")).hexdigest()
     require(metadata["feature_order_sha256"] == expected_hash, "feature order hash mismatch")
     require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
+    cumulative_128 = float(metadata["cumulative_explained_variance"][selected_k - 1])
+    require(
+        bool(metadata["pca_128_below_90_percent"]) == (cumulative_128 < 0.90),
+        "PCA-128 variance diagnostic mismatch",
+    )
     require(len(metadata["scaler_mean"]) == int(metadata["feature_count"]), "scaler_mean length mismatch")
     require(len(metadata["scaler_std"]) == int(metadata["feature_count"]), "scaler_std length mismatch")
     return selected_k

@@ -195,6 +195,7 @@ def main() -> None:
         pca = PCA(k=max_components, inputCol=SCALED_FEATURES_COLUMN, outputCol=PCA_FEATURES_COLUMN)
         pca_model = pca.fit(scaled)
         explained = vector_to_list(pca_model.explainedVariance)
+        cumulative_explained = cumulative(explained)
         selected_k = PCA_DIMENSION
 
         projected = pca_model.transform(scaled).select(TRACK_ID_COLUMN, PCA_FEATURES_COLUMN)
@@ -230,7 +231,8 @@ def main() -> None:
             "max_components": max_components,
             "selected_k": selected_k,
             "explained_variance": explained,
-            "cumulative_explained_variance": cumulative(explained),
+            "cumulative_explained_variance": cumulative_explained,
+            "pca_128_below_90_percent": cumulative_explained[PCA_DIMENSION - 1] < 0.90,
             "preprocess": preprocess_metadata,
             "scaler_mean": vector_to_list(scaler_model.mean),
             "scaler_std": vector_to_list(scaler_model.std),
@@ -240,7 +242,8 @@ def main() -> None:
             "audio_pca_training_done "
             f"rows={row_count}, features={len(feature_columns)}, "
             f"max_components={max_components}, selected_k={selected_k}, "
-            f"explained={metadata['cumulative_explained_variance'][selected_k - 1]:.6f}",
+            f"explained={cumulative_explained[selected_k - 1]:.6f}, "
+            f"below_90_percent={metadata['pca_128_below_90_percent']}",
         )
     finally:
         spark.stop()
