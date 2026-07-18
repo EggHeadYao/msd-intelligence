@@ -158,3 +158,74 @@ def add_encodings(df: DataFrame, state: dict[str, Any]) -> DataFrame:
     )
 
 
+def transform_features(df: DataFrame, state: dict[str, Any]) -> DataFrame:
+    require_input_columns(df)
+    result = transform_before_imputation(df, state)
+    replacements = {
+        column: F.coalesce(F.col(column).cast("double"), F.lit(mean))
+        for column, mean in state["imputation_means"].items()
+    }
+    replacements[MODE_COLUMN] = F.col(MODE_COLUMN).cast("double")
+    replacements[HAS_SEGMENTS_COLUMN] = F.col(HAS_SEGMENTS_COLUMN).cast("double")
+    imputed = result.select(
+        *(replacements.get(column, F.col(column)).alias(column) for column in result.columns)
+    )
+    return add_encodings(imputed, state)
+
+
+def feature_statistics(df: DataFrame, columns: Sequence[str]) -> dict[str, dict[str, float]]:
+    row = df.agg(
+        *(
+            expression
+            for column in columns
+            for expression in (
+                F.avg(F.col(column)).alias(f"{column}__mean"),
+                F.stddev_samp(F.col(column)).alias(f"{column}__std"),
+            )
+        )
+    ).first()
+    result = {}
+    for column in columns:
+        mean = float(row[f"{column}__mean"])
+        std_value = row[f"{column}__std"]
+        result[column] = {"mean": mean, "std": float(std_value) if std_value is not None else 0.0}
+    return result
+
+
+def fit_feature_contract(
+    train: DataFrame,
+    quantile_error: float = DEFAULT_QUANTILE_ERROR,
+    variance_threshold: float = DEFAULT_VARIANCE_THRESHOLD,
+) -> dict[str, Any]:
+    require_input_columns(train)
+    validate_binary_columns(train)
+    state: dict[str, Any] = {
+        "clip_quantiles": [0.01, 0.99],
+        "clip_relative_error": quantile_error,
+        "clip_bounds": fit_clip_bounds(train, quantile_error),
+        "segment_means": fit_segment_means(train),
+        "time_signature_values": list(fit_time_signature_values(train)),
+        "unknown_category": UNKNOWN_CATEGORY,
+    }
+    prepared = transform_before_imputation(train, state)
+    state["imputation_means"] = fit_imputation_means(prepared)
+    transformed = transform_features(train, state)
+    candidates = candidate_columns(tuple(state["time_signature_values"]))
+    statistics = feature_statistics(transformed, candidates)
+    retained = tuple(
+        column for column in candidates if statistics[column]["std"] ** 2 > variance_threshold
+    )
+    if not retained:
+        raise ValueError("All candidate features were removed by variance filtering")
+    state.update(
+        {
+            "variance_threshold": variance_threshold,
+            "candidate_columns": list(candidates),
+            "retained_columns": list(retained),
+            "removed_columns": [column for column in candidates if column not in retained],
+            "candidate_statistics": statistics,
+            "scaler_mean": [statistics[column]["mean"] for column in retained],
+            "scaler_std": [statistics[column]["std"] for column in retained],
+        }
+    )
+    return state
