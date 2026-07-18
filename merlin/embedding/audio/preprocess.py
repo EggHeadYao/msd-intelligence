@@ -22,9 +22,14 @@ from columns import (
 
 
 def add_key_circular_features(df: DataFrame) -> DataFrame:
-    angle = F.col(KEY_COLUMN).cast("double") * F.lit(2.0 * math.pi / 12.0)
-    return df.withColumn(KEY_CIRCULAR_COLUMNS[0], F.sin(angle)).withColumn(
-        KEY_CIRCULAR_COLUMNS[1], F.cos(angle)
+    key = F.col(KEY_COLUMN).cast("double")
+    confidence = F.col("key_confidence").cast("double")
+    valid = key.between(0.0, 11.0) & (confidence > 0.0) & ~F.isnan(confidence)
+    angle = key * F.lit(2.0 * math.pi / 12.0)
+    return df.withColumn(
+        KEY_CIRCULAR_COLUMNS[0], F.when(valid, F.sin(angle)).otherwise(F.lit(0.0))
+    ).withColumn(
+        KEY_CIRCULAR_COLUMNS[1], F.when(valid, F.cos(angle)).otherwise(F.lit(0.0))
     )
 
 
