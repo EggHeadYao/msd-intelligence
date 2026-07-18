@@ -15,6 +15,7 @@ artistdistance/target/
 
 !slides/
 !slides/*.sty
+!slides/*.bib
 !slides/*.tex
 !slides/*.pdf
 
