@@ -233,6 +233,48 @@ def validate(dataset: Path, spark: SparkSession) -> None:
     require(actual_splits[TEST]["artists"] == EXPECTED_OFFICIAL_TEST_ARTISTS, "Wrong official test artist count")
     require(assignment_sha256(assignments) == manifest["artist_assignment_sha256"], "Assignment checksum mismatch")
 
+    for source_name in ("official_train", "official_test"):
+        source = manifest["sources"][source_name]
+        require(sha256_file(Path(source["path"])) == source["sha256"], f"{source_name} checksum mismatch")
+    for source_name in ("metadata", "audio"):
+        source = manifest["sources"][source_name]
+        actual = parquet_snapshot(Path(source["path"]))
+        expected = {
+            key: source[key]
+            for key in ("file_count", "bytes", "sha256")
+        }
+        require(actual == expected, f"{source_name} snapshot mismatch")
+
+    metadata = (
+        spark.read.parquet(spark_path(Path(manifest["sources"]["metadata"]["path"])))
+        .select(TRACK_ID, ARTIST_ID, YEAR)
+        .where(F.col(YEAR).between(MIN_YEAR, MAX_YEAR))
+    )
+    audio = spark.read.parquet(
+        spark_path(Path(manifest["sources"]["audio"]["path"]))
+    ).select(*AUDIO_INPUT_COLUMNS)
+    expected_content = content_digests(metadata.join(audio, TRACK_ID, "inner")).alias("expected")
+    actual_content = content_digests(supervised).alias("actual")
+    content_mismatches = (
+        expected_content.join(actual_content, TRACK_ID, "full_outer")
+        .where(
+            F.col("expected.digest").isNull()
+            | F.col("actual.digest").isNull()
+            | (F.col("expected.digest") != F.col("actual.digest"))
+        )
+        .count()
+    )
+    require(content_mismatches == 0, "Supervised values differ from the prepared inputs")
+
+    require(
+        manifest["schema"]["predictors"] == AUDIO_TYPE_NAMES,
+        "Manifest predictor schema is incomplete",
+    )
+    official_train.unpersist()
+    official_test.unpersist()
+    supervised.unpersist()
+    assignments.unpersist()
+    print(json.dumps({"status": "valid", "splits": actual_splits}, sort_keys=True))
 
 
 def main() -> None:
