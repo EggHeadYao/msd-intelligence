@@ -127,6 +127,27 @@ class BfsRetriever(CandidateRetriever):
     def name(self) -> str:
         return self._name
 
+    def pair_score(self, left_track_id: str, right_track_id: str) -> float | None:
+        """Return the directed artist-BFS score independently of recall source."""
+        source = self.track_to_artist.get(left_track_id)
+        target = self.track_to_artist.get(right_track_id)
+        if source is None or target is None or source == target:
+            return None
+        queue = deque([(source, 0)])
+        visited = {source}
+        while queue:
+            artist, distance = queue.popleft()
+            if distance == self.max_depth:
+                continue
+            next_distance = distance + 1
+            for neighbor in self.artist_neighbors.get(artist, ()):
+                if neighbor == target:
+                    return 1.0 / (1.0 + next_distance)
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, next_distance))
+        return None
+
     def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
         root = self.track_to_artist.get(query_track_id)
         if root is None:
