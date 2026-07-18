@@ -95,12 +95,21 @@ def _clip(column: str, low: float, high: float) -> Column:
 
 
 def add_log_clipped_features(df: DataFrame) -> tuple[DataFrame, dict[str, tuple[float, float]]]:
-    thresholds = {column: _bounds(df, column) for column in ("tempo", "duration", "loudness")}
+    availability = {"loudness": "has_loudness", "tempo": "has_tempo", "duration": "has_duration"}
+    thresholds = {
+        column: _bounds(df.where(F.col(availability[column]) == 1.0), column)
+        for column in availability
+    }
     for source, target in zip(("tempo", "duration"), LOG_CONTINUOUS_COLUMNS):
         low, high = thresholds[source]
-        df = df.withColumn(target, F.log1p(F.greatest(_clip(source, low, high), F.lit(0.0))))
+        transformed = F.log1p(F.greatest(_clip(source, low, high), F.lit(0.0)))
+        df = df.withColumn(
+            target,
+            F.when(F.col(availability[source]) == 1.0, transformed),
+        )
     low, high = thresholds["loudness"]
-    return df.withColumn(CLIPPED_CONTINUOUS_COLUMNS[0], _clip("loudness", low, high)), thresholds
+    loudness = F.when(F.col("has_loudness") == 1.0, _clip("loudness", low, high))
+    return df.withColumn(CLIPPED_CONTINUOUS_COLUMNS[0], loudness), thresholds
 
 
 def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
