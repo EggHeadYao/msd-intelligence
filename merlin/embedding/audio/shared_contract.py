@@ -1,8 +1,8 @@
-"""Frozen shared_audio_615_v1 column order and MERLIN projection."""
+"""Frozen shared_audio_628_v1 column order and MERLIN projection."""
 
-CONTRACT_VERSION = "shared_audio_615_v1"
+CONTRACT_VERSION = "shared_audio_628_v1"
 LEGACY_FEATURE_COUNT = 308
-SHARED_FEATURE_COUNT = 615
+SHARED_FEATURE_COUNT = 628
 PITCH_DIMS = TIMBRE_DIMS = 12
 ROBUST_STATS = ("mean", "std", "q10", "q90")
 
@@ -94,10 +94,18 @@ NEW_MASK_COLUMNS = (
     "has_half_0", "has_half_1", "has_t90", "has_pitch_profile",
     "has_key_relative_pitch",
 )
+INTERVAL_EXTENSION_COLUMNS = (
+    *(f"{event}_interval_{quantile}" for event in ("beat", "bar", "tatum")
+      for quantile in ("q10", "q90")),
+    "beat_local_bpm_q10", "beat_local_bpm_q90", "beat_local_bpm_iqr",
+    "section_duration_iqr",
+    "has_beat_intervals", "has_bar_intervals", "has_tatum_intervals",
+)
 APPENDED_FEATURE_COLUMNS = (
     *GLOBAL_Q50_COLUMNS, *HALF_COLUMNS, *T90_COLUMNS,
     *KEY_RELATIVE_GLOBAL_COLUMNS, *KEY_RELATIVE_HALF_COLUMNS,
     *KEY_RELATIVE_QUARTER_COLUMNS, *PITCH_PROFILE_COLUMNS, *NEW_MASK_COLUMNS,
+    *INTERVAL_EXTENSION_COLUMNS,
 )
 SHARED_FEATURE_COLUMNS = (*LEGACY_FEATURE_COLUMNS, *APPENDED_FEATURE_COLUMNS)
 MERLIN_EXCLUDED_COLUMNS = frozenset((
@@ -108,8 +116,8 @@ MERLIN_ARRAY_FEATURE_COLUMNS = tuple(
 )
 
 assert len(LEGACY_FEATURE_COLUMNS) == LEGACY_FEATURE_COUNT
-assert len(APPENDED_FEATURE_COLUMNS) == 307
+assert len(APPENDED_FEATURE_COLUMNS) == 320
 assert len(SHARED_FEATURE_COLUMNS) == SHARED_FEATURE_COUNT
 assert len(MERLIN_EXCLUDED_COLUMNS) == 76
-assert len(MERLIN_ARRAY_FEATURE_COLUMNS) == 539
+assert len(MERLIN_ARRAY_FEATURE_COLUMNS) == 552
 assert len(set(SHARED_FEATURE_COLUMNS)) == SHARED_FEATURE_COUNT
