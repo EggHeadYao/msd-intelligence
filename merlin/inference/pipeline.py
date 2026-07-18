@@ -8,7 +8,7 @@ from typing import Mapping, Sequence
 from .interfaces import CandidateRetriever, PairFeatureComputer, Ranker
 from .mmr import ScoredCandidate
 from .retrieval import merge_candidates
-from .types import Recommendation
+from .types import Candidate, RecallAudit, Recommendation
 
 
 @dataclass(slots=True)
@@ -45,11 +45,7 @@ class MerlinPipeline:
         if final_limit <= 0 or final_limit > self.final_limit:
             raise ValueError("k must be between 1 and final_limit")
 
-        groups = [
-            retriever.retrieve(query_track_id, self.retriever_limits[retriever.name])
-            for retriever in self.retrievers
-        ]
-        candidates = merge_candidates(groups, query_track_id)
+        candidates, _audit = self.recall(query_track_id)
         scored = []
         for candidate in candidates:
             features = dict(self.feature_computer.compute(query_track_id, candidate))
@@ -68,3 +64,21 @@ class MerlinPipeline:
             )
             for rank, item in enumerate(ranked, start=1)
         ]
+
+    def recall(self, query_track_id: str) -> tuple[list[Candidate], RecallAudit]:
+        """Generate the canonical union and its per-source coverage audit."""
+        if not query_track_id:
+            raise ValueError("query_track_id must not be empty")
+        groups = {
+            retriever.name: list(retriever.retrieve(
+                query_track_id, self.retriever_limits[retriever.name]
+            ))
+            for retriever in self.retrievers
+        }
+        candidates = merge_candidates(list(groups.values()), query_track_id)
+        counts = {name: len(group) for name, group in groups.items()}
+        shortages = {
+            name: self.retriever_limits[name] - count
+            for name, count in counts.items()
+        }
+        return candidates, RecallAudit(counts, shortages, len(candidates))
