@@ -37,6 +37,28 @@ class FaissTrackIndex:
     def contains(self, track_id: str) -> bool:
         return track_id in self._track_to_row
 
+    def similarity(self, left_track_id: str, right_track_id: str) -> float | None:
+        """Return catalog cosine, or ``None`` when either embedding is absent."""
+        if not self.contains(left_track_id) or not self.contains(right_track_id):
+            return None
+        left = self._reconstruct(left_track_id)
+        right = self._reconstruct(right_track_id)
+        score = float(np.dot(left, right))
+        if not np.isfinite(score):
+            raise ValueError("FAISS pair similarity is not finite")
+        return score
+
+    def _reconstruct(self, track_id: str) -> np.ndarray:
+        vector = np.asarray(
+            self.index.reconstruct(self._track_to_row[track_id]),
+            dtype=np.float32,
+        )
+        if vector.shape != (self.dimension,) or not np.all(np.isfinite(vector)):
+            raise ValueError("reconstructed FAISS vector is invalid")
+        if abs(float(np.linalg.norm(vector)) - 1.0) > 1e-5:
+            raise ValueError("reconstructed FAISS vector is not unit normalized")
+        return vector
+
     @classmethod
     def from_files(
         cls,
@@ -74,13 +96,9 @@ class FaissTrackIndex:
         """Return nearest tracks ordered by FAISS inner-product score."""
         if limit <= 0:
             raise ValueError("FAISS search limit must be positive")
-        try:
-            row_id = self._track_to_row[query_track_id]
-        except KeyError as error:
-            raise KeyError(f"query track is not in FAISS mapping: {query_track_id}") from error
-        query = np.asarray(self.index.reconstruct(row_id), dtype=np.float32)
-        if abs(float(np.linalg.norm(query)) - 1.0) > 1e-5:
-            raise ValueError("reconstructed FAISS query vector is not unit normalized")
+        if not self.contains(query_track_id):
+            raise KeyError(f"query track is not in FAISS mapping: {query_track_id}")
+        query = self._reconstruct(query_track_id)
         return self.search_vector(query, limit)
 
     def search_vector(
