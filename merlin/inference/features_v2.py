@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import math
 from pathlib import Path
 from typing import Callable, Iterable, Mapping
@@ -74,6 +75,28 @@ class FeatureFillValues:
     """Set-A statistics used when a continuous pair signal is unavailable."""
 
     values: Mapping[str, float] = field(default_factory=dict)
+
+    @classmethod
+    def from_artifact(
+        cls,
+        path: str | Path,
+        feature_order: tuple[str, ...],
+    ) -> FeatureFillValues:
+        with Path(path).open("r", encoding="utf-8") as stream:
+            artifact = json.load(stream)
+        if artifact.get("feature_schema_version") != RANKER_V2_SCHEMA_VERSION:
+            raise ValueError("fill artifact schema version mismatch")
+        if tuple(artifact.get("feature_order", ())) != feature_order:
+            raise ValueError("fill artifact feature order mismatch")
+        values = {
+            str(name): float(value)
+            for name, value in artifact.get("fill_values", {}).items()
+        }
+        if any(name not in feature_order for name in values):
+            raise ValueError("fill artifact contains an unknown feature")
+        if any(not math.isfinite(value) for value in values.values()):
+            raise ValueError("fill artifact contains a non-finite value")
+        return cls(values)
 
     def get(self, feature_name: str) -> float:
         return float(self.values.get(feature_name, 0.0))
