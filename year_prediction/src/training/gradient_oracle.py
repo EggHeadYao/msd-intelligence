@@ -101,6 +101,65 @@ def require_close(actual: float, expected: float, tolerance: float, label: str) 
         raise ValueError(f"{label} differs: expected={expected}, actual={actual}")
 
 
+def run_oracle(context: SparkContext, fixture: dict[str, Any]) -> dict[str, Any]:
+    ship_oracle_modules(context)
+    features = fixture["features"]
+    labels = fixture["labels"]
+    weights = fixture["weights"]
+    intercept = fixture["intercept"]
+    l2 = fixture["l2"]
+    learning_rate = fixture["learning_rate"]
+    tolerance = fixture["spark_tolerance"]
+
+    local_loss = ridge_loss(features, labels, weights, intercept, l2)
+    local_gradient, local_intercept_gradient = ridge_gradient(
+        features, labels, weights, intercept, l2
+    )
+    numeric_gradient, numeric_intercept_gradient = finite_difference_gradient(
+        features, labels, weights, intercept, l2, fixture["finite_difference_epsilon"]
+    )
+    finite_error = relative_error(
+        [*local_gradient, local_intercept_gradient],
+        [*numeric_gradient, numeric_intercept_gradient],
+    )
+    if finite_error >= fixture["finite_difference_tolerance"]:
+        raise ValueError(f"finite-difference relative error is too large: {finite_error}")
+
+    local_updated = gradient_step(
+        weights, intercept, local_gradient, local_intercept_gradient, learning_rate
+    )
+    for partitions in fixture["spark_partitions"]:
+        loss, gradient, intercept_gradient, count = spark_ridge_statistics(
+            context, features, labels, weights, intercept, l2, partitions
+        )
+        require_close(loss, local_loss, tolerance, f"loss with {partitions} partitions")
+        if relative_error(gradient, local_gradient) > tolerance:
+            raise ValueError(f"gradient differs with {partitions} partitions")
+        require_close(
+            intercept_gradient,
+            local_intercept_gradient,
+            tolerance,
+            f"intercept gradient with {partitions} partitions",
+        )
+        if count != len(features):
+            raise ValueError(f"sample count differs with {partitions} partitions")
+        updated = gradient_step(
+            weights, intercept, gradient, intercept_gradient, learning_rate
+        )
+        if relative_error(updated[0], local_updated[0]) > tolerance:
+            raise ValueError(f"updated weights differ with {partitions} partitions")
+        require_close(
+            updated[1],
+            local_updated[1],
+            tolerance,
+            f"updated intercept with {partitions} partitions",
+        )
+    return {
+        "finite_difference_relative_error": finite_error,
+        "spark_partitions_checked": fixture["spark_partitions"],
+        "status": "valid",
+    }
+
 
 def main() -> None:
     args = parse_args()
