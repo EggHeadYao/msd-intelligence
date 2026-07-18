@@ -93,3 +93,53 @@ def assert_schema(df: DataFrame, expected: dict[str, str], exact: bool = True) -
         raise ValueError(f"Schema types differ: {wrong}")
 
 
+def read_artist_ids(spark: SparkSession, path: Path) -> DataFrame:
+    return (
+        spark.read.text(spark_path(path))
+        .select(F.trim(F.col("value")).alias(ARTIST_ID))
+        .where(F.col(ARTIST_ID) != "")
+    )
+
+
+def assignment_sha256(assignments: DataFrame) -> str:
+    digest = hashlib.sha256()
+    rows = assignments.select(ARTIST_ID, SPLIT).orderBy(ARTIST_ID).toLocalIterator()
+    for row in rows:
+        digest.update(f"{row[ARTIST_ID]}\t{row[SPLIT]}\n".encode("ascii"))
+    return digest.hexdigest()
+
+
+def split_statistics(supervised: DataFrame) -> dict[str, dict[str, int]]:
+    rows = supervised.groupBy(SPLIT).agg(
+        F.count("*").alias("tracks"),
+        F.countDistinct(ARTIST_ID).alias("artists"),
+    ).collect()
+    return {
+        row[SPLIT]: {"tracks": int(row["tracks"]), "artists": int(row["artists"])}
+        for row in rows
+    }
+
+
+def require_equal(actual: int, expected: int, label: str) -> None:
+    if actual != expected:
+        raise ValueError(f"{label}: expected {expected}, got {actual}")
+
+
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionBuildDataset")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        build(args, spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
