@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Mapping
+from typing import Iterable, Mapping
 
 from .types import Candidate
 
@@ -30,6 +30,25 @@ class TrackMetadata:
     album_key: str | None = None
     year: int | None = None
     popularity: float | None = None
+
+
+def build_track_metadata(
+    rows: Iterable[tuple[str, str | None, int | None, bool, float | None]],
+) -> dict[str, TrackMetadata]:
+    """Build ranker metadata while applying the prepared ``has_year`` mask."""
+    tracks: dict[str, TrackMetadata] = {}
+    for track_id, album_key, year, has_year, popularity in rows:
+        if not track_id:
+            continue
+        metadata = TrackMetadata(
+            album_key=str(album_key) if album_key else None,
+            year=int(year) if has_year and year is not None else None,
+            popularity=_finite_or_zero(popularity),
+        )
+        previous = tracks.setdefault(track_id, metadata)
+        if previous != metadata:
+            raise ValueError(f"track {track_id!r} has conflicting metadata")
+    return tracks
 
 
 @dataclass(frozen=True, slots=True)
