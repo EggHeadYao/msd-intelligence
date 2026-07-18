@@ -11,11 +11,13 @@ from pyspark.ml.functions import vector_to_array
 from pyspark.ml.linalg import Vector
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import NumericType, StringType
 
 from columns import (
     CONTRACT_VERSION,
     MERLIN_ARRAY_FEATURE_COUNT,
     MERLIN_RAW_VIEW_COUNT,
+    RAW_AUDIO_COLUMNS,
     TRACK_ID_COLUMN,
 )
 from preprocess import preprocess_audio_features
@@ -50,6 +52,38 @@ def create_spark(shuffle_partitions: int) -> SparkSession:
 
 def spark_path(path: Path) -> str:
     return path.resolve().as_uri()
+
+
+def validate_raw_input(df: DataFrame) -> int:
+    missing = sorted(set(RAW_AUDIO_COLUMNS) - set(df.columns))
+    if missing:
+        preview = ", ".join(missing[:10])
+        raise ValueError(f"C1 raw input is missing {len(missing)} columns: {preview}")
+
+    fields = {field.name: field.dataType for field in df.schema.fields}
+    if not isinstance(fields[TRACK_ID_COLUMN], StringType):
+        raise TypeError("C1 track_id must use Spark string type")
+    non_numeric = [
+        column for column in RAW_AUDIO_COLUMNS
+        if column != TRACK_ID_COLUMN and not isinstance(fields[column], NumericType)
+    ]
+    if non_numeric:
+        preview = ", ".join(non_numeric[:10])
+        raise TypeError(f"C1 raw features must be numeric: {preview}")
+
+    row_count = df.count()
+    if row_count == 0:
+        raise ValueError("C1 raw input is empty")
+    invalid_ids = df.where(
+        F.col(TRACK_ID_COLUMN).isNull()
+        | (~F.col(TRACK_ID_COLUMN).rlike(r"^TR.{16}$"))
+    ).limit(1).count()
+    if invalid_ids:
+        raise ValueError("C1 raw input contains an invalid track_id")
+    unique_ids = df.select(TRACK_ID_COLUMN).distinct().count()
+    if unique_ids != row_count:
+        raise ValueError("C1 raw input contains duplicate track_id values")
+    return row_count
 
 
 def cumulative(values: list[float]) -> list[float]:
@@ -110,7 +144,7 @@ def main() -> None:
         raw = spark.read.parquet(spark_path(args.input))
         if args.limit > 0:
             raw = raw.limit(args.limit)
-        row_count = raw.count()
+        row_count = validate_raw_input(raw)
         processed, feature_columns, preprocess_metadata = preprocess_audio_features(raw)
 
         assembler = VectorAssembler(inputCols=list(feature_columns), outputCol=FEATURES_COLUMN)
