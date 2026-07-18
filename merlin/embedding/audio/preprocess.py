@@ -14,6 +14,8 @@ from columns import (
     LOG_CONTINUOUS_COLUMNS,
     SEGMENT_FEATURE_COLUMNS,
     TIME_SIGNATURE_COLUMN,
+    TIME_SIGNATURE_UNKNOWN_COLUMN,
+    TIME_SIGNATURE_VALUES,
     build_feature_columns,
     time_signature_one_hot_column,
 )
@@ -31,19 +33,19 @@ def add_time_signature_one_hot(
     values: Sequence[int] | None = None,
 ) -> tuple[DataFrame, tuple[int, ...], tuple[str, ...]]:
     if values is None:
-        rows = (
-            df.select(TIME_SIGNATURE_COLUMN)
-            .where(F.col(TIME_SIGNATURE_COLUMN).isNotNull())
-            .distinct()
-            .collect()
-        )
-        values = sorted(int(row[0]) for row in rows)
+        values = TIME_SIGNATURE_VALUES
     values = tuple(int(value) for value in values)
     columns = tuple(time_signature_one_hot_column(value) for value in values)
     for value, column in zip(values, columns):
         one_hot = (F.col(TIME_SIGNATURE_COLUMN).cast("int") == F.lit(value)).cast("double")
         df = df.withColumn(column, one_hot)
-    return df, values, columns
+    meter = F.col(TIME_SIGNATURE_COLUMN).cast("int")
+    known = meter.isin(*values)
+    df = df.withColumn(
+        TIME_SIGNATURE_UNKNOWN_COLUMN,
+        F.when(known, F.lit(0.0)).otherwise(F.lit(1.0)),
+    )
+    return df, values, (*columns, TIME_SIGNATURE_UNKNOWN_COLUMN)
 
 
 def _bounds(df: DataFrame, column: str) -> tuple[float, float]:

@@ -36,6 +36,8 @@ PASSTHROUGH_CONTINUOUS_COLUMNS = (
 )
 PASSTHROUGH_BINARY_COLUMNS = (MODE_COLUMN,)
 TIME_SIGNATURE_ONE_HOT_PREFIX = "time_signature_"  # Prefix for meter one-hot columns.
+TIME_SIGNATURE_VALUES = (3, 4, 5, 6, 7)
+TIME_SIGNATURE_UNKNOWN_COLUMN = "time_signature_unknown"
 
 
 def indexed_feature_columns(
