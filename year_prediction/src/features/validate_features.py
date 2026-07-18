@@ -70,3 +70,56 @@ def require(condition: bool, message: str) -> None:
 def schema_types(df: DataFrame) -> dict[str, str]:
     return {field.name: field.dataType.simpleString() for field in df.schema.fields}
 
+
+def assert_nested_close(actual: Any, expected: Any, path: str = "preprocessing") -> None:
+    if isinstance(expected, dict):
+        require(isinstance(actual, dict) and set(actual) == set(expected), f"Keys differ at {path}")
+        for key in expected:
+            assert_nested_close(actual[key], expected[key], f"{path}.{key}")
+    elif isinstance(expected, list):
+        require(isinstance(actual, list) and len(actual) == len(expected), f"Length differs at {path}")
+        for index, value in enumerate(expected):
+            assert_nested_close(actual[index], value, f"{path}[{index}]")
+    elif isinstance(expected, float):
+        require(
+            isinstance(actual, (int, float))
+            and math.isclose(float(actual), expected, rel_tol=1.0e-10, abs_tol=1.0e-12),
+            f"Numeric value differs at {path}: actual={actual}, expected={expected}",
+        )
+    else:
+        require(actual == expected, f"Value differs at {path}: actual={actual}, expected={expected}")
+
+
+def require_exact_content(actual: DataFrame, expected: DataFrame, columns: list[str], label: str) -> None:
+    def digests(df: DataFrame, alias: str) -> DataFrame:
+        value = F.to_json(F.struct(*(F.col(column) for column in columns)), {"ignoreNullFields": "false"})
+        return df.select(TRACK_ID, F.sha2(value, 256).alias(alias))
+
+    joined = digests(actual, "actual").join(digests(expected, "expected"), TRACK_ID, "full_outer")
+    mismatches = joined.where(
+        F.col("actual").isNull()
+        | F.col("expected").isNull()
+        | (F.col("actual") != F.col("expected"))
+    ).count()
+    require(mismatches == 0, f"{label} content differs from a train-only reconstruction")
+
+
+def validate(features: Path, dataset: Path, spark: SparkSession) -> None:
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionValidateFeatures")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        validate(args.features.resolve(), args.dataset.resolve(), spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
