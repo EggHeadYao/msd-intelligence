@@ -112,6 +112,8 @@ def validate_queries(
     matrix = np.vstack([np.asarray(row[2], dtype=np.float32).reshape(1, -1) for row in queries])
     require(matrix.shape[1] == index.d, "query embedding dimension does not match FAISS index")
     distances, indices = index.search(matrix, min(top_k + 1, index.ntotal))
+    compared_pairs = 0
+    max_score_error = 0.0
 
     for query_index, (row_id, track_id, _) in enumerate(queries):
         result_ids = [int(value) for value in indices[query_index] if int(value) >= 0]
@@ -130,6 +132,13 @@ def validate_queries(
             float(distances[query_index][0]) <= 1.0001,
             "inner-product score is above normalized range",
         )
+        for rank, result_id in enumerate(result_ids):
+            expected = float(np.dot(matrix[query_index], index.reconstruct(result_id)))
+            error = abs(expected - float(distances[query_index][rank]))
+            max_score_error = max(max_score_error, error)
+            compared_pairs += 1
+    require(compared_pairs >= 100, "FAISS validation requires at least 100 score comparisons")
+    require(max_score_error <= 1e-5, "FAISS scores disagree with NumPy inner products")
 
 
 def main() -> None:
