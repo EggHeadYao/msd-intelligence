@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+import math
 from typing import Iterable, Mapping, Sequence
 
 
@@ -51,3 +52,45 @@ def build_tag_data(
         artist_terms={key: frozenset(value) for key, value in artist_terms.items()},
         term_artists={key: frozenset(value) for key, value in term_artists.items()},
     )
+
+
+def find_similar_artists(
+    data: TagData,
+    artist_id: str,
+    top_k: int,
+    *,
+    max_term_artists: int = 5_000,
+) -> list[tuple[str, float]]:
+    """Rank artists by cosine similarity over binary TF-IDF tag vectors."""
+    if top_k <= 0 or max_term_artists <= 0:
+        raise ValueError("tag neighbor limits must be positive")
+    query_terms = data.artist_terms.get(artist_id, frozenset())
+    artist_count = len(data.artist_terms)
+    if not query_terms or artist_count == 0:
+        return []
+
+    def idf(term: str) -> float:
+        frequency = len(data.term_artists.get(term, ()))
+        return math.log((1.0 + artist_count) / (1.0 + frequency)) + 1.0
+
+    usable_terms = [
+        term
+        for term in query_terms
+        if len(data.term_artists.get(term, ())) <= max_term_artists
+    ]
+    query_norm = math.sqrt(sum(idf(term) ** 2 for term in query_terms))
+    numerators: dict[str, float] = defaultdict(float)
+    for term in usable_terms:
+        weight = idf(term) ** 2
+        for candidate in data.term_artists[term]:
+            if candidate != artist_id:
+                numerators[candidate] += weight
+
+    scored = []
+    for candidate, numerator in numerators.items():
+        candidate_norm = math.sqrt(
+            sum(idf(term) ** 2 for term in data.artist_terms[candidate])
+        )
+        if candidate_norm > 0.0:
+            scored.append((candidate, numerator / (query_norm * candidate_norm)))
+    return sorted(scored, key=lambda item: (-item[1], item[0]))[:top_k]
