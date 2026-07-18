@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from shared_contract import (
+    CONTRACT_VERSION,
+    MERLIN_ARRAY_FEATURE_COLUMNS,
+    SHARED_FEATURE_COUNT,
+)
+
 TRACK_ID_COLUMN = "track_id"  # Stable song key across MERLIN artifacts.
 KEY_COLUMN = "key"  # Raw 0-11 musical key; circular-encoded later.
 MODE_COLUMN = "mode"  # Raw major/minor mode flag.
@@ -12,7 +18,8 @@ SEGMENT_STATS = ("mean", "std", "min", "max")  # Stats for pitch/timbre columns.
 LOUDNESS_STATS = ("mean", "std", "min", "max")  # Stats for segment loudness.
 
 RAW_CONTINUOUS_COLUMNS = (
-    "danceability", "energy", "loudness", "tempo", "duration",
+    "loudness", "tempo", "duration", "key_confidence", "mode_confidence",
+    "time_signature_confidence", "end_of_fade_in", "start_of_fade_out",
 )  # Raw numeric scalars before clipping, log transforms, and scaling.
 RAW_CATEGORICAL_COLUMNS = (KEY_COLUMN, TIME_SIGNATURE_COLUMN)  # Raw categorical scalars.
 RAW_BINARY_COLUMNS = (MODE_COLUMN, HAS_SEGMENTS_COLUMN)  # Raw binary scalars.
@@ -23,8 +30,11 @@ RAW_SCALAR_COLUMNS = (
 KEY_CIRCULAR_COLUMNS = ("key_sin", "key_cos")  # Derived circular key columns.
 LOG_CONTINUOUS_COLUMNS = ("tempo_log", "duration_log")  # Derived clipped-log columns.
 CLIPPED_CONTINUOUS_COLUMNS = ("loudness_clipped",)  # Derived clipped loudness column.
-PASSTHROUGH_CONTINUOUS_COLUMNS = ("danceability", "energy")  # Raw numeric keep-candidates.
-PASSTHROUGH_BINARY_COLUMNS = (MODE_COLUMN, HAS_SEGMENTS_COLUMN)  # Raw binary keep-candidates.
+PASSTHROUGH_CONTINUOUS_COLUMNS = (
+    "key_confidence", "mode_confidence", "time_signature_confidence",
+    "end_of_fade_in", "start_of_fade_out",
+)
+PASSTHROUGH_BINARY_COLUMNS = (MODE_COLUMN,)
 TIME_SIGNATURE_ONE_HOT_PREFIX = "time_signature_"  # Prefix for meter one-hot columns.
 
 
@@ -55,10 +65,8 @@ def time_signature_one_hot_column(value: int) -> str:
 PITCH_FEATURE_COLUMNS = pitch_feature_columns()  # Expanded 48 pitch aggregate columns.
 TIMBRE_FEATURE_COLUMNS = timbre_feature_columns()  # Expanded 48 timbre aggregate columns.
 LOUDNESS_FEATURE_COLUMNS = loudness_feature_columns()  # Expanded 4 loudness columns.
-SEGMENT_FEATURE_COLUMNS = (
-    *PITCH_FEATURE_COLUMNS, *TIMBRE_FEATURE_COLUMNS, *LOUDNESS_FEATURE_COLUMNS,
-)  # All 100 segment aggregate columns used by the audio encoder.
-RAW_AUDIO_COLUMNS = (*RAW_SCALAR_COLUMNS, *SEGMENT_FEATURE_COLUMNS, HAS_SEGMENTS_COLUMN)  # Full raw input schema.
+SEGMENT_FEATURE_COLUMNS = MERLIN_ARRAY_FEATURE_COLUMNS
+RAW_AUDIO_COLUMNS = (*RAW_SCALAR_COLUMNS, *SEGMENT_FEATURE_COLUMNS)
 SEGMENT_FEATURE_COLUMN_SET = frozenset(SEGMENT_FEATURE_COLUMNS)  # Fast segment lookup set.
 
 
@@ -72,3 +80,11 @@ def build_feature_columns(time_signature_columns: tuple[str, ...]) -> tuple[str,
         *time_signature_columns,
         *SEGMENT_FEATURE_COLUMNS,
     )
+
+
+MERLIN_ARRAY_FEATURE_COUNT = len(MERLIN_ARRAY_FEATURE_COLUMNS)
+MERLIN_RAW_VIEW_COUNT = MERLIN_ARRAY_FEATURE_COUNT + 11
+
+assert SHARED_FEATURE_COUNT == 615
+assert MERLIN_ARRAY_FEATURE_COUNT == 539
+assert MERLIN_RAW_VIEW_COUNT == 550
