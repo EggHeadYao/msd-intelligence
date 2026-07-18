@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from shared_contract import CONTRACT_VERSION
 TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
 DEFAULT_AUDIO_DIR = Path("parquets/merlin_v2/audio")
+FAISS_MANIFEST_NAME = "index_audio_manifest.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +52,14 @@ def spark_path(path: Path) -> str:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def expected_dimension(output_dir: Path) -> int:
@@ -146,7 +156,23 @@ def main() -> None:
 
         write_track_id_mapping(embeddings, args.output / args.track_ids_name)
         index = build_index(embeddings, args.batch_size, expected_dim)
-        faiss.write_index(index, str(args.output / args.index_name))
+        index_path = args.output / args.index_name
+        faiss.write_index(index, str(index_path))
+        metadata_path = args.output / "audio_encoder_metadata.json"
+        manifest = {
+            "shared_audio_contract_version": CONTRACT_VERSION,
+            "c1_feature_version": 2,
+            "index_type": "IndexFlatIP",
+            "dimension": index.d,
+            "row_count": index.ntotal,
+            "index_file": args.index_name,
+            "track_ids_path": args.track_ids_name,
+            "index_sha256": sha256_file(index_path),
+            "encoder_metadata_sha256": sha256_file(metadata_path),
+        }
+        with (args.output / FAISS_MANIFEST_NAME).open("w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2, sort_keys=True)
+            handle.write("\n")
         print(
             "audio_faiss_build_done "
             f"rows={row_count}, dimension={index.d}, index_size={index.ntotal}, "
