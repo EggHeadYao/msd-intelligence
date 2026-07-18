@@ -35,6 +35,8 @@
 
 \section{Year Prediction}
 
+\subsection{Data Contract}
+
 \begin{frame}{Year prediction starts with the data contract}
 
 \begin{center}
@@ -81,9 +83,10 @@ A lower error is useful only when it comes from a better model, rather than a di
 	$y=0$ means unknown, not a historical year; it remains unlabeled. MSD reports $515{,}576$ dated tracks spanning 1922--2011.~{\scriptsize\autocite{bertinmahieux2011million}}
 
 	\column{.49\textwidth}
-	\textbf{Feature contract}
+	\textbf{Predictor boundary}
 
 	\medskip
+	\setlength{\leftmargini}{1em}
 	\begin{itemize}
 		\item Join on the unique track ID.
 		\item Baseline: 109 raw acoustic predictors.
@@ -136,6 +139,7 @@ The official test has $2{,}822$ artists and $49{,}436$ tracks.~{\scriptsize\auto
 \begin{frame}{Step 3: freeze a fair model comparison}
 
 \begin{columns}[T,onlytextwidth]
+	\setlength{\leftmargini}{1em}
 	\column{.47\textwidth}
 	\textbf{The contract freezes}
 	\begin{itemize}
@@ -156,16 +160,191 @@ The official test has $2{,}822$ artists and $49{,}436$ tracks.~{\scriptsize\auto
 \medskip
 
 \begin{center}
+{	
 \small
 \begin{tabular}{c c c c c}
 	\textbf{Train} & & \textbf{Validation} & & \textbf{Test} \\
 	fit preprocessing and models & $\longrightarrow$ & choose designs & $\longrightarrow$ & report once
 \end{tabular}
+}
 \end{center}
 
 \begin{block}{Data contract goal}
 Documenting a dataset's motivation, composition, creation, and intended use improves transparency between dataset creators and consumers.~{\scriptsize\autocite{gebru2021datasheets}}
 \end{block}
+
+\end{frame}
+
+\subsection{Feature Engineering and Contract}
+
+\begin{frame}{Feature engineering: make raw audio learnable}
+
+{ \small
+\setlength{\leftmargini}{1em}
+
+\begin{columns}[T,onlytextwidth]
+	\footnotesize
+	\column{.31\textwidth}
+	\textbf{Clean semantics}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item Non-positive tempo becomes missing.
+		\item Absent segment aggregates become missing.
+		\item Fill both with train means.
+	\end{itemize}
+
+	\column{.31\textwidth}
+	\textbf{Transform and encode}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item Clip tempo, duration, and loudness at train 1st/99th percentiles.
+		\item Apply \texttt{log1p} to tempo and duration; keep loudness in dB.
+		\item Encode key and meter.
+	\end{itemize}
+
+	\column{.32\textwidth}
+	\textbf{Select and scale}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item Remove train-zero variance columns.
+		\item Freeze the retained column order.
+		\item Standardize the linear view with train $\mu,\sigma$.
+	\end{itemize}
+\end{columns}
+}
+
+\medskip
+\medskip
+\medskip
+
+\begin{block}{Key idea}
+The raw values are evidence. Clip bounds and encodings are project choices; normalization and feature selection follow established guidance.~{\scriptsize\autocite{guyon2003selection}}
+\end{block}
+
+\end{frame}
+
+\begin{frame}{Feature engineering must respect the split}
+
+
+\begin{center}
+\small
+\begin{tabular}{c c c c c}
+	\textbf{Train} & $\longrightarrow$ & \textbf{Frozen transform} & $\longrightarrow$ & \textbf{Validation/test} \\
+	fit all statistics & & save fitted state & & transform only
+\end{tabular}
+\end{center}
+
+\medskip
+\medskip
+
+{
+\small
+\setlength{\leftmargini}{1em}
+
+\begin{columns}[T,onlytextwidth]
+	\column{.47\textwidth}
+	\textbf{Fit on train}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item imputation means and clip bounds;
+		\item category maps and variance filter;
+		\item scaler statistics.
+	\end{itemize}
+
+	\column{.49\textwidth}
+	\textbf{Reuse unchanged}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item validation compares designs;
+		\item test reports the frozen choice;
+		\item future tracks reuse the same state.
+	\end{itemize}
+\end{columns}
+}
+
+\medskip
+\medskip
+
+\begin{block}{Leakage boundary}
+If held-out values help fit preprocessing, evaluation has already seen the answer distribution. Learn--predict separation therefore makes every fitted transform train-only.~{\scriptsize\autocite{kaufman2011leakage}}
+\end{block}
+
+\end{frame}
+
+\begin{frame}{Feature contract: one meaning, two model views}
+
+\begin{columns}[T,onlytextwidth]
+	\small
+	\setlength{\leftmargini}{1em}
+	\column{.47\textwidth}
+	\begin{block}{Linear view}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item Imputed engineered numerics.
+		\item Numeric encodings for key and meter.
+		\item Fixed-order standardized vector.
+		\item Ridge, PCA, RFF, and Huber.
+	\end{itemize}
+	\end{block}
+
+	\column{.49\textwidth}
+	\begin{block}{Tree view}
+	\begin{itemize}
+		\item Same cleaned and imputed source.
+		\item Unscaled continuous columns.
+		\item Key and meter remain categorical.
+		\item LightGBM histogram splits.
+	\end{itemize}
+	\end{block}
+\end{columns}
+
+\medskip
+
+Normalization helps when input scales are not commensurate.~{\scriptsize\autocite{guyon2003selection}} PCA is learned only from the linear train view.~{\scriptsize\autocite{jolliffe2016pca}} LightGBM supplies the histogram-based tree comparison.~{\scriptsize\autocite{ke2017lightgbm}}
+
+\begin{block}{Shared contract}
+Both views freeze the same predictors, missing-value rules, transform order, feature order, and fitted statistics. IDs remain for audit only.
+\end{block}
+
+\end{frame}
+
+\begin{frame}{Key encoding is a controlled contract choice}
+
+\begin{center}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{l p{.34\textwidth} p{.45\textwidth}}
+	\textbf{Contract} & \textbf{Encoding} & \textbf{Meaning} \\
+	\hline
+	K0 & Omit key & Does key help? \\
+	K1 & One-hot + unknown & No imposed geometry; default \\
+	K2 & Chromatic sine/cosine & Semitone-circle geometry \\
+	K3 & Fifths-circle sine/cosine & Tonal fifths geometry \\
+\end{tabular}
+\end{center}
+
+\medskip
+\medskip
+
+The circle of fifths makes K3 plausible for musical key, but does not prove it predicts year better.~{\scriptsize\autocite{kania2019key}}
+
+\medskip
+\medskip
+
+\begin{block}{Controlled change}
+Only the key representation changes; rows, all other predictors, and the Ridge baseline stay fixed.
+\end{block}
+
+\end{frame}
+
+\begin{frame}{How the key contract is selected}
+
+\begin{enumerate}
+	\setlength{\itemsep}{5pt}
+	\item \textbf{Keep Ridge and rows fixed.} \\Change only key encoding so the comparison isolates that feature design.~{\scriptsize\autocite{guyon2003selection}}
+	\item \textbf{Compare validation MAE.} \\Compute $\Delta\mathrm{MAE}=\mathrm{MAE}(K_i)-\mathrm{MAE}(K_1)$; MAE follows the original MSD year task.~{\scriptsize\autocite{bertinmahieux2011million}}
+	\item \textbf{Bootstrap artists.} \\Resample artists with replacement, retain all their songs, and estimate a paired 95\% confidence interval for $\Delta\mathrm{MAE}$.~{\scriptsize\autocite{field2007cluster}}
+	\item \textbf{Freeze the encoding.} \\Use validation to lock the selected representation and fitted preprocessing state.~{\scriptsize\autocite{cawley2010overfitting}}
+\end{enumerate}
 
 \end{frame}
 
