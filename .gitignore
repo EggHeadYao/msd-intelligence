@@ -10,6 +10,19 @@ artistdistance/target/
 !merlin/
 !merlin/**
 
+!year_prediction/
+!year_prediction/**
+
+!slides/
+!slides/*.sty
+!slides/*.tex
+!slides/*.pdf
+
+!poster/
+!poster/*.sty
+!poster/*.tex
+!poster/*.pdf
+
 !tools/
 !tools/**
 !README.md
