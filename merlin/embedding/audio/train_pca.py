@@ -35,8 +35,8 @@ MODEL_READY_SCHEMA_VERSION = "c1_model_ready_v2"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the MERLIN C1 PCA audio encoder.")
-    parser.add_argument("--input", type=Path, default=Path("parquets/prepared_v2/song_audio_features_raw.parquet"))
-    parser.add_argument("--output", type=Path, default=Path("parquets/merlin_v2/audio"))
+    parser.add_argument("--input", type=Path, default=Path("parquets_new/prepared/song_audio_features_raw.parquet"))
+    parser.add_argument("--output", type=Path, default=Path("parquets_new/merlin/audio"))
     parser.add_argument("--target-variance", type=float, default=0.95)
     parser.add_argument("--fixed-k", type=int, choices=(PCA_DIMENSION,), default=PCA_DIMENSION)
     parser.add_argument("--max-components", type=int, choices=(PCA_DIMENSION,), default=PCA_DIMENSION)

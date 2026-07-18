@@ -15,7 +15,7 @@ from shared_contract import CONTRACT_VERSION
 
 TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
-DEFAULT_AUDIO_DIR = Path("parquets/merlin_v2/audio")
+DEFAULT_AUDIO_DIR = Path("parquets_new/merlin/audio")
 FAISS_MANIFEST_NAME = "index_audio_manifest.json"
 
 
