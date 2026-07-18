@@ -176,18 +176,19 @@ def fill_scalar_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, floa
         *FADE_RATIO_COLUMNS,
         *PASSTHROUGH_BINARY_COLUMNS,
     )
-    means_row = df.agg(
-        *(F.avg(F.col(column).cast("double")).alias(column) for column in columns)
+    medians_row = df.agg(
+        *(F.percentile_approx(F.col(column).cast("double"), 0.5, 10_000).alias(column)
+          for column in columns)
     ).first()
-    means = {}
+    medians = {}
     for column in columns:
-        value = means_row[column]
-        mean = float(value) if value is not None else 0.0
-        means[column] = mean if math.isfinite(mean) else 0.0
+        value = medians_row[column]
+        median = float(value) if value is not None else 0.0
+        medians[column] = median if math.isfinite(median) else 0.0
         current = F.col(column).cast("double")
         valid = current.isNotNull() & ~F.isnan(current) & (F.abs(current) != float("inf"))
-        df = df.withColumn(column, F.when(valid, current).otherwise(F.lit(means[column])))
-    return df, means
+        df = df.withColumn(column, F.when(valid, current).otherwise(F.lit(medians[column])))
+    return df, medians
 
 
 def drop_zero_variance_features(
@@ -218,7 +219,7 @@ def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...]
     df = add_key_circular_features(df)
     df, time_values, time_columns = add_time_signature_one_hot(df)
     df, clip_bounds = add_log_clipped_features(df)
-    df, scalar_means = fill_scalar_missing_values(df)
+    df, scalar_medians = fill_scalar_missing_values(df)
     candidates = build_feature_columns(time_columns)
     features, dropped = drop_zero_variance_features(df, candidates)
     metadata = {
@@ -226,7 +227,7 @@ def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...]
         "dropped_features": dropped,
         "near_zero_range_epsilon": NEAR_ZERO_RANGE_EPSILON,
         "segment_medians": segment_medians,
-        "scalar_means": scalar_means,
+        "scalar_medians": scalar_medians,
         "time_signature_columns": time_columns,
         "time_signature_values": time_values,
     }
