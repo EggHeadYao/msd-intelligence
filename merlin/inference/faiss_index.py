@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 
+from .artifact_lineage import load_faiss_manifest
+
 
 @dataclass(slots=True)
 class FaissTrackIndex:
@@ -37,9 +39,14 @@ class FaissTrackIndex:
 
     @classmethod
     def from_files(
-        cls, index_path: str | Path, mapping_path: str | Path
+        cls,
+        index_path: str | Path,
+        mapping_path: str | Path,
+        manifest_path: str | Path,
+        *,
+        expected_contract: str,
     ) -> "FaissTrackIndex":
-        """Load a C1/C2 index and its Parquet row mapping without Spark."""
+        """Load a manifest-bound C1/C2 index and Parquet row mapping."""
         try:
             import faiss
         except ImportError as error:
@@ -47,8 +54,19 @@ class FaissTrackIndex:
         index_file = Path(index_path)
         if not index_file.is_file():
             raise FileNotFoundError(f"FAISS index does not exist: {index_file}")
+        manifest = load_faiss_manifest(
+            manifest_path,
+            index_path=index_file,
+            mapping_path=mapping_path,
+            expected_contract=expected_contract,
+        )
         index = faiss.read_index(str(index_file))
-        return cls(index=index, row_to_track=_load_track_mapping(mapping_path))
+        if type(index).__name__ != "IndexFlatIP" or int(index.d) != 128:
+            raise ValueError("FAISS artifact must be an exact 128D IndexFlatIP")
+        result = cls(index=index, row_to_track=_load_track_mapping(mapping_path))
+        if int(manifest["row_count"]) != int(index.ntotal):
+            raise ValueError("FAISS manifest row count mismatch")
+        return result
 
     def search(self, query_track_id: str, limit: int) -> list[tuple[str, float]]:
         """Return nearest tracks ordered by FAISS inner-product score."""
@@ -61,6 +79,8 @@ class FaissTrackIndex:
         query = np.asarray(self.index.reconstruct(row_id), dtype=np.float32).reshape(1, -1)
         if query.shape[1] != self.dimension or not np.all(np.isfinite(query)):
             raise ValueError("reconstructed FAISS query vector is invalid")
+        if abs(float(np.linalg.norm(query)) - 1.0) > 1e-5:
+            raise ValueError("reconstructed FAISS query vector is not unit normalized")
         scores, row_ids = self.index.search(query, min(limit, int(self.index.ntotal)))
         return [
             (self.row_to_track[int(result_row)], float(score))
