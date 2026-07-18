@@ -12,6 +12,8 @@ from columns import (
     KEY_CIRCULAR_COLUMNS,
     KEY_COLUMN,
     LOG_CONTINUOUS_COLUMNS,
+    PASSTHROUGH_BINARY_COLUMNS,
+    PASSTHROUGH_CONTINUOUS_COLUMNS,
     SCALAR_AVAILABILITY_COLUMNS,
     SEGMENT_FEATURE_COLUMNS,
     TIME_SIGNATURE_COLUMN,
@@ -45,7 +47,10 @@ def add_scalar_availability(df: DataFrame) -> DataFrame:
     )
     for name, condition in zip(SCALAR_AVAILABILITY_COLUMNS, conditions, strict=True):
         df = df.withColumn(name, condition.cast("double"))
-    return df
+    return df.withColumn(
+        "mode",
+        F.when(F.col("has_mode") == 1.0, F.col("mode").cast("double")),
+    )
 
 
 def add_key_circular_features(df: DataFrame) -> DataFrame:
@@ -69,7 +74,9 @@ def add_time_signature_one_hot(
     values = tuple(int(value) for value in values)
     columns = tuple(time_signature_one_hot_column(value) for value in values)
     for value, column in zip(values, columns):
-        one_hot = (F.col(TIME_SIGNATURE_COLUMN).cast("int") == F.lit(value)).cast("double")
+        one_hot = F.when(
+            F.col(TIME_SIGNATURE_COLUMN).cast("int") == F.lit(value), F.lit(1.0)
+        ).otherwise(F.lit(0.0))
         df = df.withColumn(column, one_hot)
     meter = F.col(TIME_SIGNATURE_COLUMN).cast("int")
     known = meter.isin(*values)
@@ -134,6 +141,28 @@ def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, flo
     return df.select(*expressions), means
 
 
+def fill_scalar_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
+    columns = (
+        *KEY_CIRCULAR_COLUMNS,
+        *LOG_CONTINUOUS_COLUMNS,
+        *CLIPPED_CONTINUOUS_COLUMNS,
+        *PASSTHROUGH_CONTINUOUS_COLUMNS,
+        *PASSTHROUGH_BINARY_COLUMNS,
+    )
+    means_row = df.agg(
+        *(F.avg(F.col(column).cast("double")).alias(column) for column in columns)
+    ).first()
+    means = {}
+    for column in columns:
+        value = means_row[column]
+        mean = float(value) if value is not None else 0.0
+        means[column] = mean if math.isfinite(mean) else 0.0
+        current = F.col(column).cast("double")
+        valid = current.isNotNull() & ~F.isnan(current) & (F.abs(current) != float("inf"))
+        df = df.withColumn(column, F.when(valid, current).otherwise(F.lit(means[column])))
+    return df, means
+
+
 def drop_zero_variance_features(
     df: DataFrame,
     columns: Sequence[str],
@@ -161,12 +190,14 @@ def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...]
     df = add_key_circular_features(df)
     df, time_values, time_columns = add_time_signature_one_hot(df)
     df, clip_bounds = add_log_clipped_features(df)
+    df, scalar_means = fill_scalar_missing_values(df)
     candidates = build_feature_columns(time_columns)
     features, dropped = drop_zero_variance_features(df, candidates)
     metadata = {
         "clip_bounds": clip_bounds,
         "dropped_features": dropped,
         "segment_means": segment_means,
+        "scalar_means": scalar_means,
         "time_signature_columns": time_columns,
         "time_signature_values": time_values,
     }
