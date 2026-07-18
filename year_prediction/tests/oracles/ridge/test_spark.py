@@ -7,10 +7,10 @@ from pathlib import Path
 from pyspark.sql import SparkSession
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src" / "training"))
+ORACLE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(ORACLE_DIR))
 
-from gradient_oracle import load_fixture, run_oracle  # noqa: E402
+from spark_oracle import load_fixture, run_oracle  # noqa: E402
 
 
 class GradientOracleIntegrationTest(unittest.TestCase):
@@ -29,7 +29,7 @@ class GradientOracleIntegrationTest(unittest.TestCase):
         cls.spark.stop()
 
     def test_spark_matches_reference_for_each_partition_count(self) -> None:
-        fixture = load_fixture(ROOT / "tests" / "fixtures" / "ridge_oracle.json")
+        fixture = load_fixture(ORACLE_DIR / "fixture.json")
         result = run_oracle(self.spark.sparkContext, fixture)
         self.assertEqual(result["status"], "valid")
         self.assertEqual(result["spark_partitions_checked"], [1, 2, 4])

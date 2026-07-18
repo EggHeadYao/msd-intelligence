@@ -13,25 +13,27 @@ The oracle defines the correctness contract used by the year-prediction Ridge tr
 
 ## Files
 
-- `ridge_math.py`: local loss, analytic gradient, finite-difference gradient, update, and comparison functions.
-- `gradient_oracle.py`: Spark partition aggregation and local-versus-Spark validation.
-- `tests/fixtures/ridge_oracle.json`: deterministic inputs, tolerances, and golden outputs.
-- `tests/test_ridge_math.py`: local unit tests for the mathematical contract.
-- `tests/test_gradient_oracle.py`: Spark integration test across multiple partition counts.
+- `reference.py`: independent local loss, gradient, finite-difference, update, and comparison functions.
+- `spark_oracle.py`: Spark partition aggregation and local-versus-Spark validation.
+- `fixture.json`: deterministic inputs, tolerances, and golden outputs.
+- `test_reference.py`: local unit tests for the mathematical contract.
+- `test_spark.py`: Spark integration test across multiple partition counts.
 
 ## Run
 
 Run the local unit tests:
 
 ```bash
-python3 -m unittest p1team02/year_prediction/tests/test_ridge_math.py
+python3 -m unittest discover \
+  -s p1team02/year_prediction/tests/oracles/ridge \
+  -p 'test_reference.py'
 ```
 
 Run the Spark oracle:
 
 ```bash
 spark-submit --master 'local[*]' \
-  p1team02/year_prediction/src/training/gradient_oracle.py
+  p1team02/year_prediction/tests/oracles/ridge/spark_oracle.py
 ```
 
 A successful Spark run prints a JSON object with `"status": "valid"`.

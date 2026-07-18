@@ -6,10 +6,10 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src" / "training"))
+ORACLE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(ORACLE_DIR))
 
-from ridge_math import (  # noqa: E402
+from reference import (  # noqa: E402
     finite_difference_gradient,
     gradient_step,
     relative_error,
@@ -18,7 +18,7 @@ from ridge_math import (  # noqa: E402
 )
 
 
-FIXTURE_PATH = ROOT / "tests" / "fixtures" / "ridge_oracle.json"
+FIXTURE_PATH = ORACLE_DIR / "fixture.json"
 
 
 class RidgeMathTest(unittest.TestCase):
