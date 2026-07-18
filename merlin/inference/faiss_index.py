@@ -44,6 +44,7 @@ class FaissTrackIndex:
         mapping_path: str | Path,
         manifest_path: str | Path,
         *,
+        expected_contract_key: str,
         expected_contract: str,
     ) -> "FaissTrackIndex":
         """Load a manifest-bound C1/C2 index and Parquet row mapping."""
@@ -58,6 +59,7 @@ class FaissTrackIndex:
             manifest_path,
             index_path=index_file,
             mapping_path=mapping_path,
+            expected_contract_key=expected_contract_key,
             expected_contract=expected_contract,
         )
         index = faiss.read_index(str(index_file))

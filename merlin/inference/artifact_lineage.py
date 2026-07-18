@@ -30,6 +30,7 @@ def load_faiss_manifest(
     *,
     index_path: str | Path,
     mapping_path: str | Path,
+    expected_contract_key: str,
     expected_contract: str,
 ) -> dict[str, Any]:
     manifest_path = Path(path)
@@ -38,13 +39,13 @@ def load_faiss_manifest(
     with manifest_path.open("r", encoding="utf-8") as stream:
         manifest = json.load(stream)
     required = {
-        "contract_version", "index_type", "dimension", "row_count",
+        expected_contract_key, "index_type", "dimension", "row_count",
         "index_sha256", "mapping_sha256",
     }
     missing = sorted(required - manifest.keys())
     if missing:
         raise ValueError(f"FAISS manifest missing keys: {missing}")
-    if manifest["contract_version"] != expected_contract:
+    if manifest[expected_contract_key] != expected_contract:
         raise ValueError("FAISS manifest contract version mismatch")
     if manifest["index_type"] != "IndexFlatIP" or int(manifest["dimension"]) != 128:
         raise ValueError("FAISS manifest must describe a 128D IndexFlatIP")
