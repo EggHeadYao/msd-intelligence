@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
-from .artifacts import InferenceArtifacts
+from .artifact_paths import InferenceArtifactPaths
+from .artifacts import InferenceArtifacts, load_inference_artifacts
 from .candidate_policy import CANONICAL_RETRIEVER_LIMITS
 from .features_v2 import PairSignalLookups, RankerV2FeatureComputer
 from .pipeline import MerlinPipeline
 from .retrieval import BfsRetriever, TagRetriever, VectorRetriever
+
+
+def load_inference_pipeline(
+    paths: InferenceArtifactPaths = InferenceArtifactPaths(),
+    *,
+    graph_contract_key: str,
+    graph_contract_version: str,
+) -> MerlinPipeline:
+    artifacts = load_inference_artifacts(
+        paths,
+        graph_contract_key=graph_contract_key,
+        graph_contract_version=graph_contract_version,
+    )
+    return build_inference_pipeline(artifacts)
 
 
 def build_inference_pipeline(artifacts: InferenceArtifacts) -> MerlinPipeline:
