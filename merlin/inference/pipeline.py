@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
+from .candidate_policy import validate_canonical_policy
 from .interfaces import CandidateRetriever, PairFeatureComputer, Ranker
 from .mmr import ScoredCandidate
 from .retrieval import merge_candidates
@@ -19,6 +20,7 @@ class MerlinPipeline:
     ranker: Ranker
     final_limit: int = 20
     candidate_limit: int = 1_000
+    canonical: bool = False
 
     def __post_init__(self) -> None:
         names = [retriever.name for retriever in self.retrievers]
@@ -36,9 +38,17 @@ class MerlinPipeline:
             raise ValueError("feature computer and ranker schema versions differ")
         if self.final_limit <= 0:
             raise ValueError("final_limit must be positive")
+        if self.canonical:
+            if set(names) != set(self.retriever_limits):
+                raise ValueError("canonical pipeline retrievers and limits must match")
+            validate_canonical_policy(
+                self.retriever_limits,
+                self.candidate_limit,
+                self.final_limit,
+            )
 
     def recommend(self, query_track_id: str, k: int | None = None) -> list[Recommendation]:
-        """Recall, score, and diversity-rerank recommendations for one song."""
+        """Recall candidates and rank the final tracks by LR raw margin."""
         if not query_track_id:
             raise ValueError("query_track_id must not be empty")
         final_limit = self.final_limit if k is None else k
