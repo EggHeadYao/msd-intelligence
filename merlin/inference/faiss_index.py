@@ -78,17 +78,35 @@ class FaissTrackIndex:
             row_id = self._track_to_row[query_track_id]
         except KeyError as error:
             raise KeyError(f"query track is not in FAISS mapping: {query_track_id}") from error
-        query = np.asarray(self.index.reconstruct(row_id), dtype=np.float32).reshape(1, -1)
-        if query.shape[1] != self.dimension or not np.all(np.isfinite(query)):
-            raise ValueError("reconstructed FAISS query vector is invalid")
+        query = np.asarray(self.index.reconstruct(row_id), dtype=np.float32)
         if abs(float(np.linalg.norm(query)) - 1.0) > 1e-5:
             raise ValueError("reconstructed FAISS query vector is not unit normalized")
+        return self.search_vector(query, limit)
+
+    def search_vector(
+        self,
+        query_embedding: Any,
+        limit: int,
+    ) -> list[tuple[str, float]]:
+        """Search a cold 128D C1 vector after safe float32 normalization."""
+        if limit <= 0:
+            raise ValueError("FAISS search limit must be positive")
+        query = np.asarray(query_embedding, dtype=np.float32)
+        if query.ndim != 1 or query.shape[0] != self.dimension:
+            raise ValueError(f"query embedding must have shape ({self.dimension},)")
+        if not np.all(np.isfinite(query)):
+            raise ValueError("query embedding contains NaN or infinite values")
+        norm = float(np.linalg.norm(query))
+        if not np.isfinite(norm) or norm <= 1e-12:
+            raise ValueError("query embedding must have a finite non-zero norm")
+        query = (query / norm).astype(np.float32, copy=False).reshape(1, -1)
         scores, row_ids = self.index.search(query, min(limit, int(self.index.ntotal)))
-        return [
+        results = [
             (self.row_to_track[int(result_row)], float(score))
             for result_row, score in zip(row_ids[0], scores[0], strict=True)
             if 0 <= int(result_row) < len(self.row_to_track)
         ]
+        return sorted(results, key=lambda item: (-item[1], item[0]))
 
 
 def _load_track_mapping(mapping_path: str | Path) -> tuple[str, ...]:
