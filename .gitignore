@@ -18,11 +18,13 @@ artistdistance/target/
 !slides/*.bib
 !slides/*.tex
 !slides/*.pdf
+!slides/Makefile
 
 !poster/
 !poster/*.sty
 !poster/*.tex
 !poster/*.pdf
+!poster/Makefile
 
 !tools/
 !tools/**
