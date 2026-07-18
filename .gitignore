@@ -14,6 +14,8 @@ artistdistance/target/
 !year_prediction/**
 
 !slides/
+!slides/img
+!slides/img/**
 !slides/*.sty
 !slides/*.bib
 !slides/*.tex
@@ -21,6 +23,8 @@ artistdistance/target/
 !slides/Makefile
 
 !poster/
+!poster/img
+!poster/img/**
 !poster/*.sty
 !poster/*.tex
 !poster/*.pdf
