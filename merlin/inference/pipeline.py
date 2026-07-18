@@ -91,4 +91,20 @@ class MerlinPipeline:
             name: self.retriever_limits[name] - count
             for name, count in counts.items()
         }
-        return candidates, RecallAudit(counts, shortages, len(candidates))
+        raw_count = sum(counts.values())
+        unique_count = len(candidates)
+        duplicates = raw_count - unique_count
+        exclusive = {
+            name: sum(candidate.sources == frozenset({name}) for candidate in candidates)
+            for name in counts
+        }
+        audit = RecallAudit(
+            source_counts=counts,
+            source_shortages=shortages,
+            unique_candidates=unique_count,
+            raw_candidates=raw_count,
+            duplicate_candidates=duplicates,
+            deduplication_rate=duplicates / raw_count if raw_count else 0.0,
+            exclusive_candidates=exclusive,
+        )
+        return candidates, audit

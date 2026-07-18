@@ -41,6 +41,10 @@ class RecallAudit:
     source_counts: Mapping[str, int]
     source_shortages: Mapping[str, int]
     unique_candidates: int
+    raw_candidates: int = 0
+    duplicate_candidates: int = 0
+    deduplication_rate: float = 0.0
+    exclusive_candidates: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_counts", MappingProxyType(dict(self.source_counts)))
@@ -49,3 +53,12 @@ class RecallAudit:
             "source_shortages",
             MappingProxyType(dict(self.source_shortages)),
         )
+        object.__setattr__(
+            self,
+            "exclusive_candidates",
+            MappingProxyType(dict(self.exclusive_candidates)),
+        )
+        if self.raw_candidates < self.unique_candidates or self.duplicate_candidates < 0:
+            raise ValueError("recall audit candidate counts are inconsistent")
+        if not 0.0 <= self.deduplication_rate <= 1.0:
+            raise ValueError("recall audit deduplication rate must be in [0, 1]")
