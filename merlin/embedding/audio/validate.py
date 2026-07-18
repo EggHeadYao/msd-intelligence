@@ -7,6 +7,7 @@ from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import ArrayType, FloatType
 
 from shared_contract import CONTRACT_VERSION
 
@@ -68,6 +69,7 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "row_count",
         "feature_columns",
         "feature_count",
+        "embedding_format",
         "selected_k",
         "explained_variance",
         "cumulative_explained_variance",
@@ -84,6 +86,7 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(int(metadata["shared_audio_feature_count"]) == 615, "shared feature count mismatch")
     require(int(metadata["merlin_array_feature_count"]) == 539, "array feature count mismatch")
     require(int(metadata["merlin_raw_view_count"]) == 550, "raw view count mismatch")
+    require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
     require(selected_k == 128, "C1 embedding dimension must be 128")
     require(len(metadata["feature_columns"]) == int(metadata["feature_count"]), "feature_count mismatch")
     require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
@@ -100,6 +103,11 @@ def validate_embeddings(
 ) -> None:
     require("track_id" in embeddings.columns, "embeddings missing track_id")
     require(EMBEDDING_COLUMN in embeddings.columns, f"embeddings missing {EMBEDDING_COLUMN}")
+    embedding_type = embeddings.schema[EMBEDDING_COLUMN].dataType
+    require(
+        isinstance(embedding_type, ArrayType) and isinstance(embedding_type.elementType, FloatType),
+        "embedding column must be array<float32>",
+    )
 
     row_count = embeddings.count()
     distinct_tracks = embeddings.select("track_id").distinct().count()
