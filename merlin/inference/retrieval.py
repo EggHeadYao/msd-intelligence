@@ -76,6 +76,27 @@ class BfsRetriever(CandidateRetriever):
     per_artist_cap: int = 10
     _name: str = "bfs"
 
+    @classmethod
+    def from_parquet(
+        cls,
+        songs_metadata_path: str,
+        artist_edges_path: str,
+        *,
+        max_depth: int = 2,
+        per_artist_cap: int = 10,
+    ) -> BfsRetriever:
+        """Construct a retriever from the prepared runtime datasets."""
+        from .bfs_data import load_bfs_data
+
+        data = load_bfs_data(songs_metadata_path, artist_edges_path)
+        return cls(
+            track_to_artist=data.track_to_artist,
+            artist_neighbors=data.artist_neighbors,
+            artist_tracks=data.artist_tracks,
+            max_depth=max_depth,
+            per_artist_cap=per_artist_cap,
+        )
+
     @property
     def name(self) -> str:
         return self._name

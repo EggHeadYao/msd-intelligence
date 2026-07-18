@@ -1,12 +1,26 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
-from merlin.inference.bfs_data import build_bfs_data
+from merlin.inference.bfs_data import BfsData, build_bfs_data
 from merlin.inference.retrieval import BfsRetriever
 
 
 class BfsRetrievalTest(unittest.TestCase):
+    @patch("merlin.inference.bfs_data.load_bfs_data")
+    def test_constructs_retriever_from_parquet(self, load_data):
+        load_data.return_value = BfsData({"q": "a"}, {"a": ["q"]}, {"a": ["b"]})
+
+        retriever = BfsRetriever.from_parquet(
+            "songs.parquet", "edges.parquet", max_depth=3, per_artist_cap=4
+        )
+
+        load_data.assert_called_once_with("songs.parquet", "edges.parquet")
+        self.assertEqual(retriever.track_to_artist, {"q": "a"})
+        self.assertEqual(retriever.max_depth, 3)
+        self.assertEqual(retriever.per_artist_cap, 4)
+
     def test_builds_deduplicated_mappings(self):
         data = build_bfs_data(
             [("q", "a"), ("x", "b"), ("x", "b"), ("", "b")],
