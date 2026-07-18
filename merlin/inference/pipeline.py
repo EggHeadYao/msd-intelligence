@@ -18,6 +18,7 @@ class MerlinPipeline:
     feature_computer: PairFeatureComputer
     ranker: Ranker
     final_limit: int = 20
+    candidate_limit: int = 1_000
 
     def __post_init__(self) -> None:
         names = [retriever.name for retriever in self.retrievers]
@@ -26,6 +27,11 @@ class MerlinPipeline:
         missing_limits = [name for name in names if name not in self.retriever_limits]
         if missing_limits:
             raise ValueError(f"retriever limits missing: {missing_limits}")
+        limits = [self.retriever_limits[name] for name in names]
+        if any(limit <= 0 for limit in limits):
+            raise ValueError("retriever limits must be positive")
+        if self.candidate_limit <= 0 or sum(limits) > self.candidate_limit:
+            raise ValueError("retriever limits exceed candidate union cap")
         if self.feature_computer.schema_version != self.ranker.feature_schema_version:
             raise ValueError("feature computer and ranker schema versions differ")
         if self.final_limit <= 0:
