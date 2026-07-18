@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from pathlib import Path
 from typing import Iterable, Mapping
 
 from .types import Candidate
@@ -58,6 +59,11 @@ class InferenceFeatureComputer:
     tracks: Mapping[str, TrackMetadata]
     schema_version: str = "ranker-v1"
 
+    @classmethod
+    def from_parquet(cls, songs_metadata_path: str | Path) -> InferenceFeatureComputer:
+        """Load only metadata columns used by ranker-v1."""
+        return cls(load_track_metadata(songs_metadata_path))
+
     def compute(self, query_track_id: str, candidate: Candidate) -> Mapping[str, float]:
         query = self.tracks.get(query_track_id, TrackMetadata())
         other = self.tracks.get(candidate.track_id, TrackMetadata())
@@ -86,3 +92,27 @@ class InferenceFeatureComputer:
 def _finite_or_zero(value: float | None) -> float:
     number = 0.0 if value is None else float(value)
     return number if math.isfinite(number) else 0.0
+
+
+def load_track_metadata(path: str | Path) -> dict[str, TrackMetadata]:
+    """Read prepared song metadata in bounded Arrow batches."""
+    try:
+        import pyarrow.dataset as ds
+    except ImportError as error:
+        raise RuntimeError("loading ranker metadata requires pyarrow") from error
+
+    columns = [
+        "track_id",
+        "album_key",
+        "year",
+        "has_year",
+        "song_hotttnesss",
+    ]
+    dataset = ds.dataset(str(path), format="parquet")
+
+    def rows():
+        for batch in dataset.to_batches(columns=columns):
+            values = [batch.column(index).to_pylist() for index in range(len(columns))]
+            yield from zip(*values)
+
+    return build_track_metadata(rows())
