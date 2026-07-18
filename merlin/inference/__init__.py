@@ -2,13 +2,15 @@
 
 from .faiss_index import FaissTrackIndex
 from .feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
-from .features import InferenceFeatureComputer
+from .features_v2 import RankerV2FeatureComputer
 from .pipeline import MerlinPipeline
 from .ranker import LogisticRanker
 from .types import Candidate, Recommendation
 
+InferenceFeatureComputer = RankerV2FeatureComputer
+
 __all__ = [
     "Candidate", "FaissTrackIndex", "InferenceFeatureComputer", "LogisticRanker",
-    "MerlinPipeline", "RANKER_V2_FEATURES", "RANKER_V2_SCHEMA_VERSION",
+    "MerlinPipeline", "RANKER_V2_FEATURES", "RANKER_V2_SCHEMA_VERSION", "RankerV2FeatureComputer",
     "Recommendation",
 ]
