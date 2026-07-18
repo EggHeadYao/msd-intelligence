@@ -33,3 +33,19 @@ class Recommendation:
     sources: frozenset[str]
     features: Mapping[str, float] = field(default_factory=dict)
 
+
+@dataclass(frozen=True, slots=True)
+class RecallAudit:
+    """Per-query candidate coverage diagnostics outside the ranker schema."""
+
+    source_counts: Mapping[str, int]
+    source_shortages: Mapping[str, int]
+    unique_candidates: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source_counts", MappingProxyType(dict(self.source_counts)))
+        object.__setattr__(
+            self,
+            "source_shortages",
+            MappingProxyType(dict(self.source_shortages)),
+        )
