@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -95,6 +96,10 @@ def cumulative(values: list[float]) -> list[float]:
     return result
 
 
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def choose_k(explained: list[float], target_variance: float, fixed_k: int) -> int:
     if fixed_k > 0:
         return min(fixed_k, len(explained))
@@ -152,6 +157,7 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
     try:
         raw = spark.read.parquet(spark_path(args.input))
+        input_schema_hash = sha256_text(raw.schema.json())
         if args.limit > 0:
             raw = raw.limit(args.limit)
         row_count = validate_raw_input(raw)
@@ -195,8 +201,10 @@ def main() -> None:
             "merlin_array_feature_count": MERLIN_ARRAY_FEATURE_COUNT,
             "merlin_raw_view_count": MERLIN_RAW_VIEW_COUNT,
             "input_path": str(args.input),
+            "input_schema_sha256": input_schema_hash,
             "row_count": row_count,
             "feature_columns": list(feature_columns),
+            "feature_order_sha256": sha256_text("\n".join(feature_columns)),
             "feature_count": len(feature_columns),
             "embedding_column": EMBEDDING_COLUMN,
             "embedding_format": "array<float32>",
