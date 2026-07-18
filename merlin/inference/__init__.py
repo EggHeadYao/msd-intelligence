@@ -8,6 +8,7 @@ from .factory import load_inference_pipeline
 from .pipeline import MerlinPipeline
 from .ranker import LogisticRanker
 from .types import Candidate, Recommendation
+from .validation import validate_pipeline, write_validation_report
 
 InferenceFeatureComputer = RankerV2FeatureComputer
 
@@ -15,5 +16,5 @@ __all__ = [
     "Candidate", "ColdAudioAudit", "ColdAudioPipeline", "FaissTrackIndex",
     "InferenceFeatureComputer", "LogisticRanker",
     "MerlinPipeline", "RANKER_V2_FEATURES", "RANKER_V2_SCHEMA_VERSION", "RankerV2FeatureComputer",
-    "Recommendation", "load_inference_pipeline",
+    "Recommendation", "load_inference_pipeline", "validate_pipeline", "write_validation_report",
 ]

@@ -28,6 +28,7 @@ RANKER_COEFFICIENTS_PATH = RANKER_ROOT / "ranker_coefficients.json"
 CANDIDATE_POLICY_PATH = RANKER_ROOT / "candidate_policy_manifest.json"
 RANKER_TRAINING_MANIFEST_PATH = RANKER_ROOT / "training_manifest.json"
 TAG_IDF_PATH = RANKER_ROOT / "tag_idf.json"
+INFERENCE_VALIDATION_PATH = MERLIN_ROOT / "inference_validation_report.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,3 +47,4 @@ class InferenceArtifactPaths:
     ranker_training_manifest: Path = RANKER_TRAINING_MANIFEST_PATH
     candidate_policy: Path = CANDIDATE_POLICY_PATH
     tag_idf: Path = TAG_IDF_PATH
+    inference_validation: Path = INFERENCE_VALIDATION_PATH
