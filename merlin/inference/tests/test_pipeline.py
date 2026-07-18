@@ -15,6 +15,28 @@ class _Features:
 
 
 class PipelineTest(unittest.TestCase):
+    def test_vector_recall_overfetches_and_filters_same_song(self):
+        requested = []
+
+        def search(_query, limit):
+            requested.append(limit)
+            return [
+                ("query", 1.0), ("sibling", 0.9),
+                ("best", 0.8), ("best", 0.7), ("other", 0.6),
+            ]
+
+        retriever = VectorRetriever(
+            "audio",
+            search,
+            same_song=lambda _query, candidate: candidate == "sibling",
+        )
+
+        candidates = retriever.retrieve("query", limit=2)
+
+        self.assertEqual(requested, [7])
+        self.assertEqual([item.track_id for item in candidates], ["best", "other"])
+        self.assertEqual([item.source_ranks["audio"] for item in candidates], [1, 2])
+
     def test_recommend_excludes_query_and_sorts_candidates(self):
         audio = VectorRetriever(
             "audio",
