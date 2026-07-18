@@ -129,25 +129,26 @@ def add_log_clipped_features(df: DataFrame) -> tuple[DataFrame, dict[str, tuple[
 
 
 def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
-    means_row = df.agg(
-        *(F.avg(F.col(column).cast("double")).alias(column) for column in SEGMENT_FEATURE_COLUMNS)
+    medians_row = df.agg(
+        *(F.percentile_approx(F.col(column).cast("double"), 0.5, 10_000).alias(column)
+          for column in SEGMENT_FEATURE_COLUMNS)
     ).first()
-    means = {}
+    medians = {}
     for column in SEGMENT_FEATURE_COLUMNS:
-        value = means_row[column]
-        mean = float(value) if value is not None else 0.0
-        means[column] = mean if math.isfinite(mean) else 0.0
+        value = medians_row[column]
+        median = float(value) if value is not None else 0.0
+        medians[column] = median if math.isfinite(median) else 0.0
     expressions = []
     for column in df.columns:
-        if column in means:
+        if column in medians:
             valid = F.col(column).isNotNull() & ~F.isnan(F.col(column).cast("double"))
             filled = F.when(valid, F.col(column).cast("double")).otherwise(
-                F.lit(means[column])
+                F.lit(medians[column])
             )
             expressions.append(filled.alias(column))
         else:
             expressions.append(F.col(column))
-    return df.select(*expressions), means
+    return df.select(*expressions), medians
 
 
 def fill_scalar_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
@@ -194,7 +195,7 @@ def drop_zero_variance_features(
 
 
 def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...], dict[str, Any]]:
-    df, segment_means = fill_segment_missing_values(df)
+    df, segment_medians = fill_segment_missing_values(df)
     df = add_scalar_availability(df)
     df = add_key_circular_features(df)
     df, time_values, time_columns = add_time_signature_one_hot(df)
@@ -206,7 +207,7 @@ def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...]
         "clip_bounds": clip_bounds,
         "dropped_features": dropped,
         "near_zero_range_epsilon": NEAR_ZERO_RANGE_EPSILON,
-        "segment_means": segment_means,
+        "segment_medians": segment_medians,
         "scalar_means": scalar_means,
         "time_signature_columns": time_columns,
         "time_signature_values": time_values,
