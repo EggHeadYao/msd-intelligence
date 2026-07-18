@@ -8,6 +8,8 @@ from typing import Any
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from shared_contract import CONTRACT_VERSION
+
 
 EXPECTED_SONGS = 1_000_000
 EMBEDDING_COLUMN = "embedding"
@@ -57,6 +59,12 @@ def validate_layout(output_dir: Path) -> None:
 
 def validate_metadata(metadata: dict[str, Any]) -> int:
     required = (
+        "merlin_schema_version",
+        "shared_audio_contract_version",
+        "c1_feature_version",
+        "shared_audio_feature_count",
+        "merlin_array_feature_count",
+        "merlin_raw_view_count",
         "row_count",
         "feature_columns",
         "feature_count",
@@ -70,7 +78,13 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     missing = [key for key in required if key not in metadata]
     require(not missing, f"metadata missing keys: {missing}")
     selected_k = int(metadata["selected_k"])
-    require(selected_k > 0, "metadata selected_k must be positive")
+    require(metadata["merlin_schema_version"] == "3.0", "wrong MERLIN schema version")
+    require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")
+    require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
+    require(int(metadata["shared_audio_feature_count"]) == 615, "shared feature count mismatch")
+    require(int(metadata["merlin_array_feature_count"]) == 539, "array feature count mismatch")
+    require(int(metadata["merlin_raw_view_count"]) == 550, "raw view count mismatch")
+    require(selected_k == 128, "C1 embedding dimension must be 128")
     require(len(metadata["feature_columns"]) == int(metadata["feature_count"]), "feature_count mismatch")
     require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
     require(len(metadata["scaler_mean"]) == int(metadata["feature_count"]), "scaler_mean length mismatch")
