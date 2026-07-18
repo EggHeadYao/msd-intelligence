@@ -105,6 +105,68 @@ def require_exact_content(actual: DataFrame, expected: DataFrame, columns: list[
 
 
 def validate(features: Path, dataset: Path, spark: SparkSession) -> None:
+    metadata = read_json(features / "preprocessing_metadata.json")
+    dataset_manifest_path = dataset / "manifest.json"
+    dataset_manifest = read_json(dataset_manifest_path)
+    require(
+        metadata["source"]["dataset_manifest_sha256"] == sha256_file(dataset_manifest_path),
+        "Dataset manifest checksum differs from feature metadata",
+    )
+    require(
+        metadata["source"]["artist_assignment_sha256"] == dataset_manifest["artist_assignment_sha256"],
+        "Artist assignment checksum differs from feature metadata",
+    )
+
+    source = spark.read.parquet(spark_path(dataset / "supervised_features.parquet"))
+    engineered = spark.read.parquet(spark_path(features / "engineered_features.parquet"))
+    linear = spark.read.parquet(spark_path(features / "linear_vectors.parquet"))
+    source.persist(StorageLevel.MEMORY_AND_DISK)
+    engineered.persist(StorageLevel.MEMORY_AND_DISK)
+    linear.persist(StorageLevel.MEMORY_AND_DISK)
+    validate_binary_columns(source)
+
+    state = metadata["preprocessing"]
+    require(tuple(engineered.columns) == engineered_columns(state), "Unexpected engineered column order")
+    require(
+        tuple(linear.columns) == (TRACK_ID, ARTIST_ID, YEAR, NORMALIZED_YEAR, "features", SPLIT),
+        "Unexpected linear vector column order",
+    )
+    require(
+        schema_types(engineered) == metadata["outputs"]["engineered_features"]["schema"],
+        "Engineered schema differs from feature metadata",
+    )
+    require(
+        schema_types(linear) == metadata["outputs"]["linear_vectors"]["schema"],
+        "Linear schema differs from feature metadata",
+    )
+    expected_rows = int(dataset_manifest["counts"]["labeled_tracks"])
+    for frame, label in ((engineered, "engineered"), (linear, "linear")):
+        counts = frame.agg(F.count("*").alias("rows"), F.countDistinct(TRACK_ID).alias("tracks")).first()
+        require(int(counts["rows"]) == expected_rows, f"Wrong {label} row count")
+        require(int(counts["tracks"]) == expected_rows, f"Duplicate {label} track IDs")
+
+    identifiers = (ARTIST_ID, YEAR, SPLIT)
+    joined = source.select(TRACK_ID, *identifiers).alias("source").join(
+        engineered.select(TRACK_ID, *identifiers, NORMALIZED_YEAR).alias("features"), TRACK_ID, "full_outer"
+    )
+    identity_mismatches = joined.where(
+        F.col("source.artist_id").isNull()
+        | F.col("features.artist_id").isNull()
+        | (F.col("source.artist_id") != F.col("features.artist_id"))
+        | (F.col("source.year") != F.col("features.year"))
+        | (F.col("source.split") != F.col("features.split"))
+    ).count()
+    require(identity_mismatches == 0, "Engineered identifiers or splits differ from the dataset")
+    target_error = joined.select(
+        F.max(
+            F.abs(
+                F.col(NORMALIZED_YEAR)
+                - (F.col("source.year").cast("double") - MIN_YEAR) / float(MAX_YEAR - MIN_YEAR)
+            )
+        ).alias("error")
+    ).first()["error"]
+    require(target_error is not None and float(target_error) <= 1.0e-12, "Normalized target is incorrect")
+
 
 
 def main() -> None:
