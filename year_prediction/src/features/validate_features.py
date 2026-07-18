@@ -167,6 +167,75 @@ def validate(features: Path, dataset: Path, spark: SparkSession) -> None:
     ).first()["error"]
     require(target_error is not None and float(target_error) <= 1.0e-12, "Normalized target is incorrect")
 
+    candidate_columns = state["candidate_columns"]
+    bad_engineered = engineered.where(
+        F.exists(
+            F.array(*(F.col(column).cast("double") for column in candidate_columns)),
+            lambda value: value.isNull() | F.isnan(value) | (F.abs(value) == float("inf")),
+        )
+    ).count()
+    require(bad_engineered == 0, "Engineered candidates contain null, NaN, or infinite values")
+    time_values = state["time_signature_values"]
+    category_columns = (KEY_COLUMN, MODE_COLUMN, HAS_SEGMENTS_COLUMN, TIME_SIGNATURE_COLUMN)
+    bad_categories = engineered.where(
+        F.expr(" OR ".join(f"{column} IS NULL" for column in category_columns))
+        | ~F.col(KEY_COLUMN).isin(-1, *range(12))
+        | ~F.col(MODE_COLUMN).isin(0.0, 1.0)
+        | ~F.col(HAS_SEGMENTS_COLUMN).isin(0.0, 1.0)
+        | ~F.col(TIME_SIGNATURE_COLUMN).isin(-1, *time_values)
+    ).count()
+    require(bad_categories == 0, "Engineered categorical values violate the contract")
+
+    dimension = int(metadata["outputs"]["linear_vectors"]["dimension"])
+    vector_stats = linear.agg(
+        F.min(F.size("features")).alias("minimum"),
+        F.max(F.size("features")).alias("maximum"),
+        F.sum(
+            F.exists(
+                "features",
+                lambda value: value.isNull() | F.isnan(value) | (F.abs(value) == float("inf")),
+            ).cast("long")
+        ).alias("invalid"),
+    ).first()
+    require(int(vector_stats["minimum"]) == dimension, "Linear vector is too short")
+    require(int(vector_stats["maximum"]) == dimension, "Linear vector is too long")
+    require(int(vector_stats["invalid"]) == 0, "Linear vectors contain invalid values")
+
+    refitted = fit_feature_contract(
+        source.where(F.col(SPLIT) == TRAIN),
+        quantile_error=float(state["clip_relative_error"]),
+        variance_threshold=float(state["variance_threshold"]),
+    )
+    assert_nested_close(state, refitted)
+    expected_engineered = build_engineered_view(transform_features(source, refitted), refitted)
+    require_exact_content(
+        engineered,
+        expected_engineered,
+        list(engineered_columns(refitted)[1:]),
+        "Engineered feature",
+    )
+    expected_linear = build_linear_view(expected_engineered, refitted)
+    require_exact_content(
+        linear,
+        expected_linear,
+        [ARTIST_ID, YEAR, NORMALIZED_YEAR, "features", SPLIT],
+        "Linear vector",
+    )
+
+    linear.unpersist()
+    engineered.unpersist()
+    source.unpersist()
+    print(
+        json.dumps(
+            {
+                "dimension": dimension,
+                "removed_columns": state["removed_columns"],
+                "rows": expected_rows,
+                "status": "valid",
+            },
+            sort_keys=True,
+        )
+    )
 
 
 def main() -> None:
