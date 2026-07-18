@@ -12,7 +12,12 @@ from pyspark.ml.linalg import Vector
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from columns import TRACK_ID_COLUMN
+from columns import (
+    CONTRACT_VERSION,
+    MERLIN_ARRAY_FEATURE_COUNT,
+    MERLIN_RAW_VIEW_COUNT,
+    TRACK_ID_COLUMN,
+)
 from preprocess import preprocess_audio_features
 
 
@@ -138,6 +143,12 @@ def main() -> None:
 
         metadata = {
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "merlin_schema_version": "3.0",
+            "shared_audio_contract_version": CONTRACT_VERSION,
+            "c1_feature_version": 2,
+            "shared_audio_feature_count": 615,
+            "merlin_array_feature_count": MERLIN_ARRAY_FEATURE_COUNT,
+            "merlin_raw_view_count": MERLIN_RAW_VIEW_COUNT,
             "input_path": str(args.input),
             "row_count": row_count,
             "feature_columns": list(feature_columns),
