@@ -111,6 +111,61 @@ def content_digests(df: DataFrame) -> DataFrame:
     return df.select(TRACK_ID, F.sha2(serialized, 256).alias("digest"))
 
 
+def validate(dataset: Path, spark: SparkSession) -> None:
+    manifest_path = dataset / "manifest.json"
+    with manifest_path.open("r", encoding="ascii") as handle:
+        manifest = json.load(handle)
+
+    supervised = spark.read.parquet(spark_path(dataset / "supervised_features.parquet"))
+    assignments = spark.read.parquet(spark_path(dataset / "split_assignments.parquet"))
+    supervised.persist(StorageLevel.MEMORY_AND_DISK)
+    assignments.persist(StorageLevel.MEMORY_AND_DISK)
+
+    require(tuple(supervised.columns) == SUPERVISED_COLUMNS, f"Unexpected supervised columns: {supervised.columns}")
+    supervised_types = {field.name: field.dataType.simpleString() for field in supervised.schema.fields}
+    expected_types = {
+        TRACK_ID: "string",
+        ARTIST_ID: "string",
+        YEAR: "int",
+        **AUDIO_TYPE_NAMES,
+        SPLIT: "string",
+    }
+    require(supervised_types == expected_types, f"Unexpected supervised schema: {supervised_types}")
+    require(
+        set(assignments.columns) == {TRACK_ID, ARTIST_ID, SPLIT},
+        f"Unexpected assignment columns: {assignments.columns}",
+    )
+
+    valid_year = F.col(YEAR).between(MIN_YEAR, MAX_YEAR)
+    stats = supervised.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.countDistinct(ARTIST_ID).alias("artists"),
+        F.sum(F.when(~valid_year | F.col(YEAR).isNull(), 1).otherwise(0)).alias("invalid_years"),
+        F.sum(
+            F.when(
+                F.col(TRACK_ID).isNull()
+                | (F.col(TRACK_ID) == "")
+                | F.col(ARTIST_ID).isNull()
+                | (F.col(ARTIST_ID) == "")
+                | F.col(SPLIT).isNull(),
+                1,
+            ).otherwise(0)
+        ).alias("invalid_required"),
+    ).first()
+    require(int(stats["rows"]) == EXPECTED_LABELED_TRACKS, "Wrong supervised row count")
+    require(int(stats["tracks"]) == EXPECTED_LABELED_TRACKS, "Duplicate supervised track IDs")
+    require(int(stats["artists"]) == EXPECTED_LABELED_ARTISTS, "Wrong supervised artist count")
+    require(int(stats["invalid_years"]) == 0, "Invalid supervised years")
+    require(int(stats["invalid_required"]) == 0, "Null or empty required values")
+
+    split_values = {row[SPLIT] for row in supervised.select(SPLIT).distinct().collect()}
+    require(split_values == set(SPLIT_VALUES), f"Unexpected split values: {split_values}")
+    require(
+        supervised.groupBy(ARTIST_ID).agg(F.countDistinct(SPLIT).alias("n")).where(F.col("n") != 1).count() == 0,
+        "An artist occurs in more than one split",
+    )
+
 
 
 def main() -> None:
