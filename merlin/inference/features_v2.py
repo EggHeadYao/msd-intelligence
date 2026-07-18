@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Callable, Mapping
+from pathlib import Path
+from typing import Callable, Iterable, Mapping
 
 from .feature_schema import RANKER_V2_SCHEMA_VERSION
 from .types import Candidate
@@ -19,6 +20,43 @@ class TrackMetadataV2:
 
     release_id: str | None = None
     year: int | None = None
+
+
+def build_track_metadata_v2(
+    rows: Iterable[tuple[str, object, int | None, bool]],
+) -> dict[str, TrackMetadataV2]:
+    """Build metadata from real release IDs and the prepared year mask."""
+    tracks: dict[str, TrackMetadataV2] = {}
+    for track_id, release_id, year, has_year in rows:
+        if not track_id:
+            continue
+        release = str(release_id) if release_id not in (None, "", 0, "0") else None
+        metadata = TrackMetadataV2(
+            release_id=release,
+            year=int(year) if has_year and year is not None else None,
+        )
+        previous = tracks.setdefault(track_id, metadata)
+        if previous != metadata:
+            raise ValueError(f"track {track_id!r} has conflicting v2 metadata")
+    return tracks
+
+
+def load_track_metadata_v2(path: str | Path) -> dict[str, TrackMetadataV2]:
+    """Read only ranker-v2 metadata columns in bounded Arrow batches."""
+    try:
+        import pyarrow.dataset as ds
+    except ImportError as error:
+        raise RuntimeError("loading ranker-v2 metadata requires pyarrow") from error
+
+    columns = ["track_id", "release_7digitalid", "year", "has_year"]
+    dataset = ds.dataset(str(path), format="parquet")
+
+    def rows():
+        for batch in dataset.to_batches(columns=columns):
+            values = [batch.column(index).to_pylist() for index in range(len(columns))]
+            yield from zip(*values)
+
+    return build_track_metadata_v2(rows())
 
 
 @dataclass(frozen=True, slots=True)
