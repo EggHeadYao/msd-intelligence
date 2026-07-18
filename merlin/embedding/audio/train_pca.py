@@ -19,6 +19,7 @@ from columns import (
     MERLIN_ARRAY_FEATURE_COUNT,
     MERLIN_RAW_VIEW_COUNT,
     RAW_AUDIO_COLUMNS,
+    SHARED_FEATURE_COUNT,
     TRACK_ID_COLUMN,
 )
 from preprocess import preprocess_audio_features
@@ -197,7 +198,7 @@ def main() -> None:
             "merlin_schema_version": "3.0",
             "shared_audio_contract_version": CONTRACT_VERSION,
             "c1_feature_version": 2,
-            "shared_audio_feature_count": 615,
+            "shared_audio_feature_count": SHARED_FEATURE_COUNT,
             "merlin_array_feature_count": MERLIN_ARRAY_FEATURE_COUNT,
             "merlin_raw_view_count": MERLIN_RAW_VIEW_COUNT,
             "input_path": str(args.input),
