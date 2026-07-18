@@ -51,12 +51,26 @@ def build_bfs_data(
 
 def load_bfs_data(
     songs_metadata_path: str | Path,
-    artist_edges_path: str | Path,
+    graph_edges_path: str | Path,
 ) -> BfsData:
-    """Load projected Parquet columns without requiring Spark or pandas."""
+    """Load metadata and directed artist-similarity edges without Spark."""
     songs = _parquet_rows(songs_metadata_path, ("track_id", "artist_id"))
-    edges = _parquet_rows(artist_edges_path, ("src", "dst"))
+    edges = _graph_edge_rows(graph_edges_path, "artist_similarity")
     return build_bfs_data(songs, edges)
+
+
+def _graph_edge_rows(path: str | Path, edge_type: str) -> Iterable[tuple[str, str]]:
+    try:
+        import pyarrow.dataset as ds
+    except ImportError as error:
+        raise RuntimeError("loading BFS graph edges requires pyarrow") from error
+    dataset = ds.dataset(str(path), format="parquet", partitioning="hive")
+    scanner = dataset.scanner(
+        columns=["src_id", "dst_id"],
+        filter=ds.field("edge_type") == edge_type,
+    )
+    for batch in scanner.to_batches():
+        yield from zip(batch.column(0).to_pylist(), batch.column(1).to_pylist())
 
 
 def _parquet_rows(

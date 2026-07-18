@@ -102,7 +102,7 @@ class BfsRetriever(CandidateRetriever):
     def from_parquet(
         cls,
         songs_metadata_path: str,
-        artist_edges_path: str,
+        graph_edges_path: str,
         *,
         same_song: Callable[[str, str], bool] = _different_song,
         tag_similarity: Callable[[str, str], float] = _zero_similarity,
@@ -112,7 +112,7 @@ class BfsRetriever(CandidateRetriever):
         """Construct a retriever from the prepared runtime datasets."""
         from .bfs_data import load_bfs_data
 
-        data = load_bfs_data(songs_metadata_path, artist_edges_path)
+        data = load_bfs_data(songs_metadata_path, graph_edges_path)
         return cls(
             track_to_artist=data.track_to_artist,
             artist_neighbors=data.artist_neighbors,
