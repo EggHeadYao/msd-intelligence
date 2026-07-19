@@ -1,0 +1,21 @@
+{
+  "execution": {
+    "aggregation": "direct_reduce",
+    "batch_fraction": 1.0,
+    "broadcast_weights": false,
+    "persist_training_data": false
+  },
+  "feature_metadata": "parquets/year_prediction/features/k0/preprocessing_metadata.json",
+  "gradient_tolerance": 0.0001,
+  "initialization": "zero_weights_train_mean_intercept",
+  "input": "parquets/year_prediction/features/k0/linear_vectors.parquet",
+  "l2": 0.001,
+  "learning_rate": 0.05,
+  "max_iterations": 100,
+  "model_id": "ridge-k0-lr050",
+  "objective": "ridge_squared",
+  "output_root": "parquets/year_prediction/models",
+  "prediction_partitions": 4,
+  "shuffle_partitions": 32,
+  "validation_interval": 1
+}
