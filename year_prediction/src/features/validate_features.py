@@ -26,6 +26,7 @@ from columns import (
     YEAR,
 )
 from preprocessing import fit_feature_contract, transform_features, validate_binary_columns
+from key_contracts import key_contract_metadata, require_key_contract
 from views import build_engineered_view, build_linear_view, engineered_columns
 
 
@@ -39,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--features",
         type=Path,
-        default=Path("parquets/year_prediction/features/v1"),
+        required=True,
     )
     parser.add_argument("--shuffle-partitions", type=int, default=32)
     return parser.parse_args()
@@ -106,6 +107,9 @@ def require_exact_content(actual: DataFrame, expected: DataFrame, columns: list[
 
 def validate(features: Path, dataset: Path, spark: SparkSession) -> None:
     metadata = read_json(features / "preprocessing_metadata.json")
+    contract = require_key_contract(metadata["key_contract"]["id"])
+    require(metadata["key_contract"] == key_contract_metadata(contract), "Key contract metadata differs")
+    require(features.name == contract, "Feature directory name differs from key contract")
     dataset_manifest_path = dataset / "manifest.json"
     dataset_manifest = read_json(dataset_manifest_path)
     require(
@@ -126,6 +130,7 @@ def validate(features: Path, dataset: Path, spark: SparkSession) -> None:
     validate_binary_columns(source)
 
     state = metadata["preprocessing"]
+    require(state["key_contract"] == contract, "Preprocessing key contract differs from metadata")
     require(tuple(engineered.columns) == engineered_columns(state), "Unexpected engineered column order")
     require(
         tuple(linear.columns) == (TRACK_ID, ARTIST_ID, YEAR, NORMALIZED_YEAR, "features", SPLIT),
@@ -203,6 +208,7 @@ def validate(features: Path, dataset: Path, spark: SparkSession) -> None:
 
     refitted = fit_feature_contract(
         source.where(F.col(SPLIT) == TRAIN),
+        contract,
         quantile_error=float(state["clip_relative_error"]),
         variance_threshold=float(state["variance_threshold"]),
     )
@@ -229,6 +235,7 @@ def validate(features: Path, dataset: Path, spark: SparkSession) -> None:
         json.dumps(
             {
                 "dimension": dimension,
+                "key_contract": contract,
                 "removed_columns": state["removed_columns"],
                 "rows": expected_rows,
                 "status": "valid",
