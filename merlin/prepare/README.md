@@ -1,106 +1,68 @@
 # MERLIN Prepare
 
-Prepare raw MSD Parquet files for the MERLIN C1/C2/ranker pipeline.
+Build the canonical tables consumed by MERLIN audio preprocessing and graph indexing. Preparation is deterministic ETL: it does not train a model or create embeddings.
 
 ## Inputs
 
-`prepare.py` expects a raw input directory with the local `parquets/` layout:
+The command reads one input namespace, normally `../parquets_new`, containing:
 
-- `songs_scalar.parquet`
+- `songs_scalar.parquet`: the 23-column Summary HDF5 export.
+- `musics/features_*.parquet`: `track_id` plus the ordered 308 audio features.
 - `track_metadata.parquet`
 - `artist_term.parquet`
 - `artist_similarity_edges.parquet`
-- `musics/features_*.parquet` or `_extracted/parquets/musics/features_*.parquet`
-- `musics/terms_*.parquet` or `_extracted/parquets/musics/terms_*.parquet`
-- `musics/similar_*.parquet` or `_extracted/parquets/musics/similar_*.parquet`
+
+Input schemas, key uniqueness, non-empty relationship keys, and cross-source track/song/artist identity are checked before output is initialized. Per-track `terms_*.parquet` and `similar_*.parquet` files are never read.
 
 ## Outputs
 
-The script writes these prepared tables under the output directory:
+The output directory contains exactly three Parquet datasets:
 
-- `songs_metadata.parquet`: one row per song with display metadata, `album_key`, and `has_year`.
-  **Fields**:
-  - `track_id`: MSD track id.
-  - `song_id`: MSD song id.
-  - `title`: song title.
-  - `artist_id`: MSD artist id.
-  - `artist_name`: artist display name.
-  - `artist_mbid`: MusicBrainz artist id when available.
-  - `release`: release or album name.
-  - `album_key`: derived album node id, built from `artist_id` and `release`.
-  - `duration`: song duration.
-  - `year`: release year, with `0` meaning unknown in the raw data.
-  - `has_year`: binary flag for whether `year > 0`.
-  - `song_hotttnesss`: raw song popularity signal.
-  - `artist_hotttnesss`: raw artist popularity signal.
-  - `artist_familiarity`: raw artist familiarity signal.
-- `song_audio_features_raw.parquet`: one row per song with scalar audio fields and segment aggregate features.
-  **Fields**:
-  - `track_id`: MSD track id.
-  - `danceability`: raw scalar audio feature.
-  - `energy`: raw scalar audio feature.
-  - `loudness`: raw scalar audio feature.
-  - `tempo`: raw scalar audio feature.
-  - `duration`: song duration.
-  - `key`: estimated musical key.
-  - `mode`: estimated major/minor mode.
-  - `time_signature`: estimated time signature.
-  - `pitch_{mean,std,min,max}_{0..11}`: segment-level pitch aggregates for 12 pitch dimensions.
-  - `timbre_{mean,std,min,max}_{0..11}`: segment-level timbre aggregates for 12 timbre dimensions.
-  - `loudness_{mean,std,min,max}`: segment-level loudness aggregates.
-  - `has_segments`: binary flag for whether segment arrays were available.
-- `song_terms.parquet`: `track_id`, `artist_id`, `term` rows for tag-based features and graph edges.
-  **Fields**:
-  - `track_id`: MSD track id.
-  - `artist_id`: MSD artist id attached from metadata.
-  - `term`: song-level tag or term.
-- `graph_edges.parquet`: typed graph edges for song-artist, song-album, song-tag, artist-tag, song-year, directed artist-similarity, and directed song-similar-artist relations.
-  **Fields**:
-  - `src_type`: source node type, one of `song`, `artist`, `album`, `tag`, or `year`.
-  - `src_id`: source node id.
-  - `dst_type`: destination node type, one of `song`, `artist`, `album`, `tag`, or `year`.
-  - `dst_id`: destination node id.
-  - `weight`: fixed edge weight used by graph-based features.
-  - `directed`: whether the edge keeps directed semantics.
-  - `edge_type`: edge relation type, one of `song_artist`, `song_album`, `song_tag`, `artist_tag`, `song_year`, `artist_similarity`, or `song_similar_artist`.
+- `songs_metadata.parquet`: one row per extracted track with stable track/song/artist IDs, display metadata, MusicBrainz artist ID, real `release_7digitalid`, `track_7digitalid`, year availability, and audit-only popularity fields. Release names are display text and are never used as entity keys.
+- `song_audio_features_raw.parquet`: one row per track containing 11 Summary analysis values plus the ordered 308 audio aggregates. It excludes `danceability`, `energy`, year, and popularity. Unknown raw tempo or time signature remains null for C1 preprocessing to mask and impute; all 308 extracted features must be finite.
+- `graph_edges.parquet`: an unweighted typed graph partitioned by `edge_type`.
 
-  **Edge types**:
-  - `song_artist`: undirected song-to-artist edge with weight `1.0`.
-  - `song_album`: undirected song-to-album edge with weight `0.8`.
-  - `song_tag`: undirected song-to-song-level-tag edge with weight `0.6`.
-  - `artist_tag`: undirected artist-to-artist-level-tag edge with weight `0.3`.
-  - `song_year`: undirected song-to-known-year edge with weight `0.4`.
-  - `artist_similarity`: directed artist-to-similar-artist edge with weight `1.0`.
-  - `song_similar_artist`: directed song-to-HDF5-similar-artist edge with weight `0.5`.
+The graph schema is:
 
-Spark writes each `.parquet` output as a dataset directory containing `part-*.parquet` files.
-The output directory is recreated on each run; do not point `--output` at the raw input directory.
+```text
+src_type, src_id, dst_type, dst_id, directed, edge_type
+```
 
-## Validate
+It contains only these canonical relations:
 
-- Verifies that the prepared output directory contains exactly the expected Parquet tables.
-- Checks strict column schemas for metadata, audio features, song terms, and graph edges.
-- Validates column data types, including IDs, numeric features, booleans, and graph fields.
-- Ensures `songs_metadata` and `song_audio_features_raw` each cover 1,000,000 distinct tracks.
-- Confirms metadata and audio feature tables contain the same `track_id` set.
-- Checks `has_year` and `has_segments` are binary flags.
-- Verifies `song_terms` is non-empty and has no null key fields.
-- Checks all required graph edge types exist and have expected counts.
-- Ensures artist similarity edges are not duplicated.
-- Validates graph node types, edge weights, and directed flags.
-- Ensures `song_year` edges do not use `year = 0`.
-- Confirms graph edge rows have no null required fields.
+| Edge type           | Stored direction                                            | Full-catalog rows |
+| ------------------- | ----------------------------------------------------------- | ----------------: |
+| `track_artist`      | track to artist, traversed both ways                        |         1,000,000 |
+| `track_release`     | track to positive `release_7digitalid`, traversed both ways |           999,997 |
+| `artist_term`       | artist to term, traversed both ways                         |         1,109,381 |
+| `artist_similarity` | artist to similar artist, directed                          |         2,201,916 |
+| Total               |                                                             |         5,311,294 |
+
+There is no graph `weight` column. Uniform transitions need no stored weight; the P3 capped-IDF sampling weights are derived later while building C2 adjacency.
+
+## Safety and lineage
+
+An existing output is rejected by default. `--reset-output` may remove only a directory carrying a matching MERLIN ownership marker and matching protected input paths. Preparation writes `prepared_manifest.json` with code state, configuration, input row counts, schema hashes, output columns, and lineage paths. Its status remains `initialized` until `validate.py` passes and marks it `valid`.
+
+Downstream C1/C2 jobs must consume only a `valid` prepared manifest.
 
 ## Commands
 
-Run preparation:
+From the `p1team02` directory with the project environment activated:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/prepare/prepare.py --input parquets --output parquets/prepared --shuffle-partitions 64
+python3 -m merlin.prepare.prepare \
+  --input ../parquets \
+  --output <output_dir> \
+  --shuffle-partitions 64
 ```
 
-Validate outputs:
+Validate the full-catalog output:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/prepare/validate.py --prepared parquets/prepared --shuffle-partitions 64
+python3 -m merlin.prepare.validate \
+  --prepared <output_dir>  \
+  --shuffle-partitions 64
 ```
+
+The validator checks the exact three-table layout and ordered schemas; one-to-one track coverage; real release-ID coverage; null/finite contracts; binary masks; four exact edge types and counts; typed endpoint semantics; direction flags; duplicate pairs; metadata-to-graph mappings; and manifest schema lineage. Any failed check exits nonzero and leaves the artifact unavailable to downstream stages.
