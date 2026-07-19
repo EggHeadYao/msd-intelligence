@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import sys
 from collections.abc import Iterable
@@ -17,12 +19,20 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from tools.hdf5.audio_features import (
+    CONTRACT_VERSION,
     FEATURE_COLUMNS,
     FEATURE_COUNT,
     aggregate_audio_features,
 )
 
 BATCH_SIZE = 10000
+CONTRACT_NAME = "feature_contract.json"
+OUTPUT_SCHEMA = pa.schema(
+    [
+        pa.field("track_id", pa.string(), nullable=False),
+        *(pa.field(column, pa.float64()) for column in FEATURE_COLUMNS),
+    ],
+)
 
 
 @dataclass(frozen=True)
@@ -96,6 +106,39 @@ def _existing_batches(output_dir: Path) -> list[Path]:
     return sorted(output_dir.glob("features_*.parquet"))
 
 
+def _contract_payload(data_root: Path) -> dict[str, object]:
+    encoded_columns = json.dumps(
+        FEATURE_COLUMNS,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "data_root": str(data_root.resolve()),
+        "feature_count": FEATURE_COUNT,
+        "feature_order_sha256": hashlib.sha256(encoded_columns).hexdigest(),
+        "columns": ["track_id", *FEATURE_COLUMNS],
+    }
+
+
+def ensure_contract(data_root: Path, output_dir: Path) -> None:
+    path = output_dir / CONTRACT_NAME
+    expected = _contract_payload(data_root)
+    if path.exists():
+        actual = json.loads(path.read_text(encoding="utf-8"))
+        if actual != expected:
+            raise RuntimeError(f"Existing {CONTRACT_NAME} does not match this run")
+        return
+    if _existing_batches(output_dir):
+        raise RuntimeError(f"Existing batches have no {CONTRACT_NAME}")
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(expected, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
 def recover_completed(
     output_dir: Path,
     file_by_track_id: dict[str, str],
@@ -112,6 +155,10 @@ def recover_completed(
     recovered: set[str] = set()
     seen_tracks: set[str] = set()
     for batch in _existing_batches(output_dir):
+        if pq.read_schema(batch) != OUTPUT_SCHEMA:
+            raise RuntimeError(
+                f"Batch schema does not match {CONTRACT_VERSION}: {batch}"
+            )
         table = pq.read_table(batch, columns=["track_id"])
         for track_id in table["track_id"].to_pylist():
             if track_id in seen_tracks:
@@ -154,11 +201,18 @@ def flush_batch(
     matrix = np.vstack(features)
     if matrix.shape != (len(track_ids), FEATURE_COUNT):
         raise RuntimeError(f"Invalid batch matrix shape: {matrix.shape}")
+    if np.any(np.isinf(matrix)):
+        raise RuntimeError("Batch contains Inf")
     arrays: list[pa.Array] = [pa.array(track_ids, type=pa.string())]
     arrays.extend(
-        pa.array(matrix[:, index], type=pa.float64()) for index in range(FEATURE_COUNT)
+        pa.array(
+            matrix[:, index],
+            mask=np.isnan(matrix[:, index]),
+            type=pa.float64(),
+        )
+        for index in range(FEATURE_COUNT)
     )
-    table = pa.Table.from_arrays(arrays, names=["track_id", *FEATURE_COLUMNS])
+    table = pa.Table.from_arrays(arrays, schema=OUTPUT_SCHEMA)
     output_path = output_dir / f"features_{batch_index:04d}.parquet"
     temporary = output_dir / f".features_{batch_index:04d}.parquet.tmp"
     pq.write_table(table, temporary, compression="snappy")
@@ -189,6 +243,7 @@ def run_extraction(
         raise ValueError("limit must be positive")
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_contract(data_root, output_dir)
     all_files = discover_files(data_root)
     relative_paths = [path.relative_to(data_root).as_posix() for path in all_files]
     file_by_track_id: dict[str, str] = {}
