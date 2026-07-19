@@ -66,3 +66,26 @@ def compute_constant_baselines(frame: DataFrame) -> dict[str, dict[str, float | 
     }
 
 
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionConstantBaselines")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        data = load_training_data(spark, args.input)
+        result = compute_constant_baselines(data.frame)
+        write_json(args.output.resolve(), result)
+        print(
+            "year_constant_baselines "
+            f"mean_mae={result['mean']['mae_years']:.6f}, "
+            f"median_mae={result['median']['mae_years']:.6f}, output={args.output.resolve()}"
+        )
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
