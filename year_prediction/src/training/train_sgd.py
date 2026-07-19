@@ -136,7 +136,62 @@ def ship_worker_modules(spark: SparkSession) -> None:
         spark.sparkContext.addPyFile(str(path))
 
 
-
+def train(
+    config: dict[str, Any],
+    spark: SparkSession,
+    config_path: Path | None = None,
+    overwrite: bool = False,
+) -> Path:
+    validate_config(config)
+    total_started = time.perf_counter()
+    output = Path(config["output_root"]) / str(config["model_id"])
+    if output.exists() and not overwrite:
+        raise FileExistsError(f"Output already exists: {output.resolve()}")
+    metadata_path = Path(config["feature_metadata"]).resolve()
+    feature_metadata = read_feature_metadata(metadata_path)
+    data_started = time.perf_counter()
+    data = load_training_data(spark, config["input"], feature_metadata)
+    data_validation_seconds = time.perf_counter() - data_started
+    ship_worker_modules(spark)
+    training_points = data.points(TRAIN)
+    validation_points = data.points(VALIDATION)
+    weights = [0.0] * data.dimension
+    intercept = (
+        data.label_means[TRAIN]
+        if config["initialization"] == "zero_weights_train_mean_intercept"
+        else 0.0
+    )
+    history: list[dict[str, Any]] = []
+    optimizer_started = time.perf_counter()
+    stop_reason = "max_iterations"
+    for iteration in range(1, int(config["max_iterations"]) + 1):
+        iteration_started = time.perf_counter()
+        gradient_started = time.perf_counter()
+        statistics = direct_full_batch_statistics(
+            training_points,
+            weights,
+            intercept,
+            float(config["l2"]),
+        )
+        gradient_seconds = time.perf_counter() - gradient_started
+        norm = gradient_norm(statistics.gradient, statistics.intercept_gradient)
+        converged = norm <= float(config["gradient_tolerance"])
+        update_started = time.perf_counter()
+        if not converged:
+            weights, intercept = gradient_step(
+                weights,
+                intercept,
+                statistics.gradient,
+                statistics.intercept_gradient,
+                float(config["learning_rate"]),
+            )
+        update_seconds = time.perf_counter() - update_started
+        validation = None
+        validation_seconds = 0.0
+        if iteration % int(config["validation_interval"]) == 0 or converged:
+            validation_started = time.perf_counter()
+            validation = evaluate_linear_model(validation_points, weights, intercept).as_dict()
+            validation_seconds = time.perf_counter() - validation_started
 
 
 def main() -> None:
