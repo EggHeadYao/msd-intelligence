@@ -18,6 +18,7 @@ from preprocessing import (
     transform_features,
     validate_binary_columns,
 )
+from key_contracts import KEY_CONTRACTS, key_contract_metadata
 from views import build_engineered_view, build_linear_view, engineered_columns
 
 
@@ -33,7 +34,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("parquets/year_prediction/features"),
     )
-    parser.add_argument("--feature-version", default="v1")
+    parser.add_argument("--key-contract", choices=KEY_CONTRACTS, required=True)
     parser.add_argument("--quantile-error", type=float, default=DEFAULT_QUANTILE_ERROR)
     parser.add_argument("--variance-threshold", type=float, default=DEFAULT_VARIANCE_THRESHOLD)
     parser.add_argument("--shuffle-partitions", type=int, default=32)
@@ -95,6 +96,7 @@ def build(args: argparse.Namespace, spark: SparkSession) -> Path:
     train = source.where(F.col(SPLIT) == TRAIN)
     state = fit_feature_contract(
         train,
+        args.key_contract,
         quantile_error=args.quantile_error,
         variance_threshold=args.variance_threshold,
     )
@@ -106,7 +108,7 @@ def build(args: argparse.Namespace, spark: SparkSession) -> Path:
         raise ValueError(f"Wrong engineered row count: expected={expected_rows}, actual={row_count}")
     linear = build_linear_view(engineered, state)
 
-    output = (args.output_root / args.feature_version).resolve()
+    output = (args.output_root / args.key_contract).resolve()
     output.mkdir(parents=True, exist_ok=True)
     engineered.repartition(args.output_partitions, SPLIT).write.mode("overwrite").partitionBy(SPLIT).parquet(
         spark_path(output / "engineered_features.parquet")
@@ -117,7 +119,8 @@ def build(args: argparse.Namespace, spark: SparkSession) -> Path:
 
     metadata = {
         "format_version": 1,
-        "feature_version": args.feature_version,
+        "feature_version": args.key_contract,
+        "key_contract": key_contract_metadata(args.key_contract),
         "source": {
             "dataset_path": str(dataset),
             "dataset_manifest_sha256": sha256_file(manifest_path),
@@ -162,7 +165,7 @@ def build(args: argparse.Namespace, spark: SparkSession) -> Path:
     source.unpersist()
     print(
         "year_features_built "
-        f"rows={row_count}, candidates={len(state['candidate_columns'])}, "
+        f"contract={args.key_contract}, rows={row_count}, candidates={len(state['candidate_columns'])}, "
         f"retained={len(state['retained_columns'])}, output={output}"
     )
     return output
