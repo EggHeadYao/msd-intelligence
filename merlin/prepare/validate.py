@@ -14,6 +14,7 @@ from pyspark.sql import types as T
 from merlin.artifacts.contract import (
     OUTPUT_MARKER_NAME,
     read_manifest,
+    sha256_file,
     utc_now,
     write_manifest,
 )
@@ -22,11 +23,16 @@ from merlin.prepare.contract import (
     ARTIFACT_VERSION,
     AUDIO_COLUMNS,
     EDGE_TYPES,
+    FEATURE_CONTRACT_NAME,
     GRAPH_EDGE_COLUMNS,
     MANIFEST_NAME,
+    MERLIN_AUDIO_FEATURE_COUNT,
+    MERLIN_RAW_FEATURE_COUNT,
     METADATA_COLUMNS,
     NODE_TYPES,
     OUTPUT_DIRS,
+    SHARED_AUDIO_CONTRACT_VERSION,
+    SHARED_AUDIO_FEATURE_COUNT,
     SUMMARY_AUDIO_COLUMNS,
     ExpectedCounts,
 )
@@ -172,13 +178,17 @@ def _has_invalid_numeric(
     frame: DataFrame,
     columns: tuple[str, ...],
     *,
+    allow_null: bool = False,
     chunk_size: int = 48,
 ) -> bool:
     for start in range(0, len(columns), chunk_size):
         condition = F.lit(False)
         for column in columns[start : start + chunk_size]:
             value = F.col(column).cast("double")
-            condition = condition | value.isNull() | F.isnan(value)
+            invalid = F.isnan(value) | value.isin(float("inf"), float("-inf"))
+            if not allow_null:
+                invalid = invalid | value.isNull()
+            condition = condition | invalid
         if frame.where(condition).limit(1).count():
             return True
     return False
@@ -200,16 +210,24 @@ def validate_song_tables(
     require(audio_count == expected.songs, "song_audio_features row count mismatch")
     require(audio_distinct == expected.songs, "audio track IDs not unique")
 
-    missing_audio: int = metadata.select("track_id").join(
-        audio.select("track_id"),
-        "track_id",
-        "left_anti",
-    ).count()
-    missing_metadata: int = audio.select("track_id").join(
-        metadata.select("track_id"),
-        "track_id",
-        "left_anti",
-    ).count()
+    missing_audio: int = (
+        metadata.select("track_id")
+        .join(
+            audio.select("track_id"),
+            "track_id",
+            "left_anti",
+        )
+        .count()
+    )
+    missing_metadata: int = (
+        audio.select("track_id")
+        .join(
+            metadata.select("track_id"),
+            "track_id",
+            "left_anti",
+        )
+        .count()
+    )
     require(missing_audio == 0, "metadata contains track IDs missing from audio")
     require(missing_metadata == 0, "audio contains track IDs missing from metadata")
 
@@ -231,58 +249,71 @@ def validate_song_tables(
         "songs_metadata contains invalid required fields",
     )
 
-    invalid_has_year: int = metadata.where(
-        F.col("has_year").isNull() | ~F.col("has_year").isin(0, 1),
-    ).limit(1).count()
+    invalid_has_year: int = (
+        metadata.where(
+            F.col("has_year").isNull() | ~F.col("has_year").isin(0, 1),
+        )
+        .limit(1)
+        .count()
+    )
     require(invalid_has_year == 0, "has_year contains values outside {0,1}")
 
     release_count: int = metadata.where(
-        F.col("release_7digitalid").isNotNull()
-        & (F.col("release_7digitalid") > 0),
+        F.col("release_7digitalid").isNotNull() & (F.col("release_7digitalid") > 0),
     ).count()
-    invalid_release: int = metadata.where(
-        F.col("release_7digitalid").isNotNull()
-        & (F.col("release_7digitalid") <= 0),
-    ).limit(1).count()
+    invalid_release: int = (
+        metadata.where(
+            F.col("release_7digitalid").isNotNull()
+            & (F.col("release_7digitalid") <= 0),
+        )
+        .limit(1)
+        .count()
+    )
     require(release_count == expected.track_release, "valid release ID count mismatch")
     require(invalid_release == 0, "release_7digitalid contains non-positive IDs")
 
     nullable_summary: frozenset[str] = frozenset({"tempo", "time_signature"})
     required_summary: tuple[str, ...] = tuple(
-        column
-        for column in SUMMARY_AUDIO_COLUMNS[1:]
-        if column not in nullable_summary
+        column for column in SUMMARY_AUDIO_COLUMNS[1:] if column not in nullable_summary
     )
     require(
         not _has_invalid_numeric(audio, required_summary),
         "required Summary audio fields contain null or NaN values",
     )
     for column in nullable_summary:
-        invalid_optional: int = audio.where(
-            F.col(column).isNotNull()
-            & (F.isnan(F.col(column).cast("double")) | (F.col(column) <= 0)),
-        ).limit(1).count()
+        invalid_optional: int = (
+            audio.where(
+                F.col(column).isNotNull()
+                & (F.isnan(F.col(column).cast("double")) | (F.col(column) <= 0)),
+            )
+            .limit(1)
+            .count()
+        )
         require(invalid_optional == 0, f"{column} contains an invalid observed value")
 
-    invalid_summary_semantics: int = audio.where(
-        (F.col("duration") <= 0)
-        | ~F.col("key").isin(*range(12))
-        | ~F.col("mode").isin(0, 1)
-        | (F.col("end_of_fade_in") < 0)
-        | (F.col("start_of_fade_out") < F.col("end_of_fade_in"))
-        | (F.col("key_confidence") < 0)
-        | (F.col("key_confidence") > 1)
-        | (F.col("mode_confidence") < 0)
-        | (F.col("mode_confidence") > 1)
-        | (F.col("time_signature_confidence") < 0)
-        | (F.col("time_signature_confidence") > 1),
-    ).limit(1).count()
+    invalid_summary_semantics: int = (
+        audio.where(
+            (F.col("duration") <= 0)
+            | ~F.col("key").isin(*range(12))
+            | ~F.col("mode").isin(0, 1)
+            | (F.col("end_of_fade_in") < 0)
+            | (F.col("start_of_fade_out") < F.col("end_of_fade_in"))
+            | (F.col("key_confidence") < 0)
+            | (F.col("key_confidence") > 1)
+            | (F.col("mode_confidence") < 0)
+            | (F.col("mode_confidence") > 1)
+            | (F.col("time_signature_confidence") < 0)
+            | (F.col("time_signature_confidence") > 1),
+        )
+        .limit(1)
+        .count()
+    )
     require(invalid_summary_semantics == 0, "Summary audio semantics are invalid")
 
     extracted_features: tuple[str, ...] = AUDIO_COLUMNS[len(SUMMARY_AUDIO_COLUMNS) :]
     require(
-        not _has_invalid_numeric(audio, extracted_features),
-        "extracted audio features contain null or NaN values",
+        not _has_invalid_numeric(audio, extracted_features, allow_null=True),
+        "extracted audio features contain NaN or Inf values",
     )
     bounded_features: tuple[str, ...] = tuple(
         column
@@ -298,9 +329,7 @@ def validate_song_tables(
     bounded_violation = F.lit(False)
     for column in bounded_features:
         bounded_violation = (
-            bounded_violation
-            | (F.col(column) < -1e-9)
-            | (F.col(column) > 1.0 + 1e-9)
+            bounded_violation | (F.col(column) < -1e-9) | (F.col(column) > 1.0 + 1e-9)
         )
     require(
         audio.where(bounded_violation).limit(1).count() == 0,
@@ -310,7 +339,13 @@ def validate_song_tables(
         column for column in AUDIO_COLUMNS if column.startswith("has_")
     )
     for column in mask_columns:
-        invalid_mask: int = audio.where(~F.col(column).isin(0.0, 1.0)).limit(1).count()
+        invalid_mask: int = (
+            audio.where(
+                F.col(column).isNull() | ~F.col(column).isin(0.0, 1.0),
+            )
+            .limit(1)
+            .count()
+        )
         require(invalid_mask == 0, f"{column} contains values outside {{0,1}}")
 
     print(
@@ -331,14 +366,18 @@ def _relation_violation(
     dst_type: str,
     directed: bool,
 ) -> int:
-    return graph_edges.where(
-        (F.col("edge_type") == edge_type)
-        & (
-            (F.col("src_type") != src_type)
-            | (F.col("dst_type") != dst_type)
-            | (F.col("directed") != F.lit(directed))
-        ),
-    ).limit(1).count()
+    return (
+        graph_edges.where(
+            (F.col("edge_type") == edge_type)
+            & (
+                (F.col("src_type") != src_type)
+                | (F.col("dst_type") != dst_type)
+                | (F.col("directed") != F.lit(directed))
+            ),
+        )
+        .limit(1)
+        .count()
+    )
 
 
 def _require_same_pairs(
@@ -370,7 +409,9 @@ def validate_graph_edges(
         "artist_similarity": expected.artist_similarity,
     }
     require(counts == expected_counts, f"graph edge counts mismatch: {counts}")
-    require(sum(counts.values()) == expected.graph_edges, "graph total row count mismatch")
+    require(
+        sum(counts.values()) == expected.graph_edges, "graph total row count mismatch"
+    )
 
     null_or_empty = F.lit(False)
     for column in ("src_type", "src_id", "dst_type", "dst_id", "edge_type"):
@@ -382,9 +423,10 @@ def validate_graph_edges(
     )
     require(
         graph_edges.where(
-            ~F.col("src_type").isin(*NODE_TYPES)
-            | ~F.col("dst_type").isin(*NODE_TYPES),
-        ).limit(1).count()
+            ~F.col("src_type").isin(*NODE_TYPES) | ~F.col("dst_type").isin(*NODE_TYPES),
+        )
+        .limit(1)
+        .count()
         == 0,
         "graph_edges contains unexpected node types",
     )
@@ -420,19 +462,22 @@ def validate_graph_edges(
         F.col("track_id").alias("src_id"),
         F.col("artist_id").alias("dst_id"),
     )
-    _require_same_pairs(observed_artist, expected_artist, "track_artist mapping mismatch")
+    _require_same_pairs(
+        observed_artist, expected_artist, "track_artist mapping mismatch"
+    )
 
     observed_release: DataFrame = graph_edges.where(
         F.col("edge_type") == "track_release",
     ).select("src_id", "dst_id")
     expected_release: DataFrame = metadata.where(
-        F.col("release_7digitalid").isNotNull()
-        & (F.col("release_7digitalid") > 0),
+        F.col("release_7digitalid").isNotNull() & (F.col("release_7digitalid") > 0),
     ).select(
         F.col("track_id").alias("src_id"),
         F.col("release_7digitalid").cast("string").alias("dst_id"),
     )
-    _require_same_pairs(observed_release, expected_release, "track_release mapping mismatch")
+    _require_same_pairs(
+        observed_release, expected_release, "track_release mapping mismatch"
+    )
 
     print(f"graph_edges total={sum(counts.values())}, counts={counts}")
     return {"graph_edges": sum(counts.values()), **counts}
@@ -443,12 +488,54 @@ def validate_manifest_lineage(
     tables: dict[str, DataFrame],
 ) -> dict[str, Any]:
     manifest: dict[str, Any] = read_manifest(prepared_dir / MANIFEST_NAME)
-    require(manifest["artifact_type"] == ARTIFACT_TYPE, "manifest artifact type mismatch")
+    require(
+        manifest["artifact_type"] == ARTIFACT_TYPE, "manifest artifact type mismatch"
+    )
     require(
         manifest["artifact_version"] == ARTIFACT_VERSION,
         "manifest artifact version mismatch",
     )
     require(manifest["status"] in {"initialized", "valid"}, "manifest status mismatch")
+
+    config: dict[str, Any] = manifest["config"]
+    require(
+        config.get("shared_audio_contract_version") == SHARED_AUDIO_CONTRACT_VERSION,
+        "manifest shared audio contract version mismatch",
+    )
+    require(
+        config.get("shared_audio_feature_count") == SHARED_AUDIO_FEATURE_COUNT,
+        "manifest shared audio feature count mismatch",
+    )
+    require(
+        config.get("merlin_audio_feature_count") == MERLIN_AUDIO_FEATURE_COUNT,
+        "manifest MERLIN audio projection count mismatch",
+    )
+    require(
+        config.get("merlin_raw_feature_count") == MERLIN_RAW_FEATURE_COUNT,
+        "manifest MERLIN raw feature count mismatch",
+    )
+
+    inputs: dict[str, dict[str, Any]] = {
+        item["name"]: item for item in manifest["inputs"]
+    }
+    require(
+        "audio_feature_contract" in inputs,
+        "manifest missing audio feature contract lineage",
+    )
+    contract_input: dict[str, Any] = inputs["audio_feature_contract"]
+    contract_path = Path(contract_input.get("path", ""))
+    require(
+        contract_path.name == FEATURE_CONTRACT_NAME and contract_path.is_file(),
+        "manifest audio feature contract path is invalid",
+    )
+    require(
+        contract_input.get("sha256") == sha256_file(contract_path),
+        "manifest audio feature contract hash mismatch",
+    )
+    require(
+        contract_input.get("contract_version") == SHARED_AUDIO_CONTRACT_VERSION,
+        "manifest audio feature contract lineage version mismatch",
+    )
 
     outputs: dict[str, dict[str, Any]] = {
         item["name"]: item for item in manifest["outputs"]
