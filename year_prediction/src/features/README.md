@@ -32,6 +32,7 @@ The validator independently refits the preprocessing state from the training spl
 
 ## Contract
 
+- K0 produces 110 retained dimensions, K1 produces 122, and K2/K3 each produce 112 on the current dataset snapshot.
 - Non-positive tempo is missing; tempo, duration, and loudness use training-only 1st/99th percentile clipping.
 - Tempo and duration use `log1p`; loudness remains in clipped dB units.
 - Missing segment aggregates use means fitted only from training rows with segment data, while `has_segments` preserves the missingness signal.
