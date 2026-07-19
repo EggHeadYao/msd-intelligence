@@ -116,6 +116,55 @@ def validate(model_directory: Path, spark: SparkSession) -> None:
         ),
         "Final gradient norm differs",
     )
+    require_metrics_close(
+        evaluate_linear_model(training_points, weights, intercept).as_dict(),
+        metrics["train"],
+        "train",
+    )
+    require_metrics_close(
+        evaluate_linear_model(validation_points, weights, intercept).as_dict(),
+        metrics["validation"],
+        "validation",
+    )
+    predictions = spark.read.parquet(spark_path(model_directory / "validation_predictions.parquet"))
+    require(
+        predictions.schema.simpleString() == PREDICTION_SCHEMA.simpleString(),
+        "Validation prediction schema differs",
+    )
+    expected_rows = data.prediction_rows(VALIDATION).map(
+        lambda row: prediction_row(row, weights, intercept)
+    )
+    expected = spark.createDataFrame(expected_rows, PREDICTION_SCHEMA)
+    actual_count = predictions.count()
+    require(actual_count == data.counts[VALIDATION], "Validation prediction count differs")
+    require(
+        predictions.select("track_id").distinct().count() == actual_count,
+        "Validation predictions contain duplicate track IDs",
+    )
+    joined = expected.alias("expected").join(predictions.alias("actual"), "track_id", "full_outer")
+    comparisons = [
+        F.col("expected.artist_id").eqNullSafe(F.col("actual.artist_id")),
+        F.col("expected.year").eqNullSafe(F.col("actual.year")),
+    ]
+    for column in (
+        "normalized_year",
+        "normalized_prediction",
+        "raw_prediction_year",
+        "clipped_prediction_year",
+    ):
+        comparisons.append(
+            F.abs(F.col(f"expected.{column}") - F.col(f"actual.{column}")) <= F.lit(1.0e-10)
+        )
+    matches = comparisons[0]
+    for comparison in comparisons[1:]:
+        matches = matches & comparison
+    mismatch = joined.where(~F.coalesce(matches, F.lit(False)))
+    require(mismatch.limit(1).count() == 0, "Validation prediction contents differ")
+    print(
+        "year_ridge_model_valid "
+        f"model_id={model['model_id']}, dimension={dimension}, "
+        f"validation_rows={actual_count}, validation_mae={metrics['validation']['mae_years']:.6f}"
+    )
 
 
 def main() -> None:
