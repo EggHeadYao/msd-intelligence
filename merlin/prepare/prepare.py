@@ -16,6 +16,7 @@ from pyspark.sql import functions as F
 from merlin.artifacts.contract import (
     initialize_output_dir,
     make_manifest,
+    read_json,
     sha256_file,
     write_manifest,
 )
@@ -27,7 +28,13 @@ from merlin.prepare.contract import (
     AUDIO_COLUMNS,
     EDGE_TYPES,
     EXTRACTED_AUDIO_COLUMNS,
+    FEATURE_CONTRACT_NAME,
+    FEATURE_ORDER_SHA256,
     MANIFEST_NAME,
+    MERLIN_AUDIO_FEATURE_COUNT,
+    MERLIN_RAW_FEATURE_COUNT,
+    SHARED_AUDIO_CONTRACT_VERSION,
+    SHARED_AUDIO_FEATURE_COUNT,
     SUMMARY_AUDIO_COLUMNS,
     SUMMARY_COLUMNS,
     TRACK_METADATA_COLUMNS,
@@ -112,6 +119,44 @@ def read_inputs(spark: SparkSession, paths: dict[str, Path]) -> dict[str, DataFr
     }
 
 
+def validate_extraction_contract(features_dir: Path) -> dict[str, Any]:
+    contract_path: Path = features_dir / FEATURE_CONTRACT_NAME
+    if not contract_path.is_file():
+        raise FileNotFoundError(f"Missing audio feature contract: {contract_path}")
+    contract: dict[str, Any] = read_json(contract_path)
+    expected_keys: set[str] = {
+        "contract_version",
+        "data_root",
+        "feature_count",
+        "feature_order_sha256",
+        "columns",
+    }
+    if set(contract) != expected_keys:
+        raise ValueError(
+            "Audio feature contract keys mismatch: "
+            f"expected={sorted(expected_keys)}, actual={sorted(contract)}",
+        )
+    if contract["contract_version"] != SHARED_AUDIO_CONTRACT_VERSION:
+        raise ValueError(
+            "Audio feature contract version mismatch: "
+            f"expected={SHARED_AUDIO_CONTRACT_VERSION!r}, "
+            f"actual={contract['contract_version']!r}",
+        )
+    if contract["feature_count"] != SHARED_AUDIO_FEATURE_COUNT:
+        raise ValueError(
+            "Audio feature count mismatch: "
+            f"expected={SHARED_AUDIO_FEATURE_COUNT}, "
+            f"actual={contract['feature_count']!r}",
+        )
+    if contract["feature_order_sha256"] != FEATURE_ORDER_SHA256:
+        raise ValueError("Audio feature order hash mismatch")
+    if contract["columns"] != list(EXTRACTED_AUDIO_COLUMNS):
+        raise ValueError("Audio feature contract columns mismatch")
+    if not isinstance(contract["data_root"], str) or not contract["data_root"]:
+        raise ValueError("Audio feature contract data_root must be a non-empty string")
+    return contract
+
+
 def require_exact_columns(
     frame: DataFrame,
     expected: tuple[str, ...],
@@ -151,7 +196,9 @@ def _validate_unique_keys(
 ) -> int:
     invalid = F.lit(False)
     for column in columns:
-        invalid = invalid | F.col(column).isNull() | (F.col(column).cast("string") == "")
+        invalid = (
+            invalid | F.col(column).isNull() | (F.col(column).cast("string") == "")
+        )
     if frame.where(invalid).limit(1).count():
         raise ValueError(f"{table_name} contains null or empty key fields")
 
@@ -193,13 +240,23 @@ def validate_input_data(inputs: dict[str, DataFrame]) -> dict[str, int]:
         ),
     }
 
+    catalog_counts: dict[str, int] = {
+        name: counts[name] for name in ("songs_scalar", "features", "track_metadata")
+    }
+    if len(set(catalog_counts.values())) != 1:
+        raise ValueError(f"Catalog input row counts do not match: {catalog_counts}")
+
     feature_ids: DataFrame = inputs["features"].select("track_id")
     for table_name in ("songs_scalar", "track_metadata"):
-        missing: int = feature_ids.join(
-            inputs[table_name].select("track_id"),
-            "track_id",
-            "left_anti",
-        ).limit(1).count()
+        missing: int = (
+            feature_ids.join(
+                inputs[table_name].select("track_id"),
+                "track_id",
+                "left_anti",
+            )
+            .limit(1)
+            .count()
+        )
         if missing:
             raise ValueError(f"features contains track_id missing from {table_name}")
 
@@ -231,10 +288,14 @@ def validate_input_data(inputs: dict[str, DataFrame]) -> dict[str, int]:
 def build_songs_metadata(inputs: dict[str, DataFrame]) -> DataFrame:
     catalog: DataFrame = inputs["features"].select("track_id")
     summary: DataFrame = inputs["songs_scalar"].alias("s")
-    metadata: DataFrame = inputs["track_metadata"].select(
-        "track_id",
-        "artist_mbid",
-    ).alias("m")
+    metadata: DataFrame = (
+        inputs["track_metadata"]
+        .select(
+            "track_id",
+            "artist_mbid",
+        )
+        .alias("m")
+    )
 
     return (
         catalog.join(summary, "track_id", "inner")
@@ -291,8 +352,7 @@ def build_graph_edge_frames(
     inputs: dict[str, DataFrame],
 ) -> dict[str, DataFrame]:
     track_release_source: DataFrame = songs_metadata.where(
-        F.col("release_7digitalid").isNotNull()
-        & (F.col("release_7digitalid") > 0),
+        F.col("release_7digitalid").isNotNull() & (F.col("release_7digitalid") > 0),
     )
     frames: dict[str, DataFrame] = {
         "track_artist": edge_frame(
@@ -400,9 +460,12 @@ def write_initialized_manifest(
     inputs: dict[str, DataFrame],
     outputs: dict[str, DataFrame],
     input_counts: dict[str, int],
+    extraction_contract: dict[str, Any],
     shuffle_partitions: int,
 ) -> None:
-    defaults_path: Path = Path(__file__).resolve().parents[1] / "artifacts" / "merlin_v3_defaults.json"
+    defaults_path: Path = (
+        Path(__file__).resolve().parents[1] / "artifacts" / "merlin_v3_defaults.json"
+    )
     manifest = make_manifest(
         artifact_type=ARTIFACT_TYPE,
         artifact_version=ARTIFACT_VERSION,
@@ -414,15 +477,28 @@ def write_initialized_manifest(
             "shuffle_partitions": shuffle_partitions,
             "graph_is_weighted": False,
             "edge_types": list(EDGE_TYPES),
+            "shared_audio_contract_version": SHARED_AUDIO_CONTRACT_VERSION,
+            "shared_audio_feature_count": SHARED_AUDIO_FEATURE_COUNT,
+            "merlin_audio_feature_count": MERLIN_AUDIO_FEATURE_COUNT,
+            "merlin_raw_feature_count": MERLIN_RAW_FEATURE_COUNT,
         },
         inputs=[
+            *(
+                {
+                    "name": name,
+                    "path": str(paths[name].resolve()),
+                    "row_count": input_counts[name],
+                    "schema_hash": _schema_hash(inputs[name]),
+                }
+                for name in paths
+            ),
             {
-                "name": name,
-                "path": str(paths[name].resolve()),
-                "row_count": input_counts[name],
-                "schema_hash": _schema_hash(inputs[name]),
-            }
-            for name in paths
+                "name": "audio_feature_contract",
+                "path": str((paths["features"] / FEATURE_CONTRACT_NAME).resolve()),
+                "sha256": sha256_file(paths["features"] / FEATURE_CONTRACT_NAME),
+                "contract_version": extraction_contract["contract_version"],
+                "feature_order_sha256": extraction_contract["feature_order_sha256"],
+            },
         ],
         outputs=[
             {
@@ -452,6 +528,9 @@ def run_prepare(
     reset_output: bool = False,
 ) -> Path:
     paths: dict[str, Path] = resolve_input_paths(input_dir)
+    extraction_contract: dict[str, Any] = validate_extraction_contract(
+        paths["features"],
+    )
     inputs: dict[str, DataFrame] = read_inputs(spark, paths)
     validate_input_schemas(inputs)
     input_counts: dict[str, int] = validate_input_data(inputs)
@@ -491,6 +570,7 @@ def run_prepare(
         inputs,
         outputs,
         input_counts,
+        extraction_contract,
         shuffle_partitions,
     )
     return prepared_root
