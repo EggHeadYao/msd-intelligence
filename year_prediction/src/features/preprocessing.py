@@ -11,7 +11,6 @@ from columns import (
     HAS_SEGMENTS_COLUMN,
     INPUT_COLUMNS,
     KEY_COLUMN,
-    KEY_ENCODED_COLUMNS,
     MODE_COLUMN,
     SEGMENT_COLUMNS,
     TIME_SIGNATURE_COLUMN,
@@ -19,6 +18,17 @@ from columns import (
     TRANSFORMED_CONTINUOUS_COLUMNS,
     candidate_columns,
     time_signature_column,
+)
+from key_contracts import (
+    K0,
+    K1,
+    K2,
+    K3,
+    KEY_COS_COLUMN,
+    KEY_SIN_COLUMN,
+    KEY_UNKNOWN_COLUMN,
+    key_one_hot_column,
+    require_key_contract,
 )
 
 CLIP_COLUMNS = ("tempo", "duration", "loudness")
@@ -133,8 +143,8 @@ def fit_imputation_means(df: DataFrame) -> dict[str, float]:
 
 
 def add_encodings(df: DataFrame, state: dict[str, Any]) -> DataFrame:
+    contract = require_key_contract(state["key_contract"])
     known_key = F.col(KEY_COLUMN).cast("int").between(0, 11)
-    angle = F.col(KEY_COLUMN).cast("double") * F.lit(2.0 * math.pi / 12.0)
     values = tuple(state["time_signature_values"])
     known_time = F.col(TIME_SIGNATURE_COLUMN).cast("int").isin(*values) if values else F.lit(False)
     replacements = {
@@ -143,11 +153,32 @@ def add_encodings(df: DataFrame, state: dict[str, Any]) -> DataFrame:
             known_time, F.col(TIME_SIGNATURE_COLUMN).cast("int")
         ).otherwise(UNKNOWN_CATEGORY),
     }
+    key_expressions = []
+    if contract == K1:
+        key_expressions.extend(
+            F.when(known_key & (F.col(KEY_COLUMN).cast("int") == value), 1.0)
+            .otherwise(0.0)
+            .alias(key_one_hot_column(value))
+            for value in range(12)
+        )
+        key_expressions.append(F.when(known_key, 0.0).otherwise(1.0).alias(KEY_UNKNOWN_COLUMN))
+    elif contract in (K2, K3):
+        position = F.col(KEY_COLUMN).cast("double")
+        if contract == K3:
+            position = F.pmod(F.col(KEY_COLUMN).cast("int") * F.lit(7), F.lit(12)).cast("double")
+        angle = position * F.lit(2.0 * math.pi / 12.0)
+        key_expressions.extend(
+            (
+                F.when(known_key, F.sin(angle)).otherwise(0.0).alias(KEY_SIN_COLUMN),
+                F.when(known_key, F.cos(angle)).otherwise(0.0).alias(KEY_COS_COLUMN),
+                F.when(known_key, 0.0).otherwise(1.0).alias(KEY_UNKNOWN_COLUMN),
+            )
+        )
+    elif contract != K0:
+        raise AssertionError(f"Unhandled key contract: {contract}")
     return df.select(
         *(replacements.get(column, F.col(column)).alias(column) for column in df.columns),
-        F.when(known_key, F.sin(angle)).otherwise(0.0).alias(KEY_ENCODED_COLUMNS[0]),
-        F.when(known_key, F.cos(angle)).otherwise(0.0).alias(KEY_ENCODED_COLUMNS[1]),
-        F.when(known_key, 0.0).otherwise(1.0).alias(KEY_ENCODED_COLUMNS[2]),
+        *key_expressions,
         *(
             (F.col(TIME_SIGNATURE_COLUMN).cast("int") == value)
             .cast("double")
@@ -194,12 +225,15 @@ def feature_statistics(df: DataFrame, columns: Sequence[str]) -> dict[str, dict[
 
 def fit_feature_contract(
     train: DataFrame,
+    key_contract: str,
     quantile_error: float = DEFAULT_QUANTILE_ERROR,
     variance_threshold: float = DEFAULT_VARIANCE_THRESHOLD,
 ) -> dict[str, Any]:
+    key_contract = require_key_contract(key_contract)
     require_input_columns(train)
     validate_binary_columns(train)
     state: dict[str, Any] = {
+        "key_contract": key_contract,
         "clip_quantiles": [0.01, 0.99],
         "clip_relative_error": quantile_error,
         "clip_bounds": fit_clip_bounds(train, quantile_error),
@@ -210,7 +244,7 @@ def fit_feature_contract(
     prepared = transform_before_imputation(train, state)
     state["imputation_means"] = fit_imputation_means(prepared)
     transformed = transform_features(train, state)
-    candidates = candidate_columns(tuple(state["time_signature_values"]))
+    candidates = candidate_columns(key_contract, tuple(state["time_signature_values"]))
     statistics = feature_statistics(transformed, candidates)
     retained = tuple(
         column for column in candidates if statistics[column]["std"] ** 2 > variance_threshold
