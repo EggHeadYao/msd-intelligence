@@ -63,3 +63,43 @@ def read_feature_metadata(path: str | Path) -> dict[str, Any]:
 def expected_dimension(metadata: dict[str, Any]) -> int:
     return int(metadata["outputs"]["linear_vectors"]["dimension"])
 
+
+def load_training_data(
+    spark: SparkSession,
+    input_path: str | Path,
+    metadata: dict[str, Any] | None = None,
+) -> TrainingData:
+    frame = spark.read.parquet(spark_path(input_path))
+    if tuple(frame.columns) != EXPECTED_COLUMNS:
+        raise ValueError(f"Unexpected linear feature columns: {frame.columns}")
+    frame = frame.where(F.col(SPLIT).isin(TRAIN, VALIDATION))
+    invalid_element = F.exists(
+        F.col(FEATURES),
+        lambda value: value.isNull()
+        | F.isnan(value)
+        | (F.abs(value) == F.lit(float("inf"))),
+    )
+    invalid_label = (
+        F.col(LABEL).isNull()
+        | F.isnan(LABEL)
+        | (F.abs(F.col(LABEL)) == F.lit(float("inf")))
+        | (F.col(LABEL) < F.lit(0.0))
+        | (F.col(LABEL) > F.lit(1.0))
+    )
+    rows = frame.groupBy(SPLIT).agg(
+        F.count(F.lit(1)).alias("count"),
+        F.countDistinct(TRACK_ID).alias("distinct_tracks"),
+        F.min(F.size(FEATURES)).alias("minimum_dimension"),
+        F.max(F.size(FEATURES)).alias("maximum_dimension"),
+        F.avg(LABEL).alias("label_mean"),
+        F.sum(
+            F.when(F.col(FEATURES).isNull() | invalid_element | invalid_label, 1).otherwise(0)
+        ).alias("invalid_rows"),
+    ).collect()
+    summaries = {row[SPLIT]: row.asDict() for row in rows}
+    return TrainingData(
+        frame=frame,
+        dimension=dimension,
+        counts=counts,
+        label_means=label_means,
+    )
