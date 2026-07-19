@@ -88,6 +88,58 @@ class RidgePipelineTest(unittest.TestCase):
                 },
                 "outputs": {"linear_vectors": {"dimension": 2}},
             }
+            metadata_path.write_text(json.dumps(metadata), encoding="ascii")
+            config = {
+                "model_id": "ridge-integration",
+                "input": str(input_path),
+                "feature_metadata": str(metadata_path),
+                "output_root": str(output_root),
+                "objective": "ridge_squared",
+                "initialization": "zero_weights_train_mean_intercept",
+                "max_iterations": 6,
+                "learning_rate": 0.1,
+                "l2": 0.01,
+                "gradient_tolerance": 0.0,
+                "validation_interval": 1,
+                "shuffle_partitions": 2,
+                "prediction_partitions": 1,
+                "execution": {
+                    "aggregation": "direct_reduce",
+                    "batch_fraction": 1.0,
+                    "broadcast_weights": False,
+                    "persist_training_data": False,
+                },
+            }
+            output = train(config, self.spark)
+            model = read_json(output / "model.json")
+            history = read_json(output / "history.json")
+            metrics = read_json(output / "metrics.json")
+            run_metadata = read_json(output / "run_metadata.json")
+            predictions = self.spark.read.parquet(
+                (output / "validation_predictions.parquet").resolve().as_uri()
+            )
+            baselines = compute_constant_baselines(frame)
+            self.assertEqual(model["feature_dimension"], 2)
+            self.assertEqual(len(model["weights"]), 2)
+            self.assertEqual(len(history), 6)
+            self.assertTrue(
+                all(
+                    name in history[0]
+                    for name in (
+                        "gradient_seconds",
+                        "update_seconds",
+                        "validation_seconds",
+                        "iteration_seconds",
+                    )
+                )
+            )
+            self.assertLess(metrics["final_training_objective"], history[0]["training_objective_before_update"])
+            self.assertEqual(metrics["train"]["count"], 6)
+            self.assertEqual(metrics["validation"]["count"], 2)
+            self.assertEqual(predictions.count(), 2)
+            self.assertEqual(baselines["mean"]["count"], 2)
+            self.assertEqual(baselines["median"]["count"], 2)
+            self.assertGreater(run_metadata["timing_seconds"]["gradient_reduce"], 0.0)
 
     def test_training_data_rejects_artist_overlap(self):
         rows = [
