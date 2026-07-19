@@ -34,7 +34,7 @@ title, track_7digitalid, year
 
 ### `extract_musics.py`
 
-Walks the 1M per-track `.h5` tree and writes one fixed 615-dimensional shared audio-array summary per track. It supports multiprocessing, batch Parquet output, error reporting, and checkpoint/resume. MERLIN and Year Prediction project their own model views from this one shared table; the extractor does not rescan HDF5 for either model.
+Walks the 1M per-track `.h5` tree and writes one fixed 628-dimensional shared audio-array summary per track. It supports multiprocessing, batch Parquet output, error reporting, and checkpoint/resume. MERLIN and Year Prediction project their own model views from this one shared table; the extractor does not rescan HDF5 for either model.
 
 ```bash
 python extract_musics.py \
@@ -44,17 +44,18 @@ python extract_musics.py \
   --batch-size 10000
 ```
 
-The production batch size is 10,000. Each `features_NNNN.parquet` contains `track_id` plus 615 nullable float64 features:
+The production batch size is 10,000. Each `features_NNNN.parquet` contains `track_id` plus 628 nullable float64 features:
 
 - The original ordered 308-column prefix: 112 robust summaries, 100 quarter-pooling values, 40 segment timing/delta values, 45 rhythm/structure values, and 11 availability/quality values.
 - 28 duration-weighted q50 values and 50 half-pooling values.
 - The official paper-aligned T90 block: 12 raw segment-timbre means plus 78 sample-covariance values in diagonal-offset order.
 - 60 global and 72 half/quarter key-relative pitch values.
 - Two pitch-profile shape values and five additional availability masks.
+- Thirteen interval-distribution values: event-interval tails, local-BPM tails/IQR, section-duration IQR, and three interval masks.
 
-`audio_features.py` defines the ordered 615-column schema, the 539-column MERLIN projection, and all pure NumPy aggregation formulas. `extract_musics.py` handles HDF5 I/O, workers, nullable Arrow output, batch commits, recovery, and the CLI. Missing derived values are Parquet nulls rather than ordinary zeros; masks remain non-null float64 values in `{0.0, 1.0}`.
+`audio_features.py` defines the ordered 628-column schema, the 552-column MERLIN projection, and all pure NumPy aggregation formulas. `extract_musics.py` handles HDF5 I/O, workers, nullable Arrow output, batch commits, recovery, and the CLI. Missing derived values are Parquet nulls rather than ordinary zeros; masks remain non-null float64 values in `{0.0, 1.0}`.
 
-`feature_contract.json` freezes `shared_audio_615_v1`, the input root, feature count, full column order, and its SHA-256 hash. `checkpoint.txt` stores relative HDF5 paths. Restarting the exact same command skips completed tracks and continues at the next batch index. Existing Parquet schemas and track IDs are reconciled into the checkpoint, so interruption after a batch rename but before checkpoint replacement does not duplicate rows. A contract, input-root, or schema mismatch fails closed. Failed files are not checkpointed, are recorded in the current invocation's `errors.txt`, and make the command exit nonzero; fix the source/mount issue and rerun the same command. A clean retry removes the stale error file.
+`feature_contract.json` freezes `shared_audio_628_v1`, the input root, feature count, full column order, and its SHA-256 hash. `checkpoint.txt` stores relative HDF5 paths. Restarting the exact same command skips completed tracks and continues at the next batch index. Existing Parquet schemas and track IDs are reconciled into the checkpoint, so interruption after a batch rename but before checkpoint replacement does not duplicate rows. A contract, input-root, or schema mismatch fails closed. Failed files are not checkpointed, are recorded in the current invocation's `errors.txt`, and make the command exit nonzero; fix the source/mount issue and rerun the same command. A clean retry removes the stale error file.
 
 `--batch-size` and `--limit` are test controls. `--limit N` processes at most N remaining files in that invocation; omit both options for the production run. Always use a dedicated output directory. Existing batches without a matching `feature_contract.json` are rejected.
 
@@ -89,4 +90,4 @@ The following files are intentionally skipped:
 
 ## Validation and Reference Performance
 
-The final 615-column implementation was validated on 5,000 mounted MSD tracks with 8 workers: 5,000 unique IDs, 616 exact columns including `track_id`, no failed files, no infinities, binary non-null masks, contract-consistent nulls, and an exact checkpoint. An independently recomputed real-track T90 vector matched all 90 stored values exactly. Full-run speed remains dominated by mounted HDF5 I/O and should not be inferred from one cached small run.
+The 615-column predecessor was validated on 5,000 mounted MSD tracks with 8 workers: 5,000 unique IDs, no failed files, no infinities, binary non-null masks, contract-consistent nulls, and an exact checkpoint. An independently recomputed real-track T90 vector matched all 90 stored values exactly. The final 628-column version only appends thirteen interval-derived values and was not rerun at the user's request; it awaits cross-team review before the 1M run.

@@ -8,9 +8,9 @@ LOW_CONFIDENCE_THRESHOLD = 0.5
 EPSILON = 1e-12
 EVENT_NAMES = ("segments", "beats", "bars", "tatums", "sections")
 LEGACY_FEATURE_COUNT = 308
-SHARED_FEATURE_COUNT = 615
+SHARED_FEATURE_COUNT = 628
 FEATURE_COUNT = SHARED_FEATURE_COUNT
-CONTRACT_VERSION = "shared_audio_615_v1"
+CONTRACT_VERSION = "shared_audio_628_v1"
 
 
 def _make_feature_columns() -> list[str]:
@@ -128,6 +128,19 @@ def _make_feature_columns() -> list[str]:
             "has_key_relative_pitch",
         ),
     )
+    for event in ("beat", "bar", "tatum"):
+        columns.extend((f"{event}_interval_q10", f"{event}_interval_q90"))
+    columns.extend(
+        (
+            "beat_local_bpm_q10",
+            "beat_local_bpm_q90",
+            "beat_local_bpm_iqr",
+            "section_duration_iqr",
+            "has_beat_intervals",
+            "has_bar_intervals",
+            "has_tatum_intervals",
+        ),
+    )
     return columns
 
 
@@ -150,7 +163,7 @@ MERLIN_EXCLUDED_COLUMNS = tuple(
 MERLIN_FEATURE_COLUMNS = tuple(
     column for column in FEATURE_COLUMNS if column not in MERLIN_EXCLUDED_COLUMNS
 )
-if len(MERLIN_EXCLUDED_COLUMNS) != 76 or len(MERLIN_FEATURE_COLUMNS) != 539:
+if len(MERLIN_EXCLUDED_COLUMNS) != 76 or len(MERLIN_FEATURE_COLUMNS) != 552:
     raise RuntimeError("Invalid MERLIN audio feature projection")
 
 
@@ -254,6 +267,16 @@ def _four_stats(values: np.ndarray) -> list[float]:
         float(np.quantile(selected, 0.50)),
         float(np.quantile(selected, 0.90)),
     ]
+
+
+def _quantile(values: np.ndarray, quantile: float) -> float:
+    selected = np.asarray(values, dtype=np.float64)
+    selected = selected[np.isfinite(selected)]
+    return float(np.quantile(selected, quantile)) if selected.size else float("nan")
+
+
+def _iqr(values: np.ndarray) -> float:
+    return _quantile(values, 0.75) - _quantile(values, 0.25)
 
 
 def _interval_stats(starts: np.ndarray) -> tuple[list[float], np.ndarray]:
@@ -426,7 +449,7 @@ def aggregate_audio_features(
     song: np.void,
     arrays: dict[str, np.ndarray],
 ) -> np.ndarray:
-    """Aggregate one track's variable-length arrays into 615 nullable features."""
+    """Aggregate one track's variable-length arrays into 628 nullable features."""
     duration = float(song["duration"])
     tempo = float(song["tempo"])
     duration_valid = bool(np.isfinite(duration) and duration > 0)
@@ -725,6 +748,22 @@ def aggregate_audio_features(
     profile, has_profile = _pitch_profile(pitches, weights)
     features.extend(profile)
     features.extend((*half_masks, has_t90, has_profile, has_key_relative))
+
+    for event in ("beats", "bars", "tatums"):
+        intervals = interval_values[event]
+        features.extend((_quantile(intervals, 0.10), _quantile(intervals, 0.90)))
+    features.extend(
+        (
+            _quantile(local_bpm, 0.10),
+            _quantile(local_bpm, 0.90),
+            _iqr(local_bpm),
+            _iqr(valid_section_lengths),
+        ),
+    )
+    features.extend(
+        float(interval_values[event].size > 0)
+        for event in ("beats", "bars", "tatums")
+    )
 
     result = np.asarray(features, dtype=np.float64)
     if result.shape != (FEATURE_COUNT,):
