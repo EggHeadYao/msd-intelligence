@@ -339,17 +339,36 @@ Only the key representation changes; rows, all other predictors, and the Ridge b
 
 \end{frame}
 
-\begin{frame}{How the key contract is selected}
+\begin{frame}{Result: key encoding has negligible impact}
 
-\begin{enumerate}
-	\setlength{\itemsep}{5pt}
-	\item \textbf{Keep Ridge and rows fixed.} \\Change only key encoding so the comparison isolates that feature design.~{\scriptsize\autocite{guyon2003selection}}
-	\item \textbf{Compare validation MAE.} \\Compute $\Delta\mathrm{MAE}=\mathrm{MAE}(K_i)-\mathrm{MAE}(K_1)$; MAE follows the original MSD year task.~{\scriptsize\autocite{bertinmahieux2011million}}
-	\item \textbf{Bootstrap artists.} \\Resample artists with replacement, retain all their songs, and estimate a paired 95\% confidence interval for $\Delta\mathrm{MAE}$.~{\scriptsize\autocite{field2007cluster}}
-	\item \textbf{Freeze the encoding.} \\Use validation to lock the selected representation and fitted preprocessing state.~{\scriptsize\autocite{cawley2010overfitting}}
-\end{enumerate}
+\begin{center}
+{
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{l r r r}
+	\textbf{Contract} & \textbf{Dim} & \textbf{Validation MAE} & \textbf{Validation RMSE} \\
+	\hline
+	K0: no key & $110$ & $6.4758$ & $8.9534$ \\
+	K1: one-hot & $122$ & $6.4750$ & $8.9513$ \\
+	K2: chromatic circle & $112$ & $6.4757$ & $8.9533$ \\
+	K3: fifths circle & $112$ & $6.4756$ & $8.9526$ \\
+\end{tabular}
+}
+\end{center}
+
+{\small
+All four contracts use the same $420{,}013$ training tracks, $46{,}127$ validation tracks, Ridge settings, and 100 optimization iterations. The entire MAE spread is below $0.001$ years.
+}
+
+\medskip
+\medskip
+
+\begin{block}{Selected linear contract: K0}
+Key encoding provides no practically meaningful improvement, while adding dimensions to the model. We therefore omit key from the linear view; the raw categorical key remains available for a separate tree-model ablation.
+\end{block}
 
 \end{frame}
+
+
 
 \section{Bibliography}
 
