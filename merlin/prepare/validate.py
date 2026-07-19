@@ -1,115 +1,61 @@
+# ruff: noqa: T201
+"""Fail-closed validation for canonical MERLIN prepared tables."""
+
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-
-EXPECTED_SONGS: int = 1_000_000
-EXPECTED_ARTIST_SIMILARITY_EDGES: int = 2_201_916
-EXPECTED_ARTIST_TAG_EDGES: int = 1_109_381
-EXPECTED_KNOWN_YEAR_SONGS: int = 515_576
-EXPECTED_SONG_SIMILAR_ARTIST_EDGES: int = 99_879_745
-EXPECTED_OUTPUT_DIRS: frozenset[str] = frozenset(
-    {
-        "songs_metadata.parquet",
-        "song_audio_features_raw.parquet",
-        "song_terms.parquet",
-        "graph_edges.parquet",
-    },
+from merlin.artifacts.contract import (
+    OUTPUT_MARKER_NAME,
+    read_manifest,
+    utc_now,
+    write_manifest,
 )
-REQUIRED_EDGE_TYPES: frozenset[str] = frozenset(
-    {
-        "song_artist",
-        "song_album",
-        "song_tag",
-        "artist_tag",
-        "song_year",
-        "artist_similarity",
-        "song_similar_artist",
-    },
+from merlin.prepare.contract import (
+    ARTIFACT_TYPE,
+    ARTIFACT_VERSION,
+    AUDIO_COLUMNS,
+    EDGE_TYPES,
+    GRAPH_EDGE_COLUMNS,
+    MANIFEST_NAME,
+    METADATA_COLUMNS,
+    NODE_TYPES,
+    OUTPUT_DIRS,
+    SUMMARY_AUDIO_COLUMNS,
+    ExpectedCounts,
 )
-SEGMENT_FEATURE_COLUMNS: tuple[str, ...] = tuple(
-    [
-        f"{prefix}_{stat}_{i}"
-        for prefix in ("pitch", "timbre")
-        for stat in ("mean", "std", "min", "max")
-        for i in range(12)
-    ]
-    + [f"loudness_{stat}" for stat in ("mean", "std", "min", "max")]
-)
-AUDIO_SCALAR_COLUMNS: tuple[str, ...] = (
-    "track_id",
-    "danceability",
-    "energy",
-    "loudness",
-    "tempo",
-    "duration",
-    "key",
-    "mode",
-    "time_signature",
-)
-EXPECTED_AUDIO_COLUMNS: tuple[str, ...] = (
-    *AUDIO_SCALAR_COLUMNS,
-    *SEGMENT_FEATURE_COLUMNS,
-    "has_segments",
-)
-EXPECTED_METADATA_COLUMNS: tuple[str, ...] = (
-    "track_id",
-    "song_id",
-    "title",
-    "artist_id",
-    "artist_name",
-    "artist_mbid",
-    "release",
-    "album_key",
-    "duration",
-    "year",
-    "has_year",
-    "song_hotttnesss",
-    "artist_hotttnesss",
-    "artist_familiarity",
-)
-EXPECTED_SONG_TERMS_COLUMNS: tuple[str, ...] = ("track_id", "artist_id", "term")
-EXPECTED_GRAPH_EDGE_COLUMNS: tuple[str, ...] = (
-    "src_type",
-    "src_id",
-    "dst_type",
-    "dst_id",
-    "weight",
-    "directed",
-    "edge_type",
-)
-EXPECTED_NODE_TYPES: frozenset[str] = frozenset({"song", "artist", "album", "tag", "year"})
-EXPECTED_EDGE_WEIGHTS: dict[str, float] = {
-    "song_artist": 1.0,
-    "song_album": 0.8,
-    "song_tag": 0.6,
-    "artist_tag": 0.3,
-    "song_year": 0.4,
-    "artist_similarity": 1.0,
-    "song_similar_artist": 0.5,
-}
+from merlin.prepare.prepare import _schema_hash, spark_path
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate prepared MERLIN Parquet tables.",
+        description="Validate canonical MERLIN prepared tables.",
     )
     parser.add_argument(
         "--prepared",
         type=Path,
-        default=Path("parquets/prepared"),
-        help="Prepared MERLIN directory (default: parquets/prepared)",
+        default=Path("../parquets_new/prepared"),
+        help="Prepared MERLIN directory.",
     )
     parser.add_argument(
         "--shuffle-partitions",
         type=int,
         default=32,
-        help="Spark SQL shuffle partitions (default: 32)",
+        help="Spark SQL shuffle partitions.",
+    )
+    parser.add_argument("--expected-songs", type=int, default=1_000_000)
+    parser.add_argument("--expected-track-release", type=int, default=999_997)
+    parser.add_argument("--expected-artist-term", type=int, default=1_109_381)
+    parser.add_argument(
+        "--expected-artist-similarity",
+        type=int,
+        default=2_201_916,
     )
     return parser.parse_args()
 
@@ -118,12 +64,14 @@ def create_spark(shuffle_partitions: int) -> SparkSession:
     return (
         SparkSession.builder.appName("MerlinValidate")
         .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+        .config("spark.hadoop.fs.defaultFS", "file:///")
         .getOrCreate()
     )
 
 
-def spark_path(path: Path) -> str:
-    return path.resolve().as_uri()
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
 
 
 def read_outputs(spark: SparkSession, prepared_dir: Path) -> dict[str, DataFrame]:
@@ -134,64 +82,66 @@ def read_outputs(spark: SparkSession, prepared_dir: Path) -> dict[str, DataFrame
         "song_audio_features": spark.read.parquet(
             spark_path(prepared_dir / "song_audio_features_raw.parquet"),
         ),
-        "song_terms": spark.read.parquet(spark_path(prepared_dir / "song_terms.parquet")),
-        "graph_edges": spark.read.parquet(spark_path(prepared_dir / "graph_edges.parquet")),
+        "graph_edges": spark.read.parquet(
+            spark_path(prepared_dir / "graph_edges.parquet"),
+        ),
     }
 
 
 def validate_output_layout(prepared_dir: Path) -> None:
-    actual: set[str] = {
+    require(prepared_dir.is_dir(), f"prepared directory does not exist: {prepared_dir}")
+    actual_dirs: set[str] = {
         path.name for path in prepared_dir.iterdir() if path.is_dir()
     }
-    missing: set[str] = set(EXPECTED_OUTPUT_DIRS) - actual
-    extra: set[str] = actual - set(EXPECTED_OUTPUT_DIRS)
+    missing: set[str] = set(OUTPUT_DIRS) - actual_dirs
+    extra: set[str] = actual_dirs - set(OUTPUT_DIRS)
     require(not missing, f"prepared directory missing outputs: {sorted(missing)}")
     require(not extra, f"prepared directory has unexpected outputs: {sorted(extra)}")
+    require(
+        (prepared_dir / OUTPUT_MARKER_NAME).is_file(),
+        f"prepared directory is missing {OUTPUT_MARKER_NAME}",
+    )
+    require(
+        (prepared_dir / MANIFEST_NAME).is_file(),
+        f"prepared directory is missing {MANIFEST_NAME}",
+    )
 
 
-def require(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def require_columns(df: DataFrame, expected: tuple[str, ...], table_name: str) -> None:
-    actual: set[str] = set(df.columns)
-    expected_set: set[str] = set(expected)
-    missing: set[str] = expected_set - actual
-    extra: set[str] = actual - expected_set
-    require(not missing, f"{table_name} missing columns: {sorted(missing)}")
-    require(not extra, f"{table_name} has unexpected columns: {sorted(extra)}")
+def require_exact_columns(
+    frame: DataFrame,
+    expected: tuple[str, ...],
+    table_name: str,
+) -> None:
+    actual: tuple[str, ...] = tuple(frame.columns)
+    require(
+        actual == expected,
+        f"{table_name} columns mismatch: expected={expected}, actual={actual}",
+    )
 
 
 def require_type(
-    df: DataFrame,
+    frame: DataFrame,
     table_name: str,
     column: str,
     allowed: tuple[type[T.DataType], ...],
 ) -> None:
-    data_type: T.DataType = df.schema[column].dataType
+    data_type: T.DataType = frame.schema[column].dataType
     require(
         isinstance(data_type, allowed),
         f"{table_name}.{column} has type {data_type}, expected {allowed}",
     )
 
 
-def count_distinct(df: DataFrame, col: str) -> int:
-    return df.select(col).distinct().count()
-
-
 def validate_schema_contract(tables: dict[str, DataFrame]) -> None:
     metadata: DataFrame = tables["songs_metadata"]
     audio: DataFrame = tables["song_audio_features"]
-    song_terms: DataFrame = tables["song_terms"]
     graph_edges: DataFrame = tables["graph_edges"]
 
-    require_columns(metadata, EXPECTED_METADATA_COLUMNS, "songs_metadata")
-    require_columns(audio, EXPECTED_AUDIO_COLUMNS, "song_audio_features_raw")
-    require_columns(song_terms, EXPECTED_SONG_TERMS_COLUMNS, "song_terms")
-    require_columns(graph_edges, EXPECTED_GRAPH_EDGE_COLUMNS, "graph_edges")
+    require_exact_columns(metadata, METADATA_COLUMNS, "songs_metadata")
+    require_exact_columns(audio, AUDIO_COLUMNS, "song_audio_features_raw")
+    require_exact_columns(graph_edges, GRAPH_EDGE_COLUMNS, "graph_edges")
 
-    for col in (
+    metadata_strings: tuple[str, ...] = (
         "track_id",
         "song_id",
         "title",
@@ -199,50 +149,56 @@ def validate_schema_contract(tables: dict[str, DataFrame]) -> None:
         "artist_name",
         "artist_mbid",
         "release",
-        "album_key",
-    ):
-        require_type(metadata, "songs_metadata", col, (T.StringType,))
-    for col in ("duration", "song_hotttnesss", "artist_hotttnesss", "artist_familiarity"):
-        require_type(metadata, "songs_metadata", col, (T.NumericType,))
-    for col in ("year", "has_year"):
-        require_type(metadata, "songs_metadata", col, (T.NumericType,))
+    )
+    for column in metadata_strings:
+        require_type(metadata, "songs_metadata", column, (T.StringType,))
+    for column in set(METADATA_COLUMNS) - set(metadata_strings):
+        require_type(metadata, "songs_metadata", column, (T.NumericType,))
 
     require_type(audio, "song_audio_features_raw", "track_id", (T.StringType,))
-    for col in EXPECTED_AUDIO_COLUMNS:
-        if col != "track_id":
-            require_type(audio, "song_audio_features_raw", col, (T.NumericType,))
+    for column in AUDIO_COLUMNS[1:]:
+        require_type(audio, "song_audio_features_raw", column, (T.NumericType,))
 
-    for col in EXPECTED_SONG_TERMS_COLUMNS:
-        require_type(song_terms, "song_terms", col, (T.StringType,))
-
-    for col in ("src_type", "src_id", "dst_type", "dst_id", "edge_type"):
-        require_type(graph_edges, "graph_edges", col, (T.StringType,))
-    require_type(graph_edges, "graph_edges", "weight", (T.NumericType,))
+    for column in ("src_type", "src_id", "dst_type", "dst_id", "edge_type"):
+        require_type(graph_edges, "graph_edges", column, (T.StringType,))
     require_type(graph_edges, "graph_edges", "directed", (T.BooleanType,))
 
-    print(
-        "schema_contract "
-        f"metadata_cols={len(metadata.columns)}, audio_cols={len(audio.columns)}, "
-        f"segment_cols={len(SEGMENT_FEATURE_COLUMNS)}, graph_cols={len(graph_edges.columns)}",
-    )
+
+def _count_distinct(frame: DataFrame, columns: tuple[str, ...]) -> int:
+    return frame.select(*columns).distinct().count()
 
 
-def validate_song_tables(tables: dict[str, DataFrame]) -> None:
+def _has_invalid_numeric(
+    frame: DataFrame,
+    columns: tuple[str, ...],
+    *,
+    chunk_size: int = 48,
+) -> bool:
+    for start in range(0, len(columns), chunk_size):
+        condition = F.lit(False)
+        for column in columns[start : start + chunk_size]:
+            value = F.col(column).cast("double")
+            condition = condition | value.isNull() | F.isnan(value)
+        if frame.where(condition).limit(1).count():
+            return True
+    return False
+
+
+def validate_song_tables(
+    tables: dict[str, DataFrame],
+    expected: ExpectedCounts,
+) -> dict[str, int]:
     metadata: DataFrame = tables["songs_metadata"]
     audio: DataFrame = tables["song_audio_features"]
 
     metadata_count: int = metadata.count()
-    metadata_distinct: int = count_distinct(metadata, "track_id")
+    metadata_distinct: int = _count_distinct(metadata, ("track_id",))
     audio_count: int = audio.count()
-    audio_distinct: int = count_distinct(audio, "track_id")
-
-    print(f"songs_metadata rows={metadata_count}, distinct_track_id={metadata_distinct}")
-    print(f"song_audio_features rows={audio_count}, distinct_track_id={audio_distinct}")
-
-    require(metadata_count == EXPECTED_SONGS, "songs_metadata row count mismatch")
-    require(metadata_distinct == EXPECTED_SONGS, "songs_metadata track_id mismatch")
-    require(audio_count == EXPECTED_SONGS, "song_audio_features row count mismatch")
-    require(audio_distinct == EXPECTED_SONGS, "song_audio_features track_id mismatch")
+    audio_distinct: int = _count_distinct(audio, ("track_id",))
+    require(metadata_count == expected.songs, "songs_metadata row count mismatch")
+    require(metadata_distinct == expected.songs, "songs_metadata track IDs not unique")
+    require(audio_count == expected.songs, "song_audio_features row count mismatch")
+    require(audio_distinct == expected.songs, "audio track IDs not unique")
 
     missing_audio: int = metadata.select("track_id").join(
         audio.select("track_id"),
@@ -254,145 +210,318 @@ def validate_song_tables(tables: dict[str, DataFrame]) -> None:
         "track_id",
         "left_anti",
     ).count()
-    print(f"metadata_minus_audio={missing_audio}, audio_minus_metadata={missing_metadata}")
-    require(missing_audio == 0, "metadata contains track_id missing from audio")
-    require(missing_metadata == 0, "audio contains track_id missing from metadata")
+    require(missing_audio == 0, "metadata contains track IDs missing from audio")
+    require(missing_metadata == 0, "audio contains track IDs missing from metadata")
 
-    bad_has_year: int = metadata.where(
-        F.col("has_year").isNull() | ~F.col("has_year").isin(0, 1),
-    ).count()
-    bad_has_segments: int = tables["song_audio_features"].where(
-        F.col("has_segments").isNull() | ~F.col("has_segments").isin(0, 1),
-    ).count()
-    require(bad_has_year == 0, "songs_metadata has_year contains values outside {0,1}")
+    required_metadata: tuple[str, ...] = (
+        "track_id",
+        "song_id",
+        "artist_id",
+        "track_7digitalid",
+        "duration",
+    )
+    invalid_metadata = F.lit(False)
+    for column in required_metadata:
+        invalid_metadata = invalid_metadata | F.col(column).isNull()
+    invalid_metadata = invalid_metadata | (F.col("track_id") == "")
+    invalid_metadata = invalid_metadata | (F.col("song_id") == "")
+    invalid_metadata = invalid_metadata | (F.col("artist_id") == "")
     require(
-        bad_has_segments == 0,
-        "song_audio_features has_segments contains values outside {0,1}",
+        metadata.where(invalid_metadata).limit(1).count() == 0,
+        "songs_metadata contains invalid required fields",
     )
 
+    invalid_has_year: int = metadata.where(
+        F.col("has_year").isNull() | ~F.col("has_year").isin(0, 1),
+    ).limit(1).count()
+    require(invalid_has_year == 0, "has_year contains values outside {0,1}")
 
-def validate_terms(tables: dict[str, DataFrame]) -> None:
-    song_terms: DataFrame = tables["song_terms"]
-    rows: int = song_terms.count()
-    distinct_tracks: int = count_distinct(song_terms, "track_id")
-    distinct_terms: int = count_distinct(song_terms, "term")
-    null_rows: int = song_terms.where(
-        F.col("track_id").isNull()
-        | F.col("artist_id").isNull()
-        | F.col("term").isNull(),
+    release_count: int = metadata.where(
+        F.col("release_7digitalid").isNotNull()
+        & (F.col("release_7digitalid") > 0),
     ).count()
+    invalid_release: int = metadata.where(
+        F.col("release_7digitalid").isNotNull()
+        & (F.col("release_7digitalid") <= 0),
+    ).limit(1).count()
+    require(release_count == expected.track_release, "valid release ID count mismatch")
+    require(invalid_release == 0, "release_7digitalid contains non-positive IDs")
+
+    nullable_summary: frozenset[str] = frozenset({"tempo", "time_signature"})
+    required_summary: tuple[str, ...] = tuple(
+        column
+        for column in SUMMARY_AUDIO_COLUMNS[1:]
+        if column not in nullable_summary
+    )
+    require(
+        not _has_invalid_numeric(audio, required_summary),
+        "required Summary audio fields contain null or NaN values",
+    )
+    for column in nullable_summary:
+        invalid_optional: int = audio.where(
+            F.col(column).isNotNull()
+            & (F.isnan(F.col(column).cast("double")) | (F.col(column) <= 0)),
+        ).limit(1).count()
+        require(invalid_optional == 0, f"{column} contains an invalid observed value")
+
+    invalid_summary_semantics: int = audio.where(
+        (F.col("duration") <= 0)
+        | ~F.col("key").isin(*range(12))
+        | ~F.col("mode").isin(0, 1)
+        | (F.col("end_of_fade_in") < 0)
+        | (F.col("start_of_fade_out") < F.col("end_of_fade_in"))
+        | (F.col("key_confidence") < 0)
+        | (F.col("key_confidence") > 1)
+        | (F.col("mode_confidence") < 0)
+        | (F.col("mode_confidence") > 1)
+        | (F.col("time_signature_confidence") < 0)
+        | (F.col("time_signature_confidence") > 1),
+    ).limit(1).count()
+    require(invalid_summary_semantics == 0, "Summary audio semantics are invalid")
+
+    extracted_features: tuple[str, ...] = AUDIO_COLUMNS[len(SUMMARY_AUDIO_COLUMNS) :]
+    require(
+        not _has_invalid_numeric(audio, extracted_features),
+        "extracted audio features contain null or NaN values",
+    )
+    bounded_features: tuple[str, ...] = tuple(
+        column
+        for column in extracted_features
+        if column.endswith("_confidence_mean")
+        or column.endswith("_low_confidence_fraction")
+        or column
+        in {
+            "invalid_segment_duration_fraction",
+            "valid_analysis_duration_ratio",
+        }
+    )
+    bounded_violation = F.lit(False)
+    for column in bounded_features:
+        bounded_violation = (
+            bounded_violation
+            | (F.col(column) < -1e-9)
+            | (F.col(column) > 1.0 + 1e-9)
+        )
+    require(
+        audio.where(bounded_violation).limit(1).count() == 0,
+        "audio confidence/fraction features contain values outside [0,1]",
+    )
+    mask_columns: tuple[str, ...] = tuple(
+        column for column in AUDIO_COLUMNS if column.startswith("has_")
+    )
+    for column in mask_columns:
+        invalid_mask: int = audio.where(~F.col(column).isin(0.0, 1.0)).limit(1).count()
+        require(invalid_mask == 0, f"{column} contains values outside {{0,1}}")
 
     print(
-        "song_terms "
-        f"rows={rows}, distinct_track_id={distinct_tracks}, "
-        f"distinct_terms={distinct_terms}, null_rows={null_rows}",
+        "song_tables "
+        f"metadata={metadata_count}, audio={audio_count}, valid_releases={release_count}",
     )
-    require(rows > 0, "song_terms is empty")
-    require(distinct_tracks > 0, "song_terms has no tracks")
-    require(distinct_terms > 0, "song_terms has no terms")
-    require(null_rows == 0, "song_terms contains null key fields")
+    return {
+        "songs_metadata": metadata_count,
+        "song_audio_features_raw": audio_count,
+        "valid_release_ids": release_count,
+    }
 
 
-def validate_graph_edges(tables: dict[str, DataFrame]) -> None:
+def _relation_violation(
+    graph_edges: DataFrame,
+    edge_type: str,
+    src_type: str,
+    dst_type: str,
+    directed: bool,
+) -> int:
+    return graph_edges.where(
+        (F.col("edge_type") == edge_type)
+        & (
+            (F.col("src_type") != src_type)
+            | (F.col("dst_type") != dst_type)
+            | (F.col("directed") != F.lit(directed))
+        ),
+    ).limit(1).count()
+
+
+def _require_same_pairs(
+    observed: DataFrame,
+    expected: DataFrame,
+    message: str,
+) -> None:
+    pair_columns: list[str] = ["src_id", "dst_id"]
+    missing: int = expected.join(observed, pair_columns, "left_anti").limit(1).count()
+    extra: int = observed.join(expected, pair_columns, "left_anti").limit(1).count()
+    require(missing == 0 and extra == 0, message)
+
+
+def validate_graph_edges(
+    tables: dict[str, DataFrame],
+    expected: ExpectedCounts,
+) -> dict[str, int]:
+    metadata: DataFrame = tables["songs_metadata"]
     graph_edges: DataFrame = tables["graph_edges"]
     counts: dict[str, int] = {
         row["edge_type"]: row["count"]
         for row in graph_edges.groupBy("edge_type").count().collect()
     }
-    print(f"graph_edges rows={sum(counts.values())}, edge_type_counts={counts}")
+    require(set(counts) == set(EDGE_TYPES), f"unexpected graph edge types: {counts}")
+    expected_counts: dict[str, int] = {
+        "track_artist": expected.songs,
+        "track_release": expected.track_release,
+        "artist_term": expected.artist_term,
+        "artist_similarity": expected.artist_similarity,
+    }
+    require(counts == expected_counts, f"graph edge counts mismatch: {counts}")
+    require(sum(counts.values()) == expected.graph_edges, "graph total row count mismatch")
 
-    missing: set[str] = set(REQUIRED_EDGE_TYPES) - set(counts)
-    extra: set[str] = set(counts) - set(REQUIRED_EDGE_TYPES)
-    require(not missing, f"graph_edges missing edge types: {sorted(missing)}")
-    require(not extra, f"graph_edges has unexpected edge types: {sorted(extra)}")
-    for edge_type in REQUIRED_EDGE_TYPES:
-        require(counts[edge_type] > 0, f"graph_edges {edge_type} is empty")
-
-    require(counts["song_album"] == EXPECTED_SONGS, "song_album edge count mismatch")
+    null_or_empty = F.lit(False)
+    for column in ("src_type", "src_id", "dst_type", "dst_id", "edge_type"):
+        null_or_empty = null_or_empty | F.col(column).isNull() | (F.col(column) == "")
+    null_or_empty = null_or_empty | F.col("directed").isNull()
     require(
-        counts["song_artist"] == EXPECTED_SONGS,
-        "song_artist edge count mismatch",
-    )
-    require(
-        counts["artist_tag"] == EXPECTED_ARTIST_TAG_EDGES,
-        "artist_tag edge count mismatch",
-    )
-    require(
-        counts["song_year"] == EXPECTED_KNOWN_YEAR_SONGS,
-        "song_year edge count mismatch",
+        graph_edges.where(null_or_empty).limit(1).count() == 0,
+        "graph_edges contains null or empty fields",
     )
     require(
-        counts["artist_similarity"] == EXPECTED_ARTIST_SIMILARITY_EDGES,
-        "artist_similarity graph edge count mismatch",
+        graph_edges.where(
+            ~F.col("src_type").isin(*NODE_TYPES)
+            | ~F.col("dst_type").isin(*NODE_TYPES),
+        ).limit(1).count()
+        == 0,
+        "graph_edges contains unexpected node types",
     )
     require(
-        counts["song_similar_artist"] == EXPECTED_SONG_SIMILAR_ARTIST_EDGES,
-        "song_similar_artist graph edge count mismatch",
+        _count_distinct(graph_edges, ("edge_type", "src_id", "dst_id"))
+        == expected.graph_edges,
+        "graph_edges contains duplicate typed pairs",
     )
-    artist_similarity: DataFrame = graph_edges.where(
-        F.col("edge_type") == "artist_similarity",
+
+    relation_specs: tuple[tuple[str, str, str, bool], ...] = (
+        ("track_artist", "track", "artist", False),
+        ("track_release", "track", "release", False),
+        ("artist_term", "artist", "term", False),
+        ("artist_similarity", "artist", "artist", True),
     )
-    distinct_artist_similarity_pairs: int = artist_similarity.select(
-        "src_id",
-        "dst_id",
-    ).distinct().count()
+    for edge_type, src_type, dst_type, directed in relation_specs:
+        require(
+            _relation_violation(
+                graph_edges,
+                edge_type,
+                src_type,
+                dst_type,
+                directed,
+            )
+            == 0,
+            f"{edge_type} relation semantics mismatch",
+        )
+
+    observed_artist: DataFrame = graph_edges.where(
+        F.col("edge_type") == "track_artist",
+    ).select("src_id", "dst_id")
+    expected_artist: DataFrame = metadata.select(
+        F.col("track_id").alias("src_id"),
+        F.col("artist_id").alias("dst_id"),
+    )
+    _require_same_pairs(observed_artist, expected_artist, "track_artist mapping mismatch")
+
+    observed_release: DataFrame = graph_edges.where(
+        F.col("edge_type") == "track_release",
+    ).select("src_id", "dst_id")
+    expected_release: DataFrame = metadata.where(
+        F.col("release_7digitalid").isNotNull()
+        & (F.col("release_7digitalid") > 0),
+    ).select(
+        F.col("track_id").alias("src_id"),
+        F.col("release_7digitalid").cast("string").alias("dst_id"),
+    )
+    _require_same_pairs(observed_release, expected_release, "track_release mapping mismatch")
+
+    print(f"graph_edges total={sum(counts.values())}, counts={counts}")
+    return {"graph_edges": sum(counts.values()), **counts}
+
+
+def validate_manifest_lineage(
+    prepared_dir: Path,
+    tables: dict[str, DataFrame],
+) -> dict[str, Any]:
+    manifest: dict[str, Any] = read_manifest(prepared_dir / MANIFEST_NAME)
+    require(manifest["artifact_type"] == ARTIFACT_TYPE, "manifest artifact type mismatch")
     require(
-        distinct_artist_similarity_pairs == EXPECTED_ARTIST_SIMILARITY_EDGES,
-        "artist_similarity graph edges contain duplicates",
+        manifest["artifact_version"] == ARTIFACT_VERSION,
+        "manifest artifact version mismatch",
     )
+    require(manifest["status"] in {"initialized", "valid"}, "manifest status mismatch")
 
-    bad_node_types: int = graph_edges.where(
-        ~F.col("src_type").isin(*EXPECTED_NODE_TYPES)
-        | ~F.col("dst_type").isin(*EXPECTED_NODE_TYPES),
-    ).count()
-    require(bad_node_types == 0, "graph_edges contains unexpected node types")
+    outputs: dict[str, dict[str, Any]] = {
+        item["name"]: item for item in manifest["outputs"]
+    }
+    for name, frame in tables.items():
+        require(name in outputs, f"manifest missing output {name}")
+        require(
+            outputs[name].get("schema_hash") == _schema_hash(frame),
+            f"manifest schema hash mismatch for {name}",
+        )
+    return manifest
 
-    for edge_type, weight in EXPECTED_EDGE_WEIGHTS.items():
-        bad_weight: int = graph_edges.where(
-            (F.col("edge_type") == edge_type) & (F.col("weight") != weight),
-        ).count()
-        require(bad_weight == 0, f"graph_edges {edge_type} has unexpected weights")
 
-    bad_directed: int = graph_edges.where(
-        ((F.col("edge_type") == "artist_similarity") & (F.col("directed") != F.lit(True)))
-        | ((F.col("edge_type") == "song_similar_artist") & (F.col("directed") != F.lit(True)))
-        | (
-            ~F.col("edge_type").isin("artist_similarity", "song_similar_artist")
-            & (F.col("directed") != F.lit(False))
-        ),
-    ).count()
-    require(bad_directed == 0, "graph_edges directed flags do not match edge semantics")
+def mark_manifest_valid(
+    prepared_dir: Path,
+    manifest: dict[str, Any],
+    statistics: dict[str, int],
+) -> None:
+    manifest["status"] = "valid"
+    manifest["statistics"] = {
+        **manifest["statistics"],
+        "output_row_counts": statistics,
+    }
+    manifest["validation"] = {
+        "passed": True,
+        "validated_at_utc": utc_now(),
+        "checks": [
+            "layout",
+            "schema",
+            "track_identity",
+            "finite_audio",
+            "canonical_edge_types",
+            "edge_counts",
+            "edge_semantics",
+            "manifest_lineage",
+        ],
+    }
+    write_manifest(manifest, prepared_dir / MANIFEST_NAME, allow_replace=True)
 
-    bad_year_edges: int = graph_edges.where(
-        (F.col("edge_type") == "song_year") & (F.col("dst_id") == "0"),
-    ).count()
-    require(bad_year_edges == 0, "song_year contains year=0 edges")
 
-    null_rows: int = graph_edges.where(
-        F.col("src_type").isNull()
-        | F.col("src_id").isNull()
-        | F.col("dst_type").isNull()
-        | F.col("dst_id").isNull()
-        | F.col("edge_type").isNull()
-        | F.col("weight").isNull()
-        | F.col("directed").isNull(),
-    ).count()
-    print(f"graph_edges null_rows={null_rows}")
-    require(null_rows == 0, "graph_edges contains null fields")
+def run_validation(
+    spark: SparkSession,
+    prepared_dir: Path,
+    expected: ExpectedCounts,
+    *,
+    update_manifest: bool = True,
+) -> dict[str, int]:
+    validate_output_layout(prepared_dir)
+    tables: dict[str, DataFrame] = read_outputs(spark, prepared_dir)
+    validate_schema_contract(tables)
+    manifest: dict[str, Any] = validate_manifest_lineage(prepared_dir, tables)
+    statistics: dict[str, int] = {
+        **validate_song_tables(tables, expected),
+        **validate_graph_edges(tables, expected),
+    }
+    if update_manifest:
+        mark_manifest_valid(prepared_dir, manifest, statistics)
+    return statistics
 
 
 def main() -> None:
     args: argparse.Namespace = parse_args()
+    expected = ExpectedCounts(
+        songs=args.expected_songs,
+        track_release=args.expected_track_release,
+        artist_term=args.expected_artist_term,
+        artist_similarity=args.expected_artist_similarity,
+    )
     spark: SparkSession = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     try:
-        validate_output_layout(args.prepared)
-        tables: dict[str, DataFrame] = read_outputs(spark, args.prepared)
-        validate_schema_contract(tables)
-        validate_song_tables(tables)
-        validate_terms(tables)
-        validate_graph_edges(tables)
-        print("MERLIN prepared data validation passed.")
+        statistics: dict[str, int] = run_validation(spark, args.prepared, expected)
+        print(f"MERLIN prepared data validation passed: {statistics}")
     finally:
         spark.stop()
 
