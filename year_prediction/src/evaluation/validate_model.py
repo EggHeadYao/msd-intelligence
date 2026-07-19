@@ -67,3 +67,17 @@ def require_metrics_close(actual: dict[str, Any], expected: dict[str, Any], labe
         )
 
 
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionValidateRidgeModel").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        validate(args.model, spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
