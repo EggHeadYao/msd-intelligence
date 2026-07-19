@@ -67,6 +67,55 @@ def require_metrics_close(actual: dict[str, Any], expected: dict[str, Any], labe
         )
 
 
+def validate(model_directory: Path, spark: SparkSession) -> None:
+    model_directory = model_directory.resolve()
+    model = read_json(model_directory / "model.json")
+    history = read_json(model_directory / "history.json")
+    metrics = read_json(model_directory / "metrics.json")
+    run_metadata = read_json(model_directory / "run_metadata.json")
+    for name, value in (
+        ("model", model),
+        ("history", history),
+        ("metrics", metrics),
+        ("run_metadata", run_metadata),
+    ):
+        require_finite(value, name)
+    weights = [float(value) for value in model["weights"]]
+    intercept = float(model["intercept"])
+    dimension = int(model["feature_dimension"])
+    require(len(weights) == dimension and dimension > 0, "Model weight dimension is invalid")
+    require(len(history) == int(metrics["iterations_completed"]), "History length differs from metrics")
+    require(
+        [int(row["iteration"]) for row in history] == list(range(1, len(history) + 1)),
+        "History iterations are not consecutive",
+    )
+    metadata_path = Path(model["feature_source"]["metadata"])
+    feature_metadata = read_feature_metadata(metadata_path)
+    data = load_training_data(spark, model["feature_source"]["input"], feature_metadata)
+    require(data.dimension == dimension, "Model and input feature dimensions differ")
+    require(data.counts == run_metadata["counts"], "Input counts differ from run metadata")
+    ship_worker_modules(spark)
+    training_points = data.points(TRAIN)
+    validation_points = data.points(VALIDATION)
+    statistics = direct_full_batch_statistics(training_points, weights, intercept, float(model["l2"]))
+    require(
+        math.isclose(
+            statistics.objective,
+            float(metrics["final_training_objective"]),
+            rel_tol=1.0e-10,
+            abs_tol=1.0e-10,
+        ),
+        "Final training objective differs",
+    )
+    require(
+        math.isclose(
+            gradient_norm(statistics.gradient, statistics.intercept_gradient),
+            float(metrics["final_gradient_norm"]),
+            rel_tol=1.0e-10,
+            abs_tol=1.0e-10,
+        ),
+        "Final gradient norm differs",
+    )
 
 
 def main() -> None:
