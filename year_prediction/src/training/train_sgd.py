@@ -71,3 +71,58 @@ def require_number(config: dict[str, Any], name: str, minimum: float, strict: bo
     return value
 
 
+def validate_config(config: dict[str, Any]) -> None:
+    required = {
+        "model_id",
+        "input",
+        "feature_metadata",
+        "output_root",
+        "objective",
+        "initialization",
+        "max_iterations",
+        "learning_rate",
+        "l2",
+        "gradient_tolerance",
+        "validation_interval",
+        "shuffle_partitions",
+        "prediction_partitions",
+        "execution",
+    }
+    missing = sorted(required - set(config))
+    if missing:
+        raise ValueError(f"Missing training configuration fields: {missing}")
+    if config["objective"] != "ridge_squared":
+        raise ValueError("train_sgd currently supports objective=ridge_squared")
+    if config["initialization"] not in {"zeros", "zero_weights_train_mean_intercept"}:
+        raise ValueError("Unsupported initialization")
+    for name in ("max_iterations", "validation_interval", "shuffle_partitions", "prediction_partitions"):
+        if int(config[name]) <= 0:
+            raise ValueError(f"{name} must be positive")
+    require_number(config, "learning_rate", 0.0, strict=True)
+    require_number(config, "l2", 0.0, strict=False)
+    require_number(config, "gradient_tolerance", 0.0, strict=False)
+    execution = config["execution"]
+    expected = {
+        "aggregation": "direct_reduce",
+        "batch_fraction": 1.0,
+        "broadcast_weights": False,
+        "persist_training_data": False,
+    }
+    if execution != expected:
+        raise ValueError(f"Unsupported execution configuration: expected={expected}")
+
+
+def load_config(
+    path: Path,
+    model_id: str | None = None,
+    output_root: Path | None = None,
+) -> dict[str, Any]:
+    config = read_json(path.resolve())
+    if model_id is not None:
+        config["model_id"] = model_id
+    if output_root is not None:
+        config["output_root"] = str(output_root)
+    validate_config(config)
+    return config
+
+
