@@ -12,7 +12,22 @@ FEATURES_DIR = Path(__file__).resolve().parents[2] / "src" / "features"
 sys.path.insert(0, str(FEATURES_DIR))
 
 from columns import SEGMENT_COLUMNS  # noqa: E402
-from preprocessing import fit_feature_contract, transform_features, validate_binary_columns  # noqa: E402
+from key_contracts import (  # noqa: E402
+    K0,
+    K1,
+    K2,
+    K3,
+    KEY_COS_COLUMN,
+    KEY_SIN_COLUMN,
+    KEY_UNKNOWN_COLUMN,
+    key_feature_columns,
+)
+from preprocessing import (  # noqa: E402
+    add_encodings,
+    fit_feature_contract,
+    transform_features,
+    validate_binary_columns,
+)
 
 
 def row(index: int, split: str, **overrides):
@@ -55,7 +70,7 @@ class PreprocessingTest(unittest.TestCase):
         rows = [row(index, "train") for index in range(4)]
         rows.append(row(9, "validation", tempo=10000.0, time_signature=7))
         data = self.spark.createDataFrame(rows)
-        state = fit_feature_contract(data.where(F.col("split") == "train"), quantile_error=0.0)
+        state = fit_feature_contract(data.where(F.col("split") == "train"), K2, quantile_error=0.0)
 
         self.assertNotIn(7, state["time_signature_values"])
         self.assertLessEqual(state["clip_bounds"]["tempo"][1], 120.0)
@@ -70,7 +85,7 @@ class PreprocessingTest(unittest.TestCase):
         missing.update({column: 0.0 for column in SEGMENT_COLUMNS})
         data = self.spark.createDataFrame([*rows, missing])
         train = data.where(F.col("split") == "train")
-        state = fit_feature_contract(train, quantile_error=0.0)
+        state = fit_feature_contract(train, K2, quantile_error=0.0)
         transformed = transform_features(data.where(F.col("split") == "validation"), state).first()
 
         self.assertEqual(transformed["has_segments"], 0.0)
@@ -82,7 +97,27 @@ class PreprocessingTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_binary_columns(data)
 
+    def test_key_encodings_match_each_contract(self):
+        source = self.spark.createDataFrame([(1, 4), (-1, 0)], ["key", "time_signature"])
+        expected_known = {
+            K0: {},
+            K1: {**{f"key_{value}": float(value == 1) for value in range(12)}, KEY_UNKNOWN_COLUMN: 0.0},
+            K2: {KEY_SIN_COLUMN: 0.5, KEY_COS_COLUMN: math.sqrt(3.0) / 2.0, KEY_UNKNOWN_COLUMN: 0.0},
+            K3: {KEY_SIN_COLUMN: -0.5, KEY_COS_COLUMN: -math.sqrt(3.0) / 2.0, KEY_UNKNOWN_COLUMN: 0.0},
+        }
+        for contract in (K0, K1, K2, K3):
+            transformed = add_encodings(
+                source,
+                {"key_contract": contract, "time_signature_values": [4]},
+            )
+            rows = {int(output["key"]): output.asDict() for output in transformed.collect()}
+            self.assertTrue(set(key_feature_columns(contract)).issubset(rows[1]))
+            for column, expected in expected_known[contract].items():
+                self.assertAlmostEqual(rows[1][column], expected)
+            for column in key_feature_columns(contract):
+                expected = 1.0 if column == KEY_UNKNOWN_COLUMN else 0.0
+                self.assertAlmostEqual(rows[-1][column], expected)
+
 
 if __name__ == "__main__":
     unittest.main()
-
