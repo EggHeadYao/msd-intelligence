@@ -6,37 +6,57 @@ Extract Million Song Dataset HDF5 files into Parquet for Drill, Spark, and the M
 
 ### Code Quality
 
-Both two scripts are checked by `pyrefly` and `ruff`.
+The extraction scripts are checked by `pyrefly` and `ruff`.
 
 ### `extract_summary.py`
 
-Reads scalar fields from `msd_summary_file.h5` (a single 301 MB file) and writes one Parquet file.
+Reads the selected scalar fields from `msd_summary_file.h5` into memory and writes one Parquet file with explicit missing-value semantics.
 
 ```bash
-python extract_summary.py <msd_summary_file.h5> <output.parquet>
+python extract_summary.py \
+  millionsong/AdditionalFiles/msd_summary_file.h5 \
+  <output_dir>
 ```
 
-Output: 1 000 000 rows x 18 columns (track_id, danceability, energy, loudness, tempo, duration, key, mode, time_signature, artist_id, artist_name, release, song_id, song_hotttnesss, artist_hotttnesss, artist_familiarity, title, year).  Runs in ~30 s on the SSHFS mount.
+The fixed 23-column output is:
+
+```text
+track_id, loudness, tempo, duration
+key, key_confidence, mode, mode_confidence
+time_signature, time_signature_confidence
+end_of_fade_in, start_of_fade_out
+artist_id, artist_name, release, release_7digitalid
+song_id, song_hotttnesss, artist_hotttnesss, artist_familiarity
+title, track_7digitalid, year
+```
+
+`danceability` and `energy` are intentionally absent because the MSD values are all zero. `title`, `artist_name`, and `release` remain as display metadata and are not C1 model features. Non-positive ID/year/tempo/time-signature sentinels and non-finite floats become Parquet nulls.
 
 ### `extract_musics.py`
 
-Walks the per-song `.h5` directory, extracts 100-dim aggregated segment features (pitch/timbre/loudness mean/std/min/max) plus a `has_segments` binary mask, similar-artist pairs, and artist-term pairs, writing them in batch Parquet files.
+Walks the 1M per-track `.h5` tree and writes one fixed 308-dimensional audio-array summary per track. It supports multiprocessing, batch Parquet output, error reporting, and checkpoint/resume.
 
 ```bash
-python extract_musics.py <data_root> <output_dir>
-python extract_musics.py <data_root> <output_dir> -w 8   # 8 workers
+python extract_musics.py \
+  millionsong/data \
+  <output_dir> \
+  -w 8 \
+  --batch-size 10000
 ```
 
-Output per batch:
-- `features_NNNN.parquet` -- N rows x 102 columns (track_id + 100
-  feature columns + has_segments).
-- `similar_NNNN.parquet` -- (track_id, similar_artist_id) pairs,
-  empty strings filtered.
-- `terms_NNNN.parquet` -- (track_id, term) pairs.
+The production batch size is 10,000. Each `features_NNNN.parquet` contains `track_id` plus 308 float64 features:
 
-The `features` files track_id enables direct join with the scalar Parquet without relying on row position.  `has_segments` allows the Spark post-processing step to fill missing segments with the training-set mean instead of literal zeros.
+- 112 duration-weighted pitch/timbre/loudness distribution features.
+- 100 four-quarter time-overlap pooling features.
+- 40 segment-duration and local-delta features.
+- 45 beat/bar/tatum/section rhythm and structure features.
+- 11 availability and quality masks/ratios.
 
-Checkpoint/resume is supported via a line-delimited `checkpoint.txt`. Restarting with the same output directory skips already-processed files and continues from the next batch index.
+`audio_features.py` defines the ordered 308-column schema and all pure NumPy aggregation formulas. `extract_musics.py` handles HDF5 I/O, workers, batch commits, recovery, and the CLI.
+
+`checkpoint.txt` stores relative HDF5 paths. Restarting the exact same command skips completed tracks and continues at the next batch index. Existing Parquet track IDs are also reconciled into the checkpoint, so interruption after a batch rename but before checkpoint replacement does not duplicate rows. Failed files are not checkpointed, are recorded in the current invocation's `errors.txt`, and make the command exit nonzero; fix the source/mount issue and rerun the same command. A clean retry removes the stale error file.
+
+`--batch-size` and `--limit` are test controls. `--limit N` processes at most N remaining files in that invocation; omit both options for the production run. Always use a dedicated output directory whose existing feature files use the same 308-column schema.
 
 ### `extract_chores.py`
 
@@ -49,13 +69,13 @@ python extract_chores.py <AdditionalFiles_dir> <output_dir>
 
 Output:
 
-| Source | Output | Rows |
-|--------|--------|-----:|
-| `track_metadata.db` | `track_metadata.parquet` | 1 000 000 |
-| `artist_term.db` | `artist_term.parquet` | 1 109 381 |
-| `artist_term.db` | `artist_mbtag.parquet` | 24 777 |
-| `tracks_per_year.txt` | `tracks_per_year.parquet` | 515 576 |
-| `artist_location.txt` | `artist_location.parquet` | 13 850 |
+| Source                | Output                    |      Rows |
+| --------------------- | ------------------------- | --------: |
+| `track_metadata.db`   | `track_metadata.parquet`  | 1 000 000 |
+| `artist_term.db`      | `artist_term.parquet`     | 1 109 381 |
+| `artist_term.db`      | `artist_mbtag.parquet`    |    24 777 |
+| `tracks_per_year.txt` | `tracks_per_year.parquet` |   515 576 |
+| `artist_location.txt` | `artist_location.parquet` |    13 850 |
 
 The following files are intentionally skipped:
 
@@ -67,43 +87,6 @@ The following files are intentionally skipped:
   yields the same information).  Converting them to Parquet adds no
   value beyond what `wc -l` provides.
 
-## 10K Cold-Cache Benchmark
+## Validation and Reference Performance
 
-Two sample of 10 000 `.h5` files was drawn from the dataset and processed with both a single worker and 8 parallel workers. 
-
-### Timing
-
-| Workers | Wall-clock | Notes |
-|--------:|:---------- |:------|
-| 1       | ~9 min 24 s | Sequential |
-| 8       | **5 min 35 s** | `imap_unordered` on `multiprocessing.Pool` |
-
-### Bottleneck Analysis
-
-Per-file profile (cold cache, SSHFS mount):
-
-| Operation                       | p50 latency |
-|---------------------------------|:-----------:|
-| `open()` via SSHFS              | ~4.5 ms |
-| Read 3 HDF5 datasets            | ~8.5 ms |
-| Segment aggregation (numpy)     | ~30 ms   |
-| String decode + Python overhead | ~13 ms   |
-| **Total per file**              | **~56 ms** |
-
-The dominant cost is segment aggregation (numpy mean/std/min/max on ~800x12 arrays) followed by SSHFS I/O.  Neither is improved by switching languages -- numpy is already C-optimised, and the I/O path is gated by network latency to the remote server.
-
-### Correctness
-
-- All 10 000 output rows have 0 nulls, 0 NaN, 0 Inf, and 0 zero-variance columns.
-- Three randomly selected files were cross-checked against their original HDF5 sources: `pitch_mean_0` matched to 6 decimal places; similar-artist and term counts matched exactly.
-- Multi-batch output, 8-worker parallelism, and checkpoint resume were verified on a 1 000-file sample (10 batches of 100).
-
-### Full 1M Projection
-
-Extrapolating from the 10K timing:
-
-| Workers | Estimated wall-clock |
-|--------:|:---------------------|
-| 8       | ~9 hours             |
-
-This is a one-time extraction.  With checkpoint/resume the job can be split across multiple sessions.
+On the current mounted dataset, 8 workers processed 10,000 tracks in roughly 3.5 minutes and wrote a 27.6 MB Parquet file. The output had 10,000 unique IDs, all-finite features, binary masks, and an exact checkpoint; a separate 1-worker run produced bitwise-identical features. Full 1M runtime is roughly 6 hours by linear projection, with additional margin required for network or mount variability.
