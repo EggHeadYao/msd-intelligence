@@ -264,6 +264,40 @@ def train(
         "train": final_training_metrics.as_dict(),
         "validation": final_validation_metrics.as_dict(),
     }
+    run_metadata = {
+        "configuration": config,
+        "configuration_path": None if config_path is None else str(config_path.resolve()),
+        "configuration_sha256": None if config_path is None else sha256_file(config_path.resolve()),
+        "counts": data.counts,
+        "spark": {
+            "application_id": spark.sparkContext.applicationId,
+            "master": spark.sparkContext.master,
+            "version": spark.version,
+            "default_parallelism": spark.sparkContext.defaultParallelism,
+            "shuffle_partitions": spark.conf.get("spark.sql.shuffle.partitions"),
+        },
+        "timing_seconds": {
+            "data_validation": data_validation_seconds,
+            "training_loop": optimizer_seconds,
+            "gradient_reduce": sum(row["gradient_seconds"] for row in history),
+            "parameter_update": sum(row["update_seconds"] for row in history),
+            "validation_during_training": sum(row["validation_seconds"] for row in history),
+            "final_evaluation": final_evaluation_seconds,
+            "prediction_write": prediction_seconds,
+            "total": time.perf_counter() - total_started,
+        },
+    }
+    write_json(output / "model.json", model)
+    write_json(output / "history.json", history)
+    write_json(output / "metrics.json", metrics)
+    write_json(output / "run_metadata.json", run_metadata)
+    print(
+        "year_ridge_trained "
+        f"model_id={config['model_id']}, iterations={len(history)}, "
+        f"validation_mae={final_validation_metrics.mae_years:.6f}, output={output}"
+    )
+    return output
+
 
 def main() -> None:
     args = parse_args()
