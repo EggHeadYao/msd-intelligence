@@ -12,13 +12,6 @@
   "l2": 0.001,
   "learning_rate": 0.05,
   "max_iterations": 30,
-  "mllib_reference": {
-    "convergence_tolerance": 0.0001,
-    "iterations": 100,
-    "model_id": "ridge-k2-mllib-reference",
-    "reg_param": 0.001,
-    "step": 0.1
-  },
   "model_id": "ridge-k2-d0",
   "objective": "ridge_squared",
   "output_root": "parquets/year_prediction/models",

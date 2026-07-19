@@ -11,7 +11,6 @@ The training layer keeps model mathematics separate from Spark execution and exp
 - `model_io.py`: JSON checksums, atomic JSON writes, and immutable output directory handling.
 - `train_constants.py`: training-label mean/median baselines evaluated on validation artists.
 - `train_sgd.py`: reusable custom Spark Ridge trainer and model artifact writer.
-- `train_mllib_reference.py`: legacy MLlib Ridge result used only as an external reference.
 
 ## Commands
 
@@ -23,12 +22,6 @@ spark-submit --master 'local[*]' --driver-memory 4g \
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
   p1team02/year_prediction/src/training/train_sgd.py \
-  --config p1team02/year_prediction/config/experiment_b/d0_direct.json
-```
-
-```bash
-spark-submit --master 'local[*]' --driver-memory 4g \
-  p1team02/year_prediction/src/training/train_mllib_reference.py \
   --config p1team02/year_prediction/config/experiment_b/d0_direct.json
 ```
 
