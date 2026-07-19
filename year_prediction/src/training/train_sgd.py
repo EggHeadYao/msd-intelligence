@@ -192,7 +192,78 @@ def train(
             validation_started = time.perf_counter()
             validation = evaluate_linear_model(validation_points, weights, intercept).as_dict()
             validation_seconds = time.perf_counter() - validation_started
-
+        record = {
+            "iteration": iteration,
+            "training_objective_before_update": statistics.objective,
+            "gradient_norm_before_update": norm,
+            "training_count": statistics.count,
+            "learning_rate": float(config["learning_rate"]),
+            "updated": not converged,
+            "validation_after_update": validation,
+            "gradient_seconds": gradient_seconds,
+            "update_seconds": update_seconds,
+            "validation_seconds": validation_seconds,
+            "iteration_seconds": time.perf_counter() - iteration_started,
+        }
+        history.append(record)
+        validation_text = "not_evaluated" if validation is None else f"{validation['mae_years']:.6f}"
+        print(
+            "ridge_iteration "
+            f"iteration={iteration}, objective={statistics.objective:.12f}, "
+            f"gradient_norm={norm:.12f}, validation_mae={validation_text}, "
+            f"seconds={record['iteration_seconds']:.6f}"
+        )
+        if converged:
+            stop_reason = "gradient_tolerance"
+            break
+    optimizer_seconds = time.perf_counter() - optimizer_started
+    final_evaluation_started = time.perf_counter()
+    final_statistics = direct_full_batch_statistics(
+        training_points,
+        weights,
+        intercept,
+        float(config["l2"]),
+    )
+    final_training_metrics = evaluate_linear_model(training_points, weights, intercept)
+    final_validation_metrics = evaluate_linear_model(validation_points, weights, intercept)
+    final_evaluation_seconds = time.perf_counter() - final_evaluation_started
+    output = prepare_output_directory(output, overwrite=overwrite)
+    prediction_started = time.perf_counter()
+    prediction_rdd = data.prediction_rows(VALIDATION).map(
+        lambda row: prediction_row(row, weights, intercept)
+    )
+    predictions = spark.createDataFrame(prediction_rdd, PREDICTION_SCHEMA)
+    predictions.repartition(int(config["prediction_partitions"])).write.mode("error").parquet(
+        spark_path(output / "validation_predictions.parquet")
+    )
+    prediction_seconds = time.perf_counter() - prediction_started
+    model = {
+        "format_version": 1,
+        "model_id": config["model_id"],
+        "model_type": "linear_ridge",
+        "objective": config["objective"],
+        "feature_dimension": data.dimension,
+        "weights": weights,
+        "intercept": intercept,
+        "l2": float(config["l2"]),
+        "target": feature_metadata["target"],
+        "feature_source": {
+            "input": str(Path(config["input"]).resolve()),
+            "metadata": str(metadata_path),
+            "metadata_sha256": sha256_file(metadata_path),
+            "feature_version": feature_metadata["feature_version"],
+        },
+    }
+    metrics = {
+        "stop_reason": stop_reason,
+        "iterations_completed": len(history),
+        "final_training_objective": final_statistics.objective,
+        "final_gradient_norm": gradient_norm(
+            final_statistics.gradient, final_statistics.intercept_gradient
+        ),
+        "train": final_training_metrics.as_dict(),
+        "validation": final_validation_metrics.as_dict(),
+    }
 
 def main() -> None:
     args = parse_args()
