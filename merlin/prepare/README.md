@@ -7,19 +7,20 @@ Build the canonical tables consumed by MERLIN audio preprocessing and graph inde
 The command reads one input namespace, normally `../parquets_new`, containing:
 
 - `songs_scalar.parquet`: the 23-column Summary HDF5 export.
-- `musics/features_*.parquet`: `track_id` plus the ordered 308 audio features.
+- `musics/feature_contract.json`: the frozen `shared_audio_628_v1` version, feature count, ordered columns, and order hash.
+- `musics/features_*.parquet`: `track_id` plus the ordered 628 nullable `float64` audio features.
 - `track_metadata.parquet`
 - `artist_term.parquet`
 - `artist_similarity_edges.parquet`
 
-Input schemas, key uniqueness, non-empty relationship keys, and cross-source track/song/artist identity are checked before output is initialized. Per-track `terms_*.parquet` and `similar_*.parquet` files are never read.
+The extractor contract version, 629-column order/hash, input schemas, key uniqueness, non-empty relationship keys, and cross-source track/song/artist identity are checked before output is initialized. Per-track `terms_*.parquet` and `similar_*.parquet` files are never read.
 
 ## Outputs
 
 The output directory contains exactly three Parquet datasets:
 
 - `songs_metadata.parquet`: one row per extracted track with stable track/song/artist IDs, display metadata, MusicBrainz artist ID, real `release_7digitalid`, `track_7digitalid`, year availability, and audit-only popularity fields. Release names are display text and are never used as entity keys.
-- `song_audio_features_raw.parquet`: one row per track containing 11 Summary analysis values plus the ordered 308 audio aggregates. It excludes `danceability`, `energy`, year, and popularity. Unknown raw tempo or time signature remains null for C1 preprocessing to mask and impute; all 308 extracted features must be finite.
+- `song_audio_features_raw.parquet`: one row per track containing the frozen MERLIN projection of 552 shared array features plus 11 Summary analysis values, for a 563-dimensional raw view (`track_id` is the additional key column). It excludes the 50 raw half-pooling columns, 24 key-relative half-pooling columns, two half masks, `danceability`, `energy`, year, and popularity. Undefined array-derived values and unknown raw tempo/time signature remain null for C1 preprocessing to mask and impute; NaN and Inf are rejected.
 - `graph_edges.parquet`: an unweighted typed graph partitioned by `edge_type`.
 
 The graph schema is:
@@ -52,7 +53,7 @@ From the `p1team02` directory with the project environment activated:
 
 ```bash
 python3 -m merlin.prepare.prepare \
-  --input ../parquets \
+  --input ../parquets_new \
   --output <output_dir> \
   --shuffle-partitions 64
 ```
