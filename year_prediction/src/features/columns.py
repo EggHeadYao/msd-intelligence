@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from key_contracts import key_feature_columns
+
 TRACK_ID = "track_id"
 ARTIST_ID = "artist_id"
 YEAR = "year"
@@ -60,7 +62,6 @@ TRANSFORMED_CONTINUOUS_COLUMNS = (
     "duration_log",
     *SEGMENT_COLUMNS,
 )
-KEY_ENCODED_COLUMNS = ("key_sin", "key_cos", "key_unknown")
 TIME_SIGNATURE_UNKNOWN_COLUMN = "time_signature_unknown"
 
 
@@ -68,10 +69,10 @@ def time_signature_column(value: int) -> str:
     return f"time_signature_{value}"
 
 
-def candidate_columns(time_signature_values: tuple[int, ...]) -> tuple[str, ...]:
+def candidate_columns(key_contract: str, time_signature_values: tuple[int, ...]) -> tuple[str, ...]:
     return (
         *TRANSFORMED_CONTINUOUS_COLUMNS,
-        *KEY_ENCODED_COLUMNS,
+        *key_feature_columns(key_contract),
         MODE_COLUMN,
         HAS_SEGMENTS_COLUMN,
         *(time_signature_column(value) for value in time_signature_values),
@@ -81,4 +82,3 @@ def candidate_columns(time_signature_values: tuple[int, ...]) -> tuple[str, ...]
 
 IDENTIFIER_COLUMNS = (TRACK_ID, ARTIST_ID, YEAR, NORMALIZED_YEAR)
 AUDIT_CATEGORY_COLUMNS = (KEY_COLUMN, TIME_SIGNATURE_COLUMN)
-
