@@ -126,3 +126,34 @@ def load_config(
     return config
 
 
+def ship_worker_modules(spark: SparkSession) -> None:
+    for path in (
+        EVALUATION_DIR / "metrics.py",
+        MODULE_DIR / "objectives.py",
+        MODULE_DIR / "distributed.py",
+        MODULE_DIR / "training_data.py",
+    ):
+        spark.sparkContext.addPyFile(str(path))
+
+
+
+
+
+def main() -> None:
+    args = parse_args()
+    config_path = args.config.resolve()
+    config = load_config(config_path, args.model_id, args.output_root)
+    spark = (
+        SparkSession.builder.appName(f"YearPredictionTrain-{config['model_id']}")
+        .config("spark.sql.shuffle.partitions", str(config["shuffle_partitions"]))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        train(config, spark, config_path=config_path, overwrite=args.overwrite)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
