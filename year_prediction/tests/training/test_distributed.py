@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+
+from pyspark.sql import SparkSession
+
+ROOT = Path(__file__).resolve().parents[2]
+TRAINING_DIR = ROOT / "src" / "training"
+EVALUATION_DIR = ROOT / "src" / "evaluation"
+ORACLE_DIR = ROOT / "tests" / "oracles" / "ridge"
+sys.path.insert(0, str(TRAINING_DIR))
+sys.path.insert(0, str(EVALUATION_DIR))
+sys.path.insert(0, str(ORACLE_DIR))
+
+from distributed import direct_full_batch_statistics  # noqa: E402
+from reference import ridge_gradient, ridge_loss  # noqa: E402
+
+
+class DistributedRidgeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.spark = (
+            SparkSession.builder.master("local[2]")
+            .appName("DistributedRidgeTest")
+            .config("spark.sql.shuffle.partitions", "2")
+            .getOrCreate()
+        )
+        cls.spark.sparkContext.setLogLevel("ERROR")
+        for path in (
+            EVALUATION_DIR / "metrics.py",
+            TRAINING_DIR / "objectives.py",
+            TRAINING_DIR / "distributed.py",
+        ):
+            cls.spark.sparkContext.addPyFile(str(path))
+        with (ORACLE_DIR / "fixture.json").open("r", encoding="ascii") as handle:
+            cls.fixture = json.load(handle)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.spark.stop()
+
+    def test_partitioned_statistics_match_local_oracle(self):
+        fixture = self.fixture
+        expected_gradient, expected_intercept = ridge_gradient(
+            fixture["features"],
+            fixture["labels"],
+            fixture["weights"],
+            fixture["intercept"],
+            fixture["l2"],
+        )
+        expected_loss = ridge_loss(
+            fixture["features"],
+            fixture["labels"],
+            fixture["weights"],
+            fixture["intercept"],
+            fixture["l2"],
+        )
+        points = list(zip(fixture["features"], fixture["labels"]))
+        for partitions in (1, 2, 4):
+            rdd = self.spark.sparkContext.parallelize(points, partitions)
+            actual = direct_full_batch_statistics(
+                rdd, fixture["weights"], fixture["intercept"], fixture["l2"]
+            )
+            self.assertAlmostEqual(actual.objective, expected_loss, places=10)
+            for value, expected in zip(actual.gradient, expected_gradient):
+                self.assertAlmostEqual(value, expected, places=10)
+            self.assertAlmostEqual(actual.intercept_gradient, expected_intercept, places=10)
+
+
+if __name__ == "__main__":
+    unittest.main()
