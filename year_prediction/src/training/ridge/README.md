@@ -50,11 +50,11 @@ Use a new `model_id` for every immutable run. The trainer refuses to overwrite a
 
 ## Validate Ridge
 
-`validate_ridge.py` independently reloads the saved model and T90 contract, recomputes the final objective, gradient norm, train and validation metrics, and verifies every saved validation prediction.
+`evaluation/ridge/validate.py` independently reloads the saved model and T90 contract, recomputes the final objective, gradient norm, train and validation metrics, and verifies every saved validation prediction.
 
 ```bash
 spark-submit --master 'local[4]' --driver-memory 3g \
-  p1team02/year_prediction/src/evaluation/validate_ridge.py \
+  p1team02/year_prediction/src/evaluation/ridge/validate.py \
   --model parquets/year_prediction/models/<model_id>
 ```
 
