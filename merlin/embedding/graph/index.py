@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
+import struct
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 import numpy as np
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 from pyspark.sql.types import BinaryType
@@ -167,6 +169,32 @@ def build_node_vocabulary(
         int_to_node[node_int] = raw_id
         int_to_type[node_int] = node_type
     return node_to_int, int_to_node, int_to_type
+
+
+def _pairs_to_binary(
+    pairs: list[Row],
+    vocab: dict[str, int],
+) -> tuple[bytes, bytes]:
+    """Encode sorted neighbor/weight structs as aligned binary arrays."""
+    neighbor_ids: list[int] = []
+    weights: list[float] = []
+    for pair in pairs:
+        key = encode_typed_key(
+            str(pair["neighbor_type"]),
+            str(pair["neighbor_raw_id"]),
+        )
+        if key not in vocab:
+            raise ValueError(f"Adjacency neighbor is missing from vocabulary: {key}")
+        weight = float(pair["weight"])
+        if not math.isfinite(weight) or weight < 0.0:
+            raise ValueError(f"Invalid adjacency weight for {key}: {weight}")
+        neighbor_ids.append(vocab[key])
+        weights.append(weight)
+
+    return (
+        struct.pack(f"<{len(neighbor_ids)}i", *neighbor_ids),
+        struct.pack(f"<{len(weights)}f", *weights),
+    )
 
 
 def _strs_to_int_binary(strs: list, vocab: dict[str, int]) -> bytes:
