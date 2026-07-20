@@ -54,3 +54,34 @@ def add_fade_ratios(frame: DataFrame) -> DataFrame:
     )
 
 
+def clean_categories(frame: DataFrame) -> DataFrame:
+    return (
+        frame.withColumn(
+            "tempo",
+            F.when(finite(F.col("tempo")) & (F.col("tempo") > 0), F.col("tempo")).cast(
+                "double"
+            ),
+        )
+        .withColumn(
+            "key",
+            F.when(F.col("key").between(0, 11), F.col("key")).cast("int"),
+        )
+        .withColumn(
+            "mode",
+            F.when(F.col("mode").isin(0, 1), F.col("mode")).cast("int"),
+        )
+        .withColumn(
+            "time_signature",
+            F.when(F.col("time_signature") > 0, F.col("time_signature")).cast("int"),
+        )
+    )
+
+
+def build_full_tabular(frame: DataFrame, shared_columns: tuple[str, ...]) -> DataFrame:
+    transformed = add_fade_ratios(clean_categories(frame))
+    return transformed.select(
+        *AUDIT_COLUMNS,
+        *shared_columns,
+        *GLOBAL_SCALAR_COLUMNS,
+        *DERIVED_SCALAR_COLUMNS,
+    )
