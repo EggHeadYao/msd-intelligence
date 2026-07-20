@@ -20,16 +20,18 @@ ROOT = Path(__file__).resolve().parents[2]
 TRAINING_DIR = ROOT / "src" / "training"
 RIDGE_DIR = TRAINING_DIR / "ridge"
 EVALUATION_DIR = ROOT / "src" / "evaluation"
+RIDGE_EVALUATION_DIR = EVALUATION_DIR / "ridge"
 sys.path.insert(0, str(TRAINING_DIR))
 sys.path.insert(0, str(EVALUATION_DIR))
 sys.path.insert(0, str(RIDGE_DIR))
+sys.path.insert(0, str(RIDGE_EVALUATION_DIR))
 
 from data import load_training_data, read_training_manifest  # noqa: E402
 from model_io import read_json  # noqa: E402
 from target import target_contract  # noqa: E402
 from train import train  # noqa: E402
 from train_constants import compute_constant_baselines  # noqa: E402
-from validate_ridge import validate as validate_model  # noqa: E402
+from validate import validate as validate_model  # noqa: E402
 
 
 DIMENSION = 90
