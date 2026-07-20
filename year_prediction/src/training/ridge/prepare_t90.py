@@ -105,3 +105,60 @@ def require_source_schema(frame: DataFrame, columns: tuple[str, ...]) -> None:
     }
     require(types == expected, "T90 source schema differs")
 
+
+def require_labeled_source(frame: DataFrame, manifest: dict[str, Any]) -> dict[str, dict[str, int]]:
+    labeled = frame.where(F.col(SPLIT).isNotNull())
+    target = target_contract()
+    values = F.array(*(F.col(column) for column in frame.columns[len(AUDIT_COLUMNS) :]))
+    non_finite = F.exists(
+        values,
+        lambda value: value.isNotNull()
+        & (F.isnan(value) | (F.abs(value) == F.lit(float("inf")))),
+    )
+    invalid = (
+        F.col(TRACK_ID).isNull()
+        | (F.col(TRACK_ID) == "")
+        | F.col(ARTIST_ID).isNull()
+        | (F.col(ARTIST_ID) == "")
+        | F.col(YEAR).isNull()
+        | ~F.col(YEAR).between(target["minimum"], target["maximum"])
+        | ~F.col(SPLIT).isin(*SPLITS)
+        | non_finite
+    )
+    rows = labeled.groupBy(SPLIT).agg(
+        F.count("*").alias("tracks"),
+        F.countDistinct(TRACK_ID).alias("distinct_tracks"),
+        F.countDistinct(ARTIST_ID).alias("artists"),
+        F.sum(F.when(invalid, 1).otherwise(0)).alias("invalid"),
+    ).collect()
+    counts = {
+        row[SPLIT]: {"tracks": int(row["tracks"]), "artists": int(row["artists"])}
+        for row in rows
+    }
+    expected = {
+        name: {
+            "tracks": int(values["tracks"]),
+            "artists": int(values["artists"]),
+        }
+        for name, values in manifest["counts"]["splits"].items()
+    }
+    require(counts == expected, "T90 source split counts differ")
+    require(
+        all(int(row["tracks"]) == int(row["distinct_tracks"]) for row in rows),
+        "Track IDs are duplicated",
+    )
+    require(all(int(row["invalid"]) == 0 for row in rows), "T90 source contains invalid rows")
+    require(
+        labeled.select(TRACK_ID).distinct().count() == sum(item["tracks"] for item in counts.values()),
+        "Track IDs overlap across splits",
+    )
+    overlap = (
+        labeled.groupBy(ARTIST_ID)
+        .agg(F.countDistinct(SPLIT).alias("split_count"))
+        .where(F.col("split_count") > 1)
+        .limit(1)
+        .count()
+    )
+    require(overlap == 0, "Artists overlap across splits")
+    return counts
+
