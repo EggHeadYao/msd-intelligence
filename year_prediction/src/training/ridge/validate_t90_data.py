@@ -186,3 +186,57 @@ def validate_output(
     )
     require(overlap == 0, "Vector artists overlap across splits")
     return counts
+
+
+def recompute_statistics(
+    source: DataFrame,
+    statistics: list[dict[str, Any]],
+) -> None:
+    names = [str(item["name"]) for item in statistics]
+    train = source.where(F.col(SPLIT) == "train")
+    mean_row = train.agg(
+        F.count("*").alias("_rows"),
+        *(F.count(name).alias(f"_count_{index}") for index, name in enumerate(names)),
+        *(F.avg(name).alias(f"_mean_{index}") for index, name in enumerate(names)),
+    ).first()
+    train_count = int(mean_row["_rows"])
+    means: list[float] = []
+    for index, item in enumerate(statistics):
+        mean = float(mean_row[f"_mean_{index}"])
+        count = int(mean_row[f"_count_{index}"])
+        require(
+            count == int(item["finite_train_count"]),
+            f"Finite count differs for {item['name']}",
+        )
+        require(
+            train_count - count == int(item["imputed_train_count"]),
+            f"Missing count differs for {item['name']}",
+        )
+        require(
+            math.isclose(
+                mean,
+                float(item["mean"]),
+                rel_tol=1.0e-12,
+                abs_tol=1.0e-12,
+            ),
+            f"Train mean differs for {item['name']}",
+        )
+        means.append(mean)
+    imputed = train.select(
+        *(F.coalesce(F.col(name), F.lit(mean)).alias(name) for name, mean in zip(names, means))
+    )
+    std_row = imputed.agg(
+        *(F.stddev_samp(name).alias(f"_std_{index}") for index, name in enumerate(names))
+    ).first()
+    for index, item in enumerate(statistics):
+        require(
+            math.isclose(
+                float(std_row[f"_std_{index}"]),
+                float(item["standard_deviation"]),
+                rel_tol=1.0e-12,
+                abs_tol=1.0e-12,
+            ),
+            f"Train standard deviation differs for {item['name']}",
+        )
+
+
