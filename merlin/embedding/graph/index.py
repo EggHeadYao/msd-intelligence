@@ -10,11 +10,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-import numpy as np
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
-from pyspark.sql.types import BinaryType
 
 from merlin.embedding.graph.config import ADJACENCY_NAMES, DIRECTED_EDGES, EDGE_SCHEMA
 
@@ -255,61 +253,6 @@ def _save_adjacency(
     count = frame.sparkSession.read.parquet(output_path).count()
     print(f"  {output_name}: {count} nodes")
     return count
-
-
-def _strs_to_int_binary(strs: list, vocab: dict[str, int]) -> bytes:
-    """Convert a list of string node IDs to int32 numpy binary."""
-    return np.array(
-        [vocab[s] for s in strs if s in vocab], dtype=np.int32,
-    ).tobytes()
-
-
-def _floats_to_binary(vals: list) -> bytes:
-    """Convert a list of floats to float32 numpy binary."""
-    return np.array(vals, dtype=np.float32).tobytes()
-
-
-def save_adjacency_parquet(
-    edges: DataFrame,
-    output_dir: str,
-    vocab_bc,
-    specs: list[tuple[str, str, str, str]],
-) -> None:
-    """Build adjacency via DataFrame groupBy and write directly to Parquet.
-
-    Executors write Parquet files directly -- no data collected to
-    driver, avoiding maxResultSize / driver OOM on 100M+ edges.
-
-    Args:
-        edges: graph_edges DataFrame (all edge types).
-        output_dir: directory for output Parquet files.
-        vocab_bc: broadcast variable containing node_to_int dict.
-        specs: list of (edge_type, group_col, value_col, output_name).
-    """
-    to_bin_int_udf = F.udf(
-        lambda strs: _strs_to_int_binary(strs, vocab_bc.value), BinaryType(),
-    )
-    to_bin_udf = F.udf(_floats_to_binary, BinaryType())
-
-    for et, group_col, value_col, out_name in specs:
-        part: DataFrame = edges.filter(F.col("edge_type") == et)
-
-        grouped: DataFrame = part.groupBy(group_col).agg(
-            F.collect_list(value_col).alias("neighbor_strs"),
-            F.collect_list("weight").alias("weights_list"),
-        )
-
-        out: DataFrame = grouped.select(
-            F.col(group_col).alias("node_str"),
-            to_bin_int_udf(F.col("neighbor_strs")).alias("neighbor_ids"),
-            to_bin_udf(F.col("weights_list")).alias("weights"),
-        )
-
-        out_path: str = f"{output_dir}/{out_name}.parquet"
-        out.write.mode("overwrite").parquet(out_path)
-
-        cnt: int = out.count()
-        print(f"  {out_name}: {cnt} nodes")
 
 
 def _build_p3_edges(edges: DataFrame) -> tuple[DataFrame, float]:
