@@ -10,7 +10,7 @@
   "initialization": "zero_weights_train_mean_intercept",
   "input": "parquets/year_prediction/training/t90/vectors.parquet",
   "l2": 0.001,
-  "learning_rate": 0.01,
+  "learning_rate": 0.08,
   "max_iterations": 100,
   "model_id": "d0-direct",
   "objective": "ridge_squared",
