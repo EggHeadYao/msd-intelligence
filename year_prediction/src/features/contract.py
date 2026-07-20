@@ -194,3 +194,69 @@ FORBIDDEN_PREDICTOR_COLUMNS = (
 )
 
 
+def order_sha256(columns: tuple[str, ...] | list[str]) -> str:
+    encoded = json.dumps(list(columns), ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def load_audio_contract(path: Path) -> dict[str, Any]:
+    contract_path = path if path.name == "feature_contract.json" else path / "feature_contract.json"
+    with contract_path.open("r", encoding="ascii") as handle:
+        payload: dict[str, Any] = json.load(handle)
+    validate_audio_contract(payload)
+    return payload
+
+
+def validate_audio_contract(payload: dict[str, Any]) -> None:
+    if payload.get("contract_version") != AUDIO_CONTRACT_VERSION:
+        raise ValueError("Unexpected audio contract version")
+    if payload.get("feature_count") != AUDIO_FEATURE_COUNT:
+        raise ValueError("Unexpected audio feature count")
+    columns = tuple(payload.get("columns", ()))
+    if len(columns) != AUDIO_FEATURE_COUNT + 1 or columns[0] != TRACK_ID:
+        raise ValueError("Unexpected audio contract columns")
+    features = columns[1:]
+    if len(set(features)) != AUDIO_FEATURE_COUNT:
+        raise ValueError("Audio feature names are duplicated")
+    if payload.get("feature_order_sha256") != AUDIO_FEATURE_ORDER_SHA256:
+        raise ValueError("Unexpected audio feature order hash")
+    if order_sha256(features) != AUDIO_FEATURE_ORDER_SHA256:
+        raise ValueError("Audio columns do not match their order hash")
+    expected = YEAR_SHARED_FEATURE_SET | frozenset(YEAR_EXCLUDED_COLUMNS)
+    if set(features) != expected:
+        raise ValueError("Audio columns do not match the year feature contract")
+
+
+def audio_feature_columns(payload: dict[str, Any]) -> tuple[str, ...]:
+    validate_audio_contract(payload)
+    return tuple(payload["columns"][1:])
+
+
+def year_shared_columns(payload: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        column for column in audio_feature_columns(payload) if column not in YEAR_EXCLUDED_COLUMNS
+    )
+
+
+def ordered_feature_groups(payload: dict[str, Any]) -> dict[str, tuple[str, ...]]:
+    source_order = year_shared_columns(payload)
+    return {
+        name: tuple(column for column in source_order if column in columns)
+        for name, columns in FEATURE_GROUPS.items()
+    }
+
+
+def full_predictor_columns(payload: dict[str, Any]) -> tuple[str, ...]:
+    return year_shared_columns(payload) + GLOBAL_SCALAR_COLUMNS + DERIVED_SCALAR_COLUMNS
+
+
+def column_source(column: str) -> str:
+    if column in YEAR_SHARED_FEATURE_SET:
+        return "shared_audio_628_v1"
+    if column in GLOBAL_SCALAR_COLUMNS:
+        return "songs_scalar"
+    if column in DERIVED_SCALAR_COLUMNS:
+        return "derived_from_songs_scalar"
+    raise ValueError(f"Unknown predictor: {column}")
+
+
