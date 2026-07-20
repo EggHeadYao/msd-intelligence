@@ -260,3 +260,41 @@ def column_source(column: str) -> str:
     raise ValueError(f"Unknown predictor: {column}")
 
 
+def column_unit(column: str) -> str:
+    if column == "tempo" or "bpm" in column:
+        return "beats_per_minute"
+    if "fraction" in column or "ratio" in column or column.endswith("_cv"):
+        return "unitless"
+    if "density" in column:
+        return "events_per_second"
+    if "count" in column:
+        return "count"
+    if column.startswith("t90_timbre_cov_"):
+        return "echo_nest_timbre_squared"
+    if "timbre" in column:
+        return "echo_nest_timbre"
+    if "loudness" in column:
+        return "decibel"
+    if any(token in column for token in ("duration", "interval", "fade_in", "fade_out")):
+        return "seconds"
+    return "unitless"
+
+
+def column_missing_rule(column: str) -> str:
+    if column in BINARY_FEATURE_COLUMNS:
+        return "nullable binary flag; null is not zero"
+    if column in CATEGORICAL_COLUMNS:
+        return "nullable category"
+    return "nullable value; train-only preprocessing may impute"
+
+
+if len(T90_COLUMNS) != 90 or len(set(T90_COLUMNS)) != 90:
+    raise RuntimeError("Invalid T90 contract")
+if len(YEAR_EXCLUDED_COLUMNS) != 48 or len(set(YEAR_EXCLUDED_COLUMNS)) != 48:
+    raise RuntimeError("Invalid year exclusion contract")
+if {name: len(columns) for name, columns in FEATURE_GROUPS.items()} != EXPECTED_GROUP_COUNTS:
+    raise RuntimeError("Invalid feature group dimensions")
+if sum(EXPECTED_GROUP_COUNTS.values()) != 580 or len(YEAR_SHARED_FEATURE_SET) != 580:
+    raise RuntimeError("Invalid year shared feature contract")
+if len(GLOBAL_SCALAR_COLUMNS) + len(DERIVED_SCALAR_COLUMNS) != 14:
+    raise RuntimeError("Invalid global scalar contract")
