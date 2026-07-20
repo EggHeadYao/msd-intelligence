@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path("parquets/year_prediction/features/k0/linear_vectors.parquet"),
+        default=Path("parquets/year_prediction/features/t90.parquet"),
     )
     parser.add_argument(
         "--output",
