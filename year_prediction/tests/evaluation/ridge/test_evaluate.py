@@ -110,3 +110,58 @@ class RidgeTestEvaluationTest(unittest.TestCase):
                     ],
                 },
             }
+            manifest_path.write_text(json.dumps(manifest), encoding="ascii")
+            model_directory.mkdir(parents=True)
+            model = {
+                "format_version": 1,
+                "model_id": "ridge-test",
+                "model_type": "linear_ridge",
+                "objective": "ridge_squared",
+                "feature_dimension": DIMENSION,
+                "weights": [1.0, *([0.0] * (DIMENSION - 1))],
+                "intercept": 0.0,
+                "l2": 0.001,
+                "target": target_contract(),
+                "feature_source": {
+                    "input": str(vectors.resolve()),
+                    "manifest": str(manifest_path.resolve()),
+                    "manifest_sha256": sha256_file(manifest_path),
+                    "contract_version": "year_prediction_t90_training_v1",
+                    "predictor_order_sha256": "synthetic-t90-order",
+                },
+            }
+            (model_directory / "model.json").write_text(
+                json.dumps(model), encoding="ascii"
+            )
+            output = evaluate(
+                model_directory,
+                output_root,
+                self.spark,
+                prediction_partitions=1,
+            )
+            metrics = read_json(output / "metrics.json")
+            decades = read_json(output / "metrics_by_decade.json")
+            metadata = read_json(output / "run_metadata.json")
+            predictions = self.spark.read.parquet(
+                (output / "predictions.parquet").resolve().as_uri()
+            )
+            quality = metrics["metrics"]
+            self.assertEqual(quality["count"], 3)
+            self.assertEqual(quality["distinct_tracks"], 3)
+            self.assertEqual(quality["distinct_artists"], 3)
+            self.assertAlmostEqual(quality["mae_years"], 0.5 / 3.0)
+            self.assertAlmostEqual(quality["rmse_years"], (0.25 / 3.0) ** 0.5)
+            self.assertAlmostEqual(quality["median_absolute_error_years"], 0.0)
+            self.assertAlmostEqual(quality["within_5_years_rate"], 1.0)
+            self.assertAlmostEqual(quality["within_10_years_rate"], 1.0)
+            self.assertAlmostEqual(quality["raw_out_of_range_rate"], 1.0 / 3.0)
+            self.assertEqual([row["decade"] for row in decades["decades"]], [1920, 1960, 2010])
+            self.assertAlmostEqual(quality["macro_decade_mae_years"], 0.5 / 3.0)
+            self.assertEqual(predictions.count(), 3)
+            self.assertIn("absolute_error_years", predictions.columns)
+            self.assertEqual(metadata["evaluation"], "course_test_benchmark")
+            self.assertEqual(metadata["counts"], {"tracks": 3, "artists": 3})
+
+
+if __name__ == "__main__":
+    unittest.main()
