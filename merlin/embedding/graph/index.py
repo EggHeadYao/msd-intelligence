@@ -312,6 +312,47 @@ def save_adjacency_parquet(
         print(f"  {out_name}: {cnt} nodes")
 
 
+def _build_p3_edges(edges: DataFrame) -> tuple[DataFrame, float]:
+    """Attach smoothed capped-IDF to eligible artist-term edges."""
+    active_artists = (
+        edges.where(F.col("edge_type") == "track_artist")
+        .select(F.col("dst_id").alias("artist_id"))
+        .distinct()
+    )
+    artist_count = active_artists.count()
+    if artist_count == 0:
+        raise ValueError("Cannot build P3 adjacency without active artists")
+
+    artist_terms = (
+        edges.where(F.col("edge_type") == "artist_term")
+        .join(active_artists, F.col("src_id") == F.col("artist_id"), "inner")
+        .drop("artist_id")
+    )
+    term_stats = (
+        artist_terms.groupBy("dst_id")
+        .agg(F.countDistinct("src_id").alias("artist_df"))
+        .where(F.col("artist_df") >= 2)
+        .withColumn(
+            "idf",
+            F.log(
+                (F.lit(float(artist_count)) + F.lit(1.0))
+                / (F.col("artist_df").cast("double") + F.lit(1.0)),
+            )
+            + F.lit(1.0),
+        )
+    )
+    quantiles = term_stats.approxQuantile("idf", [0.99], 0.0)
+    if not quantiles:
+        raise ValueError("No artist term connects at least two active artists")
+    idf_cap = float(quantiles[0])
+    weighted = (
+        artist_terms.join(term_stats.select("dst_id", "idf"), "dst_id", "inner")
+        .withColumn("p3_weight", F.least(F.col("idf"), F.lit(idf_cap)))
+        .drop("idf")
+    )
+    return weighted, idf_cap
+
+
 def load_and_build_index(
     spark: SparkSession,
     input_path: str,
