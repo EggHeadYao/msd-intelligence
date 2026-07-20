@@ -483,27 +483,8 @@ def load_and_build_index(
     edges: DataFrame = spark.read.parquet(input_path)
     bc_vocab = spark.sparkContext.broadcast(node_to_int)
 
-    # --- forward adjacency specs ---
-    fwd_specs: list[tuple[str, str, str, str]] = [
-        ("song_artist", "src_id", "dst_id", "fwd_song_artist"),
-        ("song_album", "src_id", "dst_id", "fwd_song_album"),
-        ("song_tag", "src_id", "dst_id", "fwd_song_tag"),
-        ("song_similar_artist", "src_id", "dst_id", "fwd_song_similar_artist"),
-        ("song_year", "src_id", "dst_id", "fwd_song_year"),
-    ]
-    save_adjacency_parquet(edges, output_dir, bc_vocab, fwd_specs)
-
-    # --- reverse adjacency specs ---
-    rev_specs: list[tuple[str, str, str, str]] = [
-        ("song_artist", "dst_id", "src_id", "rev_song_artist"),
-        ("song_album", "dst_id", "src_id", "rev_song_album"),
-        ("song_tag", "dst_id", "src_id", "rev_song_tag"),
-        ("song_year", "dst_id", "src_id", "rev_song_year"),
-        ("artist_tag", "src_id", "dst_id", "rev_artist_tag_fwd"),
-        ("artist_tag", "dst_id", "src_id", "rev_artist_tag_rev"),
-        ("artist_similarity", "src_id", "dst_id", "rev_artist_similarity"),
-    ]
-    save_adjacency_parquet(edges, output_dir, bc_vocab, rev_specs)
+    _save_uniform_adjacencies(edges, output_dir, bc_vocab)
+    idf_cap = _save_p3_adjacencies(edges, output_dir, bc_vocab)
 
     vocab_path = _write_vocabulary(
         output_dir,
@@ -516,7 +497,8 @@ def load_and_build_index(
     print(
         f"Index saved to {output_dir}: "
         f"{len(node_to_int)} nodes, "
-        f"{len(fwd_specs) + len(rev_specs)} adjacency files",
+        f"{len(ADJACENCY_NAMES)} adjacency files, "
+        f"P3 IDF cap={idf_cap:.6f}",
     )
 
     return node_to_int, int_to_node, int_to_type
