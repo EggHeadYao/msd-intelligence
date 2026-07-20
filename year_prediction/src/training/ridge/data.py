@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +10,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from objectives import Point
+from target import target_contract
 
 
 TRACK_ID = "track_id"
@@ -21,6 +21,8 @@ FEATURES = "features"
 SPLIT = "split"
 TRAIN = "train"
 VALIDATION = "validation"
+CONTRACT_VERSION = "year_prediction_t90_training_v1"
+EXPECTED_DIMENSION = 90
 EXPECTED_COLUMNS = (TRACK_ID, ARTIST_ID, YEAR, LABEL, FEATURES, SPLIT)
 
 
@@ -55,23 +57,34 @@ def spark_path(value: str | Path) -> str:
     return text if "://" in text else Path(text).resolve().as_uri()
 
 
-def read_feature_metadata(path: str | Path) -> dict[str, Any]:
+def read_training_manifest(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="ascii") as handle:
-        return json.load(handle)
+        manifest: dict[str, Any] = json.load(handle)
+    validate_training_manifest(manifest)
+    return manifest
 
 
-def expected_dimension(metadata: dict[str, Any]) -> int:
-    return int(metadata["outputs"]["linear_vectors"]["dimension"])
+
+
+def expected_dimension(manifest: dict[str, Any]) -> int:
+    return int(manifest["preprocessing"]["dimension"])
+
+
+def expected_split_counts(manifest: dict[str, Any]) -> dict[str, int]:
+    return {
+        split: int(manifest["counts"]["splits"][split]["tracks"])
+        for split in (TRAIN, VALIDATION)
+    }
 
 
 def load_training_data(
     spark: SparkSession,
     input_path: str | Path,
-    metadata: dict[str, Any] | None = None,
+    manifest: dict[str, Any] | None = None,
 ) -> TrainingData:
     frame = spark.read.parquet(spark_path(input_path))
     if tuple(frame.columns) != EXPECTED_COLUMNS:
-        raise ValueError(f"Unexpected linear feature columns: {frame.columns}")
+        raise ValueError(f"Unexpected T90 vector columns: {frame.columns}")
     frame = frame.where(F.col(SPLIT).isin(TRAIN, VALIDATION))
     invalid_element = F.exists(
         F.col(FEATURES),
@@ -83,11 +96,10 @@ def load_training_data(
         F.col(LABEL).isNull()
         | F.isnan(LABEL)
         | (F.abs(F.col(LABEL)) == F.lit(float("inf")))
-        | (F.col(LABEL) < F.lit(0.0))
-        | (F.col(LABEL) > F.lit(1.0))
+        | ~F.col(LABEL).between(0.0, 1.0)
     )
     rows = frame.groupBy(SPLIT).agg(
-        F.count(F.lit(1)).alias("count"),
+        F.count("*").alias("count"),
         F.countDistinct(TRACK_ID).alias("distinct_tracks"),
         F.min(F.size(FEATURES)).alias("minimum_dimension"),
         F.max(F.size(FEATURES)).alias("maximum_dimension"),
@@ -98,7 +110,7 @@ def load_training_data(
     ).collect()
     summaries = {row[SPLIT]: row.asDict() for row in rows}
     if set(summaries) != {TRAIN, VALIDATION}:
-        raise ValueError("training data must contain train and validation splits")
+        raise ValueError("Training data must contain train and validation splits")
     dimensions: set[int] = set()
     counts: dict[str, int] = {}
     label_means: dict[str, float] = {}
@@ -116,11 +128,10 @@ def load_training_data(
             raise ValueError(f"{split} feature dimensions are empty or inconsistent")
         dimensions.add(minimum)
     if len(dimensions) != 1:
-        raise ValueError("train and validation feature dimensions differ")
+        raise ValueError("Train and validation feature dimensions differ")
     dimension = dimensions.pop()
-    total_count = sum(counts.values())
-    if frame.select(TRACK_ID).distinct().count() != total_count:
-        raise ValueError("track IDs overlap across train and validation")
+    if frame.select(TRACK_ID).distinct().count() != sum(counts.values()):
+        raise ValueError("Track IDs overlap across train and validation")
     artist_overlap = (
         frame.groupBy(ARTIST_ID)
         .agg(F.countDistinct(SPLIT).alias("split_count"))
@@ -129,18 +140,13 @@ def load_training_data(
         .count()
     )
     if artist_overlap:
-        raise ValueError("artists overlap across train and validation")
-    if metadata is not None:
-        if dimension != expected_dimension(metadata):
-            raise ValueError("feature dimension differs from preprocessing metadata")
-        expected_counts = {
-            split: int(metadata["counts"]["splits"][split])
-            for split in (TRAIN, VALIDATION)
-        }
-        if counts != expected_counts:
-            raise ValueError("train or validation count differs from preprocessing metadata")
-    if not math.isfinite(float(dimension)):
-        raise ValueError("feature dimension is not finite")
+        raise ValueError("Artists overlap across train and validation")
+    if manifest is not None:
+        validate_training_manifest(manifest)
+        if dimension != expected_dimension(manifest):
+            raise ValueError("Feature dimension differs from T90 manifest")
+        if counts != expected_split_counts(manifest):
+            raise ValueError("Train or validation count differs from T90 manifest")
     return TrainingData(
         frame=frame,
         dimension=dimension,
