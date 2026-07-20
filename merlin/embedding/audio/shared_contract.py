@@ -41,8 +41,8 @@ RHYTHM_STRUCTURE_COLUMNS = (
     *(f"{event}_interval_{stat}" for event in EVENTS[:3] for stat in ("median", "iqr", "cv")),
     "beat_local_bpm_median", "beat_local_bpm_cv", "global_local_tempo_deviation",
     "beats_per_bar_median", "tatums_per_beat_median",
-    *(f"{event}_confidence_{stat}" for event in ("segment", *EVENTS)
-      for stat in ("mean", "low_confidence_fraction")),
+    *(f"{event}_{suffix}" for event in ("segments", "beats", "bars", "tatums", "sections")
+      for suffix in ("confidence_mean", "low_confidence_fraction")),
     *(f"section_duration_{stat}" for stat in ("mean", "std", "q10", "q50", "q90", "cv")),
     "section_longest_ratio",
     *(f"section_{signal}_change_{stat}" for signal in ("pitch", "timbre", "loudness")
