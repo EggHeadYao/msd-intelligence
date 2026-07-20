@@ -5,7 +5,10 @@ import sys
 import unittest
 from pathlib import Path
 
-EVALUATION_DIR = Path(__file__).resolve().parents[2] / "src" / "evaluation"
+SOURCE_DIR = Path(__file__).resolve().parents[2] / "src"
+TRAINING_DIR = SOURCE_DIR / "training"
+EVALUATION_DIR = SOURCE_DIR / "evaluation"
+sys.path.insert(0, str(TRAINING_DIR))
 sys.path.insert(0, str(EVALUATION_DIR))
 
 from metrics import (  # noqa: E402
