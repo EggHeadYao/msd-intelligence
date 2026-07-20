@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
+
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
 
 from target import MAX_YEAR, MIN_YEAR, denormalize_year
 
 MetricPartial = tuple[float, float, float, float, float, int, int]
+ABSOLUTE_ERROR_COLUMN = "absolute_error_years"
 
 
 @dataclass(frozen=True)
@@ -35,7 +40,7 @@ def normalized_to_year(value: float) -> float:
 
 
 def clip_year(value: float) -> float:
-    return min(MAX_YEAR, max(MIN_YEAR, value))
+    return float(min(MAX_YEAR, max(MIN_YEAR, value)))
 
 
 def prediction_metric_partial(label: float, prediction: float) -> MetricPartial:
@@ -74,3 +79,53 @@ def finalize_metric_partial(partial: MetricPartial) -> RegressionMetrics:
         signed_error_years=signed / count,
         raw_out_of_range_rate=outside / count,
     )
+
+
+def add_absolute_error(predictions: DataFrame) -> DataFrame:
+    return predictions.withColumn(
+        ABSOLUTE_ERROR_COLUMN,
+        F.abs(F.col("clipped_prediction_year") - F.col("year")),
+    )
+
+
+
+
+def _as_number(value: Any) -> int | float:
+    if isinstance(value, bool) or value is None:
+        raise ValueError("quality metric is missing or invalid")
+    if isinstance(value, int):
+        return value
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("quality metric is not finite")
+    return number
+
+
+def aggregate_quality_metrics(predictions: DataFrame) -> dict[str, int | float]:
+    row = predictions.agg(*_quality_aggregations()).first()
+    if row is None or int(row["count"]) <= 0:
+        raise ValueError("cannot evaluate empty predictions")
+    return {name: _as_number(value) for name, value in row.asDict().items()}
+
+
+def aggregate_decade_metrics(predictions: DataFrame) -> list[dict[str, int | float]]:
+    clipped_error = F.col("clipped_prediction_year") - F.col("year")
+    rows = (
+        predictions.withColumn(
+            "decade",
+            (F.floor(F.col("year") / F.lit(10)) * F.lit(10)).cast("int"),
+        )
+        .groupBy("decade")
+        .agg(
+            F.count("*").alias("count"),
+            F.avg(ABSOLUTE_ERROR_COLUMN).alias("mae_years"),
+            F.sqrt(F.avg(clipped_error * clipped_error)).alias("rmse_years"),
+            F.avg(clipped_error).alias("signed_error_years"),
+        )
+        .orderBy("decade")
+        .collect()
+    )
+    return [
+        {name: _as_number(value) for name, value in row.asDict().items()}
+        for row in rows
+    ]
