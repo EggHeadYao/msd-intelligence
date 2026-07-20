@@ -290,3 +290,71 @@ def require_source_equivalence(
     )
 
 
+def require_standardized_train(vectors: DataFrame, dimension: int) -> None:
+    train = vectors.where(F.col(SPLIT) == "train")
+    row = train.agg(
+        *(F.avg(F.col(FEATURES)[index]).alias(f"_mean_{index}") for index in range(dimension)),
+        *(
+            F.stddev_samp(F.col(FEATURES)[index]).alias(f"_std_{index}")
+            for index in range(dimension)
+        ),
+    ).first()
+    for index in range(dimension):
+        require(
+            abs(float(row[f"_mean_{index}"])) <= STANDARDIZATION_TOLERANCE,
+            f"Standardized train mean differs at index {index}",
+        )
+        require(
+            abs(float(row[f"_std_{index}"]) - 1.0) <= STANDARDIZATION_TOLERANCE,
+            f"Standardized train deviation differs at index {index}",
+        )
+
+
+def validate(args: argparse.Namespace, spark: SparkSession) -> None:
+    manifest_path = args.input / "manifest.json"
+    manifest = read_json(manifest_path.resolve())
+    statistics, dimension = validate_manifest(manifest)
+    vectors = spark.read.parquet(spark_path(args.input / manifest["output"]["path"]))
+    counts = validate_output(vectors, manifest, dimension)
+    source_path = args.source or Path(manifest["source"]["path"])
+    feature_manifest_path = args.feature_manifest or Path(manifest["source"]["feature_manifest"])
+    require(
+        sha256_file(feature_manifest_path.resolve()) == manifest["source"]["feature_manifest_sha256"],
+        "Source feature manifest checksum differs",
+    )
+    source_manifest = read_json(feature_manifest_path.resolve())
+    names = tuple(str(item["name"]) for item in statistics)
+    require(
+        tuple(source_manifest["views"]["t90"]["predictor_columns"]) == names,
+        "Source T90 feature order differs",
+    )
+    source = spark.read.parquet(spark_path(source_path))
+    require(
+        tuple(source.columns) == (TRACK_ID, ARTIST_ID, YEAR, SPLIT) + names,
+        "Source schema order differs",
+    )
+    recompute_statistics(source, statistics)
+    require_source_equivalence(source, vectors, statistics)
+    require_standardized_train(vectors, dimension)
+    print(
+        "year_t90_training_data_valid "
+        f"rows={sum(item['tracks'] for item in counts.values())}, dimension={dimension}, input={args.input.resolve()}"
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionValidateT90Data")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        validate(args, spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
