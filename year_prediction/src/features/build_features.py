@@ -182,6 +182,77 @@ def predictor_metadata(columns: tuple[str, ...], types: dict[str, str]) -> list[
 
 
 
+
+    full.write.parquet(spark_path(args.output / "full_tabular.parquet"))
+    t90.write.parquet(spark_path(args.output / "t90.parquet"))
+    full_types = schema_types(full)
+    predictor_columns = full_predictor_columns(audio_contract)
+    manifest = {
+        "contract_version": FEATURE_CONTRACT_VERSION,
+        "format_version": 1,
+        "sources": {
+            "audio": {
+                "path": args.audio.as_posix(),
+                "contract_sha256": audio_contract_sha256,
+                "contract_version": audio_contract["contract_version"],
+                "feature_count": AUDIO_FEATURE_COUNT,
+                "feature_order_sha256": audio_contract["feature_order_sha256"],
+            },
+            "scalar": {"path": args.scalar.as_posix(), "sha256": scalar_sha256},
+            "dataset": {
+                "path": args.dataset.as_posix(),
+                "manifest_sha256": sha256_file(dataset_manifest_path),
+                "contract_version": dataset_manifest["contract_version"],
+            },
+        },
+        "counts": {
+            "tracks": EXPECTED_TRACKS,
+            "labeled_tracks": EXPECTED_LABELED_TRACKS,
+            "unlabeled_tracks": EXPECTED_TRACKS - EXPECTED_LABELED_TRACKS,
+            "splits": dataset_manifest["counts"]["splits"],
+        },
+        "audit_columns": list(AUDIT_COLUMNS),
+        "views": {
+            "t90": {
+                "path": "t90.parquet",
+                "predictor_count": len(T90_COLUMNS),
+                "predictor_columns": list(T90_COLUMNS),
+                "predictor_order_sha256": order_sha256(T90_COLUMNS),
+                "schema": schema_payload(t90),
+            },
+            "full_tabular": {
+                "path": "full_tabular.parquet",
+                "shared_predictor_count": len(shared_columns),
+                "predictor_count": len(predictor_columns),
+                "predictor_columns": list(predictor_columns),
+                "predictor_order_sha256": order_sha256(predictor_columns),
+                "schema": schema_payload(full),
+            },
+        },
+        "feature_groups": {
+            name: list(columns) for name, columns in ordered_feature_groups(audio_contract).items()
+        },
+        "excluded_audio_columns": list(
+            column for column in audio.columns[1:] if column not in shared_columns
+        ),
+        "derived_features": {
+            "fade_in_ratio": "clip(end_of_fade_in, 0, duration) / duration",
+            "fade_out_ratio": "(duration - clip(start_of_fade_out, 0, duration)) / duration",
+            "active_audio_ratio": "(clip(start_of_fade_out) - clip(end_of_fade_in)) / duration",
+            "endpoint_tolerance_seconds": FADE_TOLERANCE_SECONDS,
+        },
+        "predictor_contract": predictor_metadata(predictor_columns, full_types),
+        "forbidden_predictor_columns": list(FORBIDDEN_PREDICTOR_COLUMNS),
+    }
+    args.output.mkdir(parents=True, exist_ok=True)
+    with (args.output / "manifest.json").open("w", encoding="ascii") as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+    metadata.unpersist()
+    return args.output
+
+
 def main() -> None:
     args = parse_args()
     spark = (
