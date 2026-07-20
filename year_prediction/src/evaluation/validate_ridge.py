@@ -10,19 +10,28 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 MODULE_DIR = Path(__file__).resolve().parent
-TRAINING_DIR = MODULE_DIR.parent / "training"
+SOURCE_DIR = MODULE_DIR.parent
+TRAINING_DIR = SOURCE_DIR / "training"
+RIDGE_DIR = TRAINING_DIR / "ridge"
 sys.path.insert(0, str(MODULE_DIR))
 sys.path.insert(0, str(TRAINING_DIR))
+sys.path.insert(0, str(RIDGE_DIR))
 
+from data import (  # noqa: E402
+    TRAIN,
+    VALIDATION,
+    load_training_data,
+    read_training_manifest,
+    spark_path,
+)
 from distributed import (  # noqa: E402
     direct_full_batch_statistics,
     evaluate_linear_model,
     prediction_row,
 )
-from model_io import read_json  # noqa: E402
+from model_io import read_json, sha256_file  # noqa: E402
 from optimizer import gradient_norm  # noqa: E402
-from train_sgd import PREDICTION_SCHEMA, ship_worker_modules  # noqa: E402
-from training_data import TRAIN, VALIDATION, load_training_data, read_feature_metadata, spark_path  # noqa: E402
+from train import PREDICTION_SCHEMA, ship_worker_modules  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -89,9 +98,23 @@ def validate(model_directory: Path, spark: SparkSession) -> None:
         [int(row["iteration"]) for row in history] == list(range(1, len(history) + 1)),
         "History iterations are not consecutive",
     )
-    metadata_path = Path(model["feature_source"]["metadata"])
-    feature_metadata = read_feature_metadata(metadata_path)
-    data = load_training_data(spark, model["feature_source"]["input"], feature_metadata)
+    manifest_path = Path(model["feature_source"]["manifest"])
+    require(
+        sha256_file(manifest_path) == model["feature_source"]["manifest_sha256"],
+        "T90 training manifest checksum differs",
+    )
+    feature_manifest = read_training_manifest(manifest_path)
+    require(model["target"] == feature_manifest["target"], "Model target contract differs")
+    require(
+        feature_manifest["contract_version"] == model["feature_source"]["contract_version"],
+        "T90 training contract version differs",
+    )
+    require(
+        feature_manifest["source"]["predictor_order_sha256"]
+        == model["feature_source"]["predictor_order_sha256"],
+        "T90 predictor order differs",
+    )
+    data = load_training_data(spark, model["feature_source"]["input"], feature_manifest)
     require(data.dimension == dimension, "Model and input feature dimensions differ")
     require(data.counts == run_metadata["counts"], "Input counts differ from run metadata")
     ship_worker_modules(spark)

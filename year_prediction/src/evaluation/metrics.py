@@ -3,10 +3,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from target import MAX_YEAR, MIN_YEAR, denormalize_year
 
-MIN_YEAR = 1922.0
-MAX_YEAR = 2011.0
-YEAR_RANGE = MAX_YEAR - MIN_YEAR
 MetricPartial = tuple[float, float, float, float, float, int, int]
 
 
@@ -33,7 +31,7 @@ class RegressionMetrics:
 
 
 def normalized_to_year(value: float) -> float:
-    return MIN_YEAR + YEAR_RANGE * value
+    return denormalize_year(value)
 
 
 def clip_year(value: float) -> float:
