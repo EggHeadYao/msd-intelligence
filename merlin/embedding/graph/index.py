@@ -353,6 +353,29 @@ def _build_p3_edges(edges: DataFrame) -> tuple[DataFrame, float]:
     return weighted, idf_cap
 
 
+def _write_vocabulary(
+    output_dir: str,
+    node_to_int: dict[str, int],
+    int_to_node: dict[int, str],
+    int_to_type: dict[int, str],
+) -> Path:
+    output_path = _local_path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    vocab_path = output_path / "vocab.json"
+    payload = {
+        "vocab_version": VOCAB_VERSION,
+        "node_to_int": node_to_int,
+        "int_to_node": {str(key): value for key, value in int_to_node.items()},
+        "int_to_type": {str(key): value for key, value in int_to_type.items()},
+    }
+    vocab_path.write_text(
+        json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        + "\n",
+        encoding="ascii",
+    )
+    return vocab_path
+
+
 def load_and_build_index(
     spark: SparkSession,
     input_path: str,
