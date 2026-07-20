@@ -204,3 +204,76 @@ def build(args: argparse.Namespace, spark: SparkSession) -> Path:
                 1,
             ).otherwise(0)
         ).alias("invalid_ids"),
+    ).first()
+    require(int(scalar_row["rows"]) == EXPECTED_INPUT_TRACKS, "scalar row count differs")
+    require(int(scalar_row["tracks"]) == EXPECTED_INPUT_TRACKS, "scalar track IDs are duplicated")
+    require(int(scalar_row["unlabeled"]) == EXPECTED_UNLABELED_TRACKS, "unlabeled count differs")
+    require(int(scalar_row["labeled"]) == EXPECTED_LABELED_TRACKS, "labeled count differs")
+    require(int(scalar_row["invalid_years"]) == 0, "scalar contains invalid years")
+    require(int(scalar_row["invalid_ids"]) == 0, "scalar contains invalid IDs")
+
+    labeled_source = scalar_keys.where(F.col(YEAR).isNotNull())
+    labeled_artists = labeled_source.select(ARTIST_ID).distinct().persist(StorageLevel.MEMORY_AND_DISK)
+    require(labeled_artists.count() == EXPECTED_LABELED_ARTISTS, "labeled artist count differs")
+    official_train = read_artist_ids(spark, args.train_artists).persist(StorageLevel.MEMORY_AND_DISK)
+    official_test = read_artist_ids(spark, args.test_artists).persist(StorageLevel.MEMORY_AND_DISK)
+    require(official_train.count() == EXPECTED_OFFICIAL_TRAIN_ARTISTS, "official train count differs")
+    require(official_test.count() == EXPECTED_OFFICIAL_TEST_ARTISTS, "official test count differs")
+    require(official_train.distinct().count() == EXPECTED_OFFICIAL_TRAIN_ARTISTS, "duplicate train artists")
+    require(official_test.distinct().count() == EXPECTED_OFFICIAL_TEST_ARTISTS, "duplicate test artists")
+    require(official_train.join(official_test, ARTIST_ID, "inner").limit(1).count() == 0, "official split overlaps")
+    official_union = official_train.union(official_test).distinct()
+    require(official_union.join(labeled_artists, ARTIST_ID, "left_anti").count() == 0, "unknown official artists")
+    omitted = [
+        row[ARTIST_ID]
+        for row in labeled_artists.join(official_union, ARTIST_ID, "left_anti").orderBy(ARTIST_ID).collect()
+    ]
+    require(len(omitted) == EXPECTED_OFFICIAL_OMISSIONS, "official omission count differs")
+
+    artist_assignments = assign_artists(
+        labeled_artists,
+        official_test,
+        args.split_seed,
+        args.validation_percent,
+    ).persist(StorageLevel.MEMORY_AND_DISK)
+    labeled = labeled_source.join(artist_assignments, ARTIST_ID).select(*LABEL_COLUMNS).persist(
+        StorageLevel.MEMORY_AND_DISK
+    )
+    assignments = labeled.select(*ASSIGNMENT_COLUMNS)
+    stats = split_statistics(labeled)
+    require(stats == EXPECTED_SPLITS, f"split statistics differ: {stats}")
+
+    args.output.mkdir(parents=True)
+    labeled.repartition(SPLIT).write.partitionBy(SPLIT).parquet(
+        spark_path(args.output / "labelled_tracks.parquet")
+    )
+    assignments.repartition(SPLIT).write.partitionBy(SPLIT).parquet(
+        spark_path(args.output / "split_assignments.parquet")
+    )
+    manifest = {
+        "contract_version": "year_prediction_dataset_v3",
+        "format_version": 3,
+        "year_contract": {"minimum": MIN_YEAR, "maximum": MAX_YEAR, "unlabeled_value": None},
+        "config": {
+            "split_seed": args.split_seed,
+            "validation_percent": args.validation_percent,
+            "validation_hash": "pmod(xxhash64(seed + ':' + artist_id), 10000)",
+        },
+        "sources": {
+            "scalar": {
+                "path": source_path(args.scalar),
+                "sha256": sha256_file(args.scalar),
+                "columns": len(SCALAR_COLUMNS),
+                "tracks": EXPECTED_INPUT_TRACKS,
+            },
+            "audio_features": audio_contract(args.audio),
+            "official_split_commit": OFFICIAL_SPLIT_COMMIT,
+            "official_train": {
+                "path": source_path(args.train_artists),
+                "sha256": OFFICIAL_TRAIN_SHA256,
+            },
+            "official_test": {
+                "path": source_path(args.test_artists),
+                "sha256": OFFICIAL_TEST_SHA256,
+            },
+        },
