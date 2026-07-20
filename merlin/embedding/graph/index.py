@@ -11,7 +11,10 @@ from urllib.parse import unquote, urlparse
 import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql import types as T
 from pyspark.sql.types import BinaryType
+
+from merlin.embedding.graph.config import DIRECTED_EDGES, EDGE_SCHEMA
 
 VOCAB_VERSION = "c2_typed_vocab_v1"
 GRAPH_COLUMNS: tuple[str, ...] = (
@@ -68,6 +71,67 @@ def persist_vocabulary(index_dir: str, output_dir: str) -> str:
     if source.resolve() != destination.resolve():
         shutil.copy2(source, destination)
     return str(destination)
+
+
+def validate_graph_edges(edges: DataFrame) -> None:
+    """Fail early when the prepared graph is not the canonical A3 graph."""
+    actual_columns = tuple(edges.columns)
+    if actual_columns != GRAPH_COLUMNS:
+        raise ValueError(
+            "C2 graph schema mismatch: "
+            f"expected={GRAPH_COLUMNS}, actual={actual_columns}",
+        )
+
+    expected_types: dict[str, type[T.DataType]] = {
+        "src_type": T.StringType,
+        "src_id": T.StringType,
+        "dst_type": T.StringType,
+        "dst_id": T.StringType,
+        "directed": T.BooleanType,
+        "edge_type": T.StringType,
+    }
+    for field in edges.schema.fields:
+        if not isinstance(field.dataType, expected_types[field.name]):
+            raise ValueError(
+                f"C2 graph type mismatch for {field.name}: {field.dataType}",
+            )
+
+    actual_edge_types = {
+        row["edge_type"] for row in edges.select("edge_type").distinct().collect()
+    }
+    expected_edge_types = set(EDGE_SCHEMA)
+    if actual_edge_types != expected_edge_types:
+        raise ValueError(
+            "C2 edge types mismatch: "
+            f"expected={sorted(expected_edge_types)}, "
+            f"actual={sorted(actual_edge_types)}",
+        )
+
+    invalid = (
+        F.col("src_type").isNull()
+        | (F.col("src_type") == "")
+        | F.col("src_id").isNull()
+        | (F.col("src_id") == "")
+        | F.col("dst_type").isNull()
+        | (F.col("dst_type") == "")
+        | F.col("dst_id").isNull()
+        | (F.col("dst_id") == "")
+        | F.col("directed").isNull()
+        | F.col("edge_type").isNull()
+        | (F.col("edge_type") == "")
+    )
+    endpoint_rule = F.lit(False)
+    for edge_type, (src_type, dst_type) in EDGE_SCHEMA.items():
+        endpoint_rule = endpoint_rule | (
+            (F.col("edge_type") == edge_type)
+            & (
+                (F.col("src_type") != src_type)
+                | (F.col("dst_type") != dst_type)
+                | (F.col("directed") != (edge_type in DIRECTED_EDGES))
+            )
+        )
+    if edges.where(invalid | endpoint_rule).limit(1).count():
+        raise ValueError("C2 graph contains invalid IDs, endpoint types, or directions")
 
 
 def build_node_vocabulary(
