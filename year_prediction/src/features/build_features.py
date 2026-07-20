@@ -73,3 +73,55 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--shuffle-partitions", type=int, default=32)
     return parser.parse_args()
+
+
+def spark_path(path: str | Path) -> str:
+    text = str(path)
+    return text if "://" in text else Path(text).resolve().as_uri()
+
+
+def audio_paths(path: Path) -> list[str]:
+    return [spark_path(item) for item in sorted(path.glob("features_*.parquet"))]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="ascii") as handle:
+        return json.load(handle)
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def schema_types(frame: DataFrame) -> dict[str, str]:
+    return {field.name: field.dataType.simpleString() for field in frame.schema.fields}
+
+
+def require_types(frame: DataFrame, expected: dict[str, str], label: str) -> None:
+    actual = schema_types(frame)
+    missing = set(expected) - set(actual)
+    require(not missing, f"{label} is missing columns: {sorted(missing)}")
+    wrong = {column: actual[column] for column in expected if actual[column] != expected[column]}
+    require(not wrong, f"{label} has unexpected types: {wrong}")
+
+
+def schema_payload(frame: DataFrame) -> list[dict[str, object]]:
+    return [
+        {
+            "name": field.name,
+            "type": field.dataType.simpleString(),
+            "nullable": field.nullable,
+        }
+        for field in frame.schema.fields
+    ]
+
+
