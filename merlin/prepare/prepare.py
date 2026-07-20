@@ -64,6 +64,16 @@ def parse_args() -> argparse.Namespace:
         help="Spark SQL shuffle partitions.",
     )
     parser.add_argument(
+        "--spark-master",
+        default="local[4]",
+        help="Spark master; local[4] bounds memory use for the wide audio table.",
+    )
+    parser.add_argument(
+        "--driver-memory",
+        default="4g",
+        help="Spark driver heap (also the executor heap in local mode).",
+    )
+    parser.add_argument(
         "--reset-output",
         action="store_true",
         help="Reset an existing matching MERLIN-owned output directory.",
@@ -71,9 +81,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def create_spark(shuffle_partitions: int) -> SparkSession:
+def create_spark(
+    shuffle_partitions: int,
+    spark_master: str = "local[4]",
+    driver_memory: str = "4g",
+) -> SparkSession:
     return (
-        SparkSession.builder.appName("MerlinPrepare")
+        SparkSession.builder.master(spark_master)
+        .appName("MerlinPrepare")
+        .config("spark.driver.memory", driver_memory)
         .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
         .config("spark.hadoop.fs.defaultFS", "file:///")
         .getOrCreate()
@@ -462,6 +478,8 @@ def write_initialized_manifest(
     input_counts: dict[str, int],
     extraction_contract: dict[str, Any],
     shuffle_partitions: int,
+    spark_master: str,
+    driver_memory: str,
 ) -> None:
     defaults_path: Path = (
         Path(__file__).resolve().parents[1] / "artifacts" / "merlin_v3_defaults.json"
@@ -475,6 +493,8 @@ def write_initialized_manifest(
             "defaults_path": str(defaults_path),
             "defaults_sha256": sha256_file(defaults_path),
             "shuffle_partitions": shuffle_partitions,
+            "spark_master": spark_master,
+            "driver_memory": driver_memory,
             "graph_is_weighted": False,
             "edge_types": list(EDGE_TYPES),
             "shared_audio_contract_version": SHARED_AUDIO_CONTRACT_VERSION,
@@ -525,6 +545,8 @@ def run_prepare(
     output_dir: Path,
     *,
     shuffle_partitions: int = 32,
+    spark_master: str = "local[4]",
+    driver_memory: str = "4g",
     reset_output: bool = False,
 ) -> Path:
     paths: dict[str, Path] = resolve_input_paths(input_dir)
@@ -572,13 +594,19 @@ def run_prepare(
         input_counts,
         extraction_contract,
         shuffle_partitions,
+        spark_master,
+        driver_memory,
     )
     return prepared_root
 
 
 def main() -> None:
     args: argparse.Namespace = parse_args()
-    spark: SparkSession = create_spark(args.shuffle_partitions)
+    spark: SparkSession = create_spark(
+        args.shuffle_partitions,
+        args.spark_master,
+        args.driver_memory,
+    )
     spark.sparkContext.setLogLevel("WARN")
     try:
         output: Path = run_prepare(
@@ -586,6 +614,8 @@ def main() -> None:
             args.input,
             args.output,
             shuffle_partitions=args.shuffle_partitions,
+            spark_master=args.spark_master,
+            driver_memory=args.driver_memory,
             reset_output=args.reset_output,
         )
         print(f"Prepared tables written to {output}")

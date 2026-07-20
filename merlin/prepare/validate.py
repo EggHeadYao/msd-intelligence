@@ -55,6 +55,16 @@ def parse_args() -> argparse.Namespace:
         default=32,
         help="Spark SQL shuffle partitions.",
     )
+    parser.add_argument(
+        "--spark-master",
+        default="local[4]",
+        help="Spark master; local[4] bounds memory use for the wide audio table.",
+    )
+    parser.add_argument(
+        "--driver-memory",
+        default="4g",
+        help="Spark driver heap (also the executor heap in local mode).",
+    )
     parser.add_argument("--expected-songs", type=int, default=1_000_000)
     parser.add_argument("--expected-track-release", type=int, default=999_997)
     parser.add_argument("--expected-artist-term", type=int, default=1_109_381)
@@ -66,9 +76,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def create_spark(shuffle_partitions: int) -> SparkSession:
+def create_spark(
+    shuffle_partitions: int,
+    spark_master: str = "local[4]",
+    driver_memory: str = "4g",
+) -> SparkSession:
     return (
-        SparkSession.builder.appName("MerlinValidate")
+        SparkSession.builder.master(spark_master)
+        .appName("MerlinValidate")
+        .config("spark.driver.memory", driver_memory)
         .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
         .config("spark.hadoop.fs.defaultFS", "file:///")
         .getOrCreate()
@@ -235,7 +251,6 @@ def validate_song_tables(
         "track_id",
         "song_id",
         "artist_id",
-        "track_7digitalid",
         "duration",
     )
     invalid_metadata = F.lit(False)
@@ -248,6 +263,15 @@ def validate_song_tables(
         metadata.where(invalid_metadata).limit(1).count() == 0,
         "songs_metadata contains invalid required fields",
     )
+
+    invalid_track_id: int = (
+        metadata.where(
+            F.col("track_7digitalid").isNotNull() & (F.col("track_7digitalid") <= 0),
+        )
+        .limit(1)
+        .count()
+    )
+    require(invalid_track_id == 0, "track_7digitalid contains non-positive IDs")
 
     invalid_has_year: int = (
         metadata.where(
@@ -604,7 +628,11 @@ def main() -> None:
         artist_term=args.expected_artist_term,
         artist_similarity=args.expected_artist_similarity,
     )
-    spark: SparkSession = create_spark(args.shuffle_partitions)
+    spark: SparkSession = create_spark(
+        args.shuffle_partitions,
+        args.spark_master,
+        args.driver_memory,
+    )
     spark.sparkContext.setLogLevel("WARN")
     try:
         statistics: dict[str, int] = run_validation(spark, args.prepared, expected)

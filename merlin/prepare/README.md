@@ -58,6 +58,8 @@ python3 -m merlin.prepare.prepare \
   --shuffle-partitions 64
 ```
 
+Local execution defaults to four Spark worker threads and a 4 GiB JVM heap so the 629-column extracted audio batches do not exhaust memory through excessive concurrent Parquet reads. Machines with different resources may override these settings with `--spark-master` and `--driver-memory`.
+
 Validate the full-catalog output:
 
 ```bash
