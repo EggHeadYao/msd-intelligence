@@ -6,10 +6,12 @@ import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 TRAINING_DIR = ROOT / "src" / "training"
+RIDGE_DIR = TRAINING_DIR / "ridge"
 ORACLE_DIR = ROOT / "tests" / "oracles" / "ridge"
 sys.path.insert(0, str(TRAINING_DIR))
+sys.path.insert(0, str(RIDGE_DIR))
 sys.path.insert(0, str(ORACLE_DIR))
 
 from objectives import (  # noqa: E402

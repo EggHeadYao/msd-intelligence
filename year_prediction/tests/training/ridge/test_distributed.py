@@ -7,11 +7,13 @@ from pathlib import Path
 
 from pyspark.sql import SparkSession
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 TRAINING_DIR = ROOT / "src" / "training"
+RIDGE_DIR = TRAINING_DIR / "ridge"
 EVALUATION_DIR = ROOT / "src" / "evaluation"
 ORACLE_DIR = ROOT / "tests" / "oracles" / "ridge"
 sys.path.insert(0, str(TRAINING_DIR))
+sys.path.insert(0, str(RIDGE_DIR))
 sys.path.insert(0, str(EVALUATION_DIR))
 sys.path.insert(0, str(ORACLE_DIR))
 
@@ -30,9 +32,10 @@ class DistributedRidgeTest(unittest.TestCase):
         )
         cls.spark.sparkContext.setLogLevel("ERROR")
         for path in (
+            TRAINING_DIR / "target.py",
             EVALUATION_DIR / "metrics.py",
-            TRAINING_DIR / "objectives.py",
-            TRAINING_DIR / "distributed.py",
+            RIDGE_DIR / "objectives.py",
+            RIDGE_DIR / "distributed.py",
         ):
             cls.spark.sparkContext.addPyFile(str(path))
         with (ORACLE_DIR / "fixture.json").open("r", encoding="ascii") as handle:
