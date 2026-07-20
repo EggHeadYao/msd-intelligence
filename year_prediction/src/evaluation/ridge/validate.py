@@ -10,10 +10,11 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 MODULE_DIR = Path(__file__).resolve().parent
-SOURCE_DIR = MODULE_DIR.parent
+EVALUATION_DIR = MODULE_DIR.parent
+SOURCE_DIR = EVALUATION_DIR.parent
 TRAINING_DIR = SOURCE_DIR / "training"
 RIDGE_DIR = TRAINING_DIR / "ridge"
-sys.path.insert(0, str(MODULE_DIR))
+sys.path.insert(0, str(EVALUATION_DIR))
 sys.path.insert(0, str(TRAINING_DIR))
 sys.path.insert(0, str(RIDGE_DIR))
 
