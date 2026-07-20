@@ -382,3 +382,58 @@ def validate(args: argparse.Namespace, spark: SparkSession) -> None:
     labels = spark.read.parquet(spark_path(args.dataset / "labelled_tracks.parquet"))
     t90 = spark.read.parquet(spark_path(args.features / "t90.parquet"))
     full = spark.read.parquet(spark_path(args.features / "full_tabular.parquet"))
+
+    shared_columns = year_shared_columns(audio_contract)
+    predictor_columns = full_predictor_columns(audio_contract)
+    audit_types = {TRACK_ID: "string", ARTIST_ID: "string", YEAR: "int", SPLIT: "string"}
+    t90_types = {**audit_types, **{column: "double" for column in T90_COLUMNS}}
+    full_types = {
+        **audit_types,
+        **{column: "double" for column in shared_columns},
+        **{column: "double" for column in GLOBAL_SCALAR_COLUMNS},
+        "key": "int",
+        "mode": "int",
+        "time_signature": "int",
+        **{column: "double" for column in DERIVED_SCALAR_COLUMNS},
+    }
+    require_schema(t90, AUDIT_COLUMNS + T90_COLUMNS, t90_types, "T90")
+    require_schema(full, AUDIT_COLUMNS + predictor_columns, full_types, "full tabular")
+    require(manifest["counts"]["tracks"] == EXPECTED_TRACKS, "manifest track count differs")
+    require(
+        manifest["counts"]["labeled_tracks"] == EXPECTED_LABELED_TRACKS,
+        "manifest label count differs",
+    )
+    require(
+        tuple(manifest["views"]["t90"]["predictor_columns"]) == T90_COLUMNS,
+        "manifest T90 columns differ",
+    )
+    require(
+        tuple(manifest["views"]["full_tabular"]["predictor_columns"])
+        == predictor_columns,
+        "manifest full columns differ",
+    )
+    require(
+        manifest["views"]["t90"]["predictor_count"] == len(T90_COLUMNS),
+        "manifest T90 dimension differs",
+    )
+    require(
+        manifest["views"]["full_tabular"]["predictor_count"]
+        == len(predictor_columns),
+        "manifest full dimension differs",
+    )
+    for view_name, frame in (("t90", t90), ("full_tabular", full)):
+        manifest_schema = {
+            field["name"]: field["type"] for field in manifest["views"][view_name]["schema"]
+        }
+        require(manifest_schema == schema_types(frame), f"manifest {view_name} schema differs")
+    require(not set(YEAR_EXCLUDED_COLUMNS) & set(full.columns), "excluded audio columns found")
+    require(
+        not (set(full.columns) & set(FORBIDDEN_PREDICTOR_COLUMNS)) - set(AUDIT_COLUMNS),
+        "forbidden predictors found",
+    )
+    require(manifest["views"]["t90"]["predictor_order_sha256"] == order_sha256(T90_COLUMNS), "T90 order hash differs")
+    require(
+        manifest["views"]["full_tabular"]["predictor_order_sha256"]
+        == order_sha256(predictor_columns),
+        "full order hash differs",
+    )
