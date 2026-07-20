@@ -162,3 +162,73 @@ def require_labeled_source(frame: DataFrame, manifest: dict[str, Any]) -> dict[s
     require(overlap == 0, "Artists overlap across splits")
     return counts
 
+
+def fit_feature_statistics(
+    labeled: DataFrame,
+    columns: tuple[str, ...],
+) -> list[dict[str, int | float | str]]:
+    train = labeled.where(F.col(SPLIT) == "train")
+    mean_row = train.agg(
+        F.count("*").alias("_rows"),
+        *(F.count(column).alias(f"_count_{index}") for index, column in enumerate(columns)),
+        *(F.avg(column).alias(f"_mean_{index}") for index, column in enumerate(columns)),
+    ).first()
+    train_count = int(mean_row["_rows"])
+    require(train_count > 1, "Training split must contain at least two rows")
+    means: list[float] = []
+    finite_counts: list[int] = []
+    for index, column in enumerate(columns):
+        mean = mean_row[f"_mean_{index}"]
+        count = int(mean_row[f"_count_{index}"])
+        require(
+            mean is not None and math.isfinite(float(mean)),
+            f"No finite train mean for {column}",
+        )
+        means.append(float(mean))
+        finite_counts.append(count)
+    imputed = train.select(
+        *(
+            F.coalesce(F.col(column), F.lit(mean)).alias(column)
+            for column, mean in zip(columns, means)
+        )
+    )
+    std_row = imputed.agg(
+        *(F.stddev_samp(column).alias(f"_std_{index}") for index, column in enumerate(columns))
+    ).first()
+    statistics: list[dict[str, int | float | str]] = []
+    for index, (column, mean) in enumerate(zip(columns, means)):
+        std = std_row[f"_std_{index}"]
+        require(
+            std is not None and math.isfinite(float(std)) and float(std) > 0.0,
+            f"Training standard deviation must be positive for {column}",
+        )
+        statistics.append(
+            {
+                "name": column,
+                "mean": mean,
+                "standard_deviation": float(std),
+                "finite_train_count": finite_counts[index],
+                "imputed_train_count": train_count - finite_counts[index],
+            }
+        )
+    return statistics
+
+
+def transform(frame: DataFrame, statistics: list[dict[str, int | float | str]]) -> DataFrame:
+    values = [
+        (
+            (F.coalesce(F.col(str(item["name"])), F.lit(float(item["mean"]))) - float(item["mean"]))
+            / float(item["standard_deviation"])
+        ).cast("double")
+        for item in statistics
+    ]
+    target = target_contract()
+    return frame.select(
+        TRACK_ID,
+        ARTIST_ID,
+        YEAR,
+        ((F.col(YEAR).cast("double") - target["minimum"]) / target["span"]).alias(TARGET_COLUMN),
+        F.array(*values).alias(FEATURES),
+        SPLIT,
+    )
+
