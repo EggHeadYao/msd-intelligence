@@ -64,6 +64,32 @@ def read_training_manifest(path: str | Path) -> dict[str, Any]:
     return manifest
 
 
+def validate_training_manifest(manifest: dict[str, Any]) -> None:
+    if manifest.get("contract_version") != CONTRACT_VERSION:
+        raise ValueError("Unexpected T90 training contract version")
+    if manifest.get("format_version") != 1:
+        raise ValueError("Unexpected T90 training manifest format")
+    if manifest.get("target") != target_contract():
+        raise ValueError("Unexpected target contract")
+    preprocessing = manifest.get("preprocessing", {})
+    if preprocessing.get("fit_split") != TRAIN:
+        raise ValueError("T90 preprocessing was not fit on train")
+    dimension = int(preprocessing.get("dimension", 0))
+    if dimension != EXPECTED_DIMENSION:
+        raise ValueError("Unexpected T90 feature dimension")
+    statistics = preprocessing.get("features", [])
+    names = [item.get("name") for item in statistics]
+    if len(names) != dimension or len(set(names)) != dimension or any(name is None for name in names):
+        raise ValueError("Invalid T90 preprocessing statistics")
+    output = manifest.get("output", {})
+    if tuple(output.get("columns", ())) != EXPECTED_COLUMNS:
+        raise ValueError("Unexpected T90 vector columns")
+    if output.get("path") != "vectors.parquet" or output.get("partition_column") != SPLIT:
+        raise ValueError("Unexpected T90 vector layout")
+    split_counts = manifest.get("counts", {}).get("splits", {})
+    for split in (TRAIN, VALIDATION):
+        if int(split_counts.get(split, {}).get("tracks", 0)) <= 0:
+            raise ValueError(f"Missing {split} count in T90 manifest")
 
 
 def expected_dimension(manifest: dict[str, Any]) -> int:
