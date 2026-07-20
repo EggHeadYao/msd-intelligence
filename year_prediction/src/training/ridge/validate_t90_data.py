@@ -113,3 +113,76 @@ def validate_manifest(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], i
     require(output.get("partition_column") == SPLIT, "Output partition contract differs")
     return statistics, dimension
 
+
+def validate_output(
+    vectors: DataFrame,
+    manifest: dict[str, Any],
+    dimension: int,
+) -> dict[str, dict[str, int]]:
+    require(tuple(vectors.columns) == OUTPUT_COLUMNS, "Vector column order differs")
+    expected_types = {
+        TRACK_ID: "string",
+        ARTIST_ID: "string",
+        YEAR: "int",
+        TARGET_COLUMN: "double",
+        FEATURES: "array<double>",
+        SPLIT: "string",
+    }
+    actual_types = {field.name: field.dataType.simpleString() for field in vectors.schema.fields}
+    require(actual_types == expected_types, "Vector schema differs")
+    require(schema_payload(vectors) == manifest["output"]["schema"], "Manifest schema differs")
+    target = target_contract()
+    expected_label = (F.col(YEAR).cast("double") - target["minimum"]) / target["span"]
+    invalid = (
+        F.col(TRACK_ID).isNull()
+        | (F.col(TRACK_ID) == "")
+        | F.col(ARTIST_ID).isNull()
+        | (F.col(ARTIST_ID) == "")
+        | F.col(YEAR).isNull()
+        | ~F.col(YEAR).between(target["minimum"], target["maximum"])
+        | ~F.col(SPLIT).isin(*SPLITS)
+        | F.col(TARGET_COLUMN).isNull()
+        | F.isnan(TARGET_COLUMN)
+        | (F.abs(F.col(TARGET_COLUMN)) == F.lit(float("inf")))
+        | (F.abs(F.col(TARGET_COLUMN) - expected_label) > VALUE_TOLERANCE)
+        | F.col(FEATURES).isNull()
+        | (F.size(FEATURES) != dimension)
+        | ~finite_array(F.col(FEATURES))
+    )
+    rows = vectors.groupBy(SPLIT).agg(
+        F.count("*").alias("tracks"),
+        F.countDistinct(TRACK_ID).alias("distinct_tracks"),
+        F.countDistinct(ARTIST_ID).alias("artists"),
+        F.sum(F.when(invalid, 1).otherwise(0)).alias("invalid"),
+    ).collect()
+    counts = {
+        row[SPLIT]: {"tracks": int(row["tracks"]), "artists": int(row["artists"])}
+        for row in rows
+    }
+    expected_counts = {
+        name: {"tracks": int(item["tracks"]), "artists": int(item["artists"])}
+        for name, item in manifest["counts"]["splits"].items()
+    }
+    require(counts == expected_counts, "Vector split counts differ")
+    require(
+        sum(item["tracks"] for item in counts.values()) == int(manifest["counts"]["rows"]),
+        "Vector row count differs",
+    )
+    require(
+        all(int(row["tracks"]) == int(row["distinct_tracks"]) for row in rows),
+        "Vector track IDs are duplicated",
+    )
+    require(all(int(row["invalid"]) == 0 for row in rows), "Vector output contains invalid rows")
+    require(
+        vectors.select(TRACK_ID).distinct().count() == int(manifest["counts"]["rows"]),
+        "Vector track IDs overlap across splits",
+    )
+    overlap = (
+        vectors.groupBy(ARTIST_ID)
+        .agg(F.countDistinct(SPLIT).alias("split_count"))
+        .where(F.col("split_count") > 1)
+        .limit(1)
+        .count()
+    )
+    require(overlap == 0, "Vector artists overlap across splits")
+    return counts
