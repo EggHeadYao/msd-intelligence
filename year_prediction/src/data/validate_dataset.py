@@ -130,3 +130,70 @@ def expected_artist_assignments(
     )
 
 
+def require_same(left: DataFrame, right: DataFrame, columns: tuple[str, ...], label: str) -> None:
+    left_view = left.select(*columns)
+    right_view = right.select(*columns)
+    require(left_view.exceptAll(right_view).limit(1).count() == 0, f"{label}: unexpected rows")
+    require(right_view.exceptAll(left_view).limit(1).count() == 0, f"{label}: missing rows")
+
+
+def assignment_sha256(assignments: DataFrame) -> str:
+    digest = hashlib.sha256()
+    rows = assignments.select(ARTIST_ID, SPLIT).distinct().orderBy(ARTIST_ID).toLocalIterator()
+    for row in rows:
+        digest.update(f"{row[ARTIST_ID]}\t{row[SPLIT]}\n".encode("ascii"))
+    return digest.hexdigest()
+
+
+def split_statistics(labels: DataFrame) -> dict[str, dict[str, int]]:
+    rows = labels.groupBy(SPLIT).agg(
+        F.count("*").alias("tracks"),
+        F.countDistinct(ARTIST_ID).alias("artists"),
+    ).collect()
+    return {
+        row[SPLIT]: {"artists": int(row["artists"]), "tracks": int(row["tracks"])}
+        for row in rows
+    }
+
+
+def load_manifest(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="ascii") as handle:
+        return json.load(handle)
+
+
+def validate(args: argparse.Namespace, spark: SparkSession) -> None:
+    manifest = load_manifest(args.dataset / "manifest.json")
+    require(manifest["contract_version"] == "year_prediction_dataset_v3", "contract version differs")
+    require(manifest["format_version"] == 3, "manifest format differs")
+    require(manifest["year_contract"] == {
+        "minimum": MIN_YEAR,
+        "maximum": MAX_YEAR,
+        "unlabeled_value": None,
+    }, "year contract differs")
+    require(sha256_file(args.scalar) == manifest["sources"]["scalar"]["sha256"], "scalar checksum differs")
+    require(sha256_file(args.train_artists) == OFFICIAL_TRAIN_SHA256, "train artist checksum differs")
+    require(sha256_file(args.test_artists) == OFFICIAL_TEST_SHA256, "test artist checksum differs")
+    audio_contract_path = args.audio / "feature_contract.json"
+    audio_contract = load_manifest(audio_contract_path)
+    require(
+        sha256_file(audio_contract_path) == manifest["sources"]["audio_features"]["contract_sha256"],
+        "audio contract checksum differs",
+    )
+    require(audio_contract["contract_version"] == AUDIO_CONTRACT_VERSION, "audio contract version differs")
+    require(int(audio_contract["feature_count"]) == AUDIO_FEATURE_COUNT, "audio feature count differs")
+    require(len(audio_contract["columns"]) == AUDIO_FEATURE_COUNT + 1, "audio contract columns differ")
+    require(audio_contract["columns"][0] == TRACK_ID, "audio contract must start with track_id")
+    require(
+        audio_contract["feature_order_sha256"] == AUDIO_FEATURE_ORDER_SHA256,
+        "audio feature order differs",
+    )
+
+    scalar = spark.read.parquet(spark_path(args.scalar))
+    labels = spark.read.parquet(spark_path(args.dataset / "labelled_tracks.parquet"))
+    assignments = spark.read.parquet(spark_path(args.dataset / "split_assignments.parquet"))
+    require_schema(scalar, SCALAR_COLUMNS, SCALAR_TYPES)
+    require_schema(labels, LABEL_COLUMNS, LABEL_TYPES)
+    require_schema(assignments, ASSIGNMENT_COLUMNS, ASSIGNMENT_TYPES)
+    scalar_keys = scalar.select(TRACK_ID, ARTIST_ID, YEAR).persist(StorageLevel.MEMORY_AND_DISK)
+    labels.persist(StorageLevel.MEMORY_AND_DISK)
+    assignments.persist(StorageLevel.MEMORY_AND_DISK)
