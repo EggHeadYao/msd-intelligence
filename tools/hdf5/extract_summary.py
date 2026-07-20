@@ -146,6 +146,47 @@ def _read_summary_slice(h5: h5py.File, start: int, stop: int) -> pa.Table:
     return pa.Table.from_pylist(rows, schema=OUTPUT_SCHEMA)
 
 
+def read_summary(h5: h5py.File, limit: int = BATCH_SIZE) -> pa.Table:
+    """Read a bounded prefix for tests and interactive inspection."""
+    if limit <= 0:
+        raise ValueError("limit must be positive")
+    row_count = _row_count(h5)
+    stop = min(limit, row_count)
+    return _read_summary_slice(h5, 0, stop)
+
+
+def write_summary(input_path: Path, output_path: Path) -> int:
+    """Stream the summary HDF5 rows into an atomic Parquet output."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(f".{output_path.name}.tmp")
+    temporary.unlink(missing_ok=True)
+
+    try:
+        with h5py.File(input_path, "r") as h5:
+            row_count = _row_count(h5)
+            if row_count != EXPECTED_ROWS:
+                raise RuntimeError(f"Expected {EXPECTED_ROWS} rows, got {row_count}")
+
+            with pq.ParquetWriter(
+                temporary,
+                OUTPUT_SCHEMA,
+                compression="snappy",
+            ) as writer:
+                for start in range(0, row_count, BATCH_SIZE):
+                    writer.write_table(
+                        _read_summary_slice(
+                            h5,
+                            start,
+                            min(start + BATCH_SIZE, row_count),
+                        ),
+                    )
+        temporary.replace(output_path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+    return row_count
+
 
 def main() -> None:
     """Read the full summary HDF5 file and write one Parquet file."""
