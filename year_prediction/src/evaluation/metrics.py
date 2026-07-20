@@ -88,6 +88,37 @@ def add_absolute_error(predictions: DataFrame) -> DataFrame:
     )
 
 
+def _quality_aggregations() -> list[Any]:
+    clipped_error = F.col("clipped_prediction_year") - F.col("year")
+    raw_error = F.col("raw_prediction_year") - F.col("year")
+    return [
+        F.count("*").alias("count"),
+        F.countDistinct("track_id").alias("distinct_tracks"),
+        F.countDistinct("artist_id").alias("distinct_artists"),
+        F.avg(ABSOLUTE_ERROR_COLUMN).alias("mae_years"),
+        F.sqrt(F.avg(clipped_error * clipped_error)).alias("rmse_years"),
+        F.percentile_approx(ABSOLUTE_ERROR_COLUMN, 0.5, 100000).alias(
+            "median_absolute_error_years"
+        ),
+        F.avg(F.when(F.col(ABSOLUTE_ERROR_COLUMN) <= 5.0, 1.0).otherwise(0.0)).alias(
+            "within_5_years_rate"
+        ),
+        F.avg(F.when(F.col(ABSOLUTE_ERROR_COLUMN) <= 10.0, 1.0).otherwise(0.0)).alias(
+            "within_10_years_rate"
+        ),
+        F.avg(clipped_error).alias("signed_error_years"),
+        F.avg(F.abs(raw_error)).alias("raw_mae_years"),
+        F.sqrt(F.avg(raw_error * raw_error)).alias("raw_rmse_years"),
+        F.avg(
+            F.when(
+                (F.col("raw_prediction_year") < MIN_YEAR)
+                | (F.col("raw_prediction_year") > MAX_YEAR),
+                1.0,
+            ).otherwise(0.0)
+        ).alias("raw_out_of_range_rate"),
+        F.min("raw_prediction_year").alias("minimum_raw_prediction_year"),
+        F.max("raw_prediction_year").alias("maximum_raw_prediction_year"),
+    ]
 
 
 def _as_number(value: Any) -> int | float:
