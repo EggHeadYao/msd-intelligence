@@ -135,50 +135,37 @@ def validate_graph_edges(edges: DataFrame) -> None:
 
 
 def build_node_vocabulary(
-    spark: SparkSession, input_path: str
+    spark: SparkSession,
+    input_path: str,
 ) -> tuple[dict[str, int], dict[int, str], dict[int, str]]:
-    """Build string<->int mappings for all unique graph nodes.
+    """Build a deterministic integer vocabulary over typed graph nodes."""
+    edges = spark.read.parquet(input_path)
+    validate_graph_edges(edges)
 
-    Reads graph_edges.parquet and assigns a sequential integer ID to
-    every unique node (song, artist, album, tag, year).  Nodes are
-    sorted by their string ID so the mapping is deterministic.
-
-    Returns:
-        node_to_int: string node ID -> integer index
-        int_to_node: integer index -> string node ID
-        int_to_type: integer index -> node type (song|artist|album|tag|year)
-    """
-    edges: DataFrame = spark.read.parquet(input_path)
-
-    src_nodes: DataFrame = edges.select(
-        F.col("src_id").alias("node_id"),
+    src_nodes = edges.select(
         F.col("src_type").alias("node_type"),
-    ).distinct()
-
-    dst_nodes: DataFrame = edges.select(
-        F.col("dst_id").alias("node_id"),
+        F.col("src_id").alias("raw_id"),
+    )
+    dst_nodes = edges.select(
         F.col("dst_type").alias("node_type"),
-    ).distinct()
-
-    all_nodes: DataFrame = (
+        F.col("dst_id").alias("raw_id"),
+    )
+    rows = (
         src_nodes.unionByName(dst_nodes)
         .distinct()
-        .sort("node_id")
+        .sort("node_type", "raw_id")
+        .collect()
     )
-
-    rows: list = all_nodes.collect()
 
     node_to_int: dict[str, int] = {}
     int_to_node: dict[int, str] = {}
     int_to_type: dict[int, str] = {}
-
-    for idx, row in enumerate(rows):
-        node_id: str = row["node_id"]
-        node_type: str = row["node_type"]
-        node_to_int[node_id] = idx
-        int_to_node[idx] = node_id
-        int_to_type[idx] = node_type
-
+    for node_int, row in enumerate(rows):
+        node_type = str(row["node_type"])
+        raw_id = str(row["raw_id"])
+        node_to_int[encode_typed_key(node_type, raw_id)] = node_int
+        int_to_node[node_int] = raw_id
+        int_to_type[node_int] = node_type
     return node_to_int, int_to_node, int_to_type
 
 
