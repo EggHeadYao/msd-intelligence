@@ -232,3 +232,73 @@ def transform(frame: DataFrame, statistics: list[dict[str, int | float | str]]) 
         SPLIT,
     )
 
+
+def build(args: argparse.Namespace, spark: SparkSession) -> Path:
+    require(args.shuffle_partitions > 0, "shuffle partitions must be positive")
+    require(args.output_partitions > 0, "output partitions must be positive")
+    require(not args.output.exists(), f"Output already exists: {args.output}")
+    source_manifest = read_json(args.feature_manifest.resolve())
+    columns = source_columns(source_manifest)
+    source = spark.read.parquet(spark_path(args.input))
+    require_source_schema(source, columns)
+    counts = require_labeled_source(source, source_manifest)
+    labeled = source.where(F.col(SPLIT).isNotNull())
+    statistics = fit_feature_statistics(labeled, columns)
+    vectors = transform(labeled, statistics)
+    vectors_path = args.output / "vectors.parquet"
+    vectors.repartition(args.output_partitions).write.partitionBy(SPLIT).parquet(
+        spark_path(vectors_path)
+    )
+    manifest = {
+        "contract_version": OUTPUT_CONTRACT_VERSION,
+        "format_version": 1,
+        "source": {
+            "path": args.input.as_posix(),
+            "feature_manifest": args.feature_manifest.as_posix(),
+            "feature_manifest_sha256": sha256_file(args.feature_manifest.resolve()),
+            "feature_contract_version": source_manifest["contract_version"],
+            "predictor_order_sha256": order_sha256(columns),
+        },
+        "counts": {
+            "rows": sum(item["tracks"] for item in counts.values()),
+            "splits": counts,
+        },
+        "target": target_contract(),
+        "preprocessing": {
+            "fit_split": "train",
+            "imputation": "train_mean",
+            "scaling": "train_sample_standard_deviation_after_imputation",
+            "dimension": len(columns),
+            "features": statistics,
+        },
+        "output": {
+            "path": "vectors.parquet",
+            "columns": [TRACK_ID, ARTIST_ID, YEAR, TARGET_COLUMN, FEATURES, SPLIT],
+            "schema": schema_payload(vectors),
+            "partition_column": SPLIT,
+        },
+    }
+    write_json(args.output.resolve() / "manifest.json", manifest)
+    print(
+        "year_t90_prepared "
+        f"rows={manifest['counts']['rows']}, dimension={len(columns)}, output={args.output.resolve()}"
+    )
+    return args.output.resolve()
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionPrepareT90")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        build(args, spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
