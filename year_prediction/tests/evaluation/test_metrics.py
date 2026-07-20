@@ -12,6 +12,7 @@ sys.path.insert(0, str(TRAINING_DIR))
 sys.path.insert(0, str(EVALUATION_DIR))
 
 from metrics import (  # noqa: E402
+    clip_year,
     finalize_metric_partial,
     merge_metric_partials,
     prediction_metric_partial,
@@ -19,6 +20,10 @@ from metrics import (  # noqa: E402
 
 
 class RegressionMetricsTest(unittest.TestCase):
+    def test_clipped_boundaries_remain_floating_point(self):
+        self.assertIsInstance(clip_year(-100.0), float)
+        self.assertIsInstance(clip_year(3000.0), float)
+
     def test_metrics_use_continuous_clipped_year_predictions(self):
         rows = [
             prediction_metric_partial(0.0, -0.1),
