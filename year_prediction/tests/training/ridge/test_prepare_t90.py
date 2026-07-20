@@ -73,3 +73,74 @@ class PrepareT90Test(unittest.TestCase):
             values = feature_values(row_index)
             if row_index == 0:
                 values[0] = None  # type: ignore[assignment]
+            rows.append(
+                (
+                    f"TR{row_index:04d}",
+                    f"AR{row_index:04d}",
+                    1922 + row_index * 10,
+                    split,
+                    *values,
+                )
+            )
+        source = self.spark.createDataFrame(rows, schema)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_path = root / "t90.parquet"
+            source.write.parquet(source_path.resolve().as_uri())
+            feature_manifest_path = root / "feature_manifest.json"
+            feature_manifest = {
+                "contract_version": prepare_t90.SOURCE_CONTRACT_VERSION,
+                "audit_columns": list(prepare_t90.AUDIT_COLUMNS),
+                "counts": {
+                    "splits": {
+                        "train": {"tracks": 4, "artists": 4},
+                        "validation": {"tracks": 1, "artists": 1},
+                        "test": {"tracks": 1, "artists": 1},
+                    }
+                },
+                "views": {
+                    "t90": {
+                        "predictor_columns": list(columns),
+                        "predictor_count": 90,
+                        "predictor_order_sha256": prepare_t90.order_sha256(columns),
+                    }
+                },
+            }
+            feature_manifest_path.write_text(
+                json.dumps(feature_manifest),
+                encoding="ascii",
+            )
+            output = root / "prepared"
+            prepare_args = argparse.Namespace(
+                input=source_path,
+                feature_manifest=feature_manifest_path,
+                output=output,
+                shuffle_partitions=2,
+                output_partitions=2,
+            )
+            prepare_t90.build(prepare_args, self.spark)
+            validate_args = argparse.Namespace(
+                input=output,
+                source=source_path,
+                feature_manifest=feature_manifest_path,
+                shuffle_partitions=2,
+            )
+            validate_t90_data.validate(validate_args, self.spark)
+
+            vectors = self.spark.read.parquet((output / "vectors.parquet").resolve().as_uri())
+            manifest = read_json(output / "manifest.json")
+            first = vectors.where("track_id = 'TR0000'").first()
+            self.assertEqual(vectors.count(), 6)
+            self.assertEqual(len(first["features"]), 90)
+            self.assertAlmostEqual(first["features"][0], 0.0)
+            self.assertEqual(first["normalized_year"], 0.0)
+            self.assertEqual(manifest["preprocessing"]["dimension"], 90)
+            self.assertEqual(
+                manifest["preprocessing"]["features"][0]["imputed_train_count"],
+                1,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
