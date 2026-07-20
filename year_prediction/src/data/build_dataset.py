@@ -129,3 +129,78 @@ def assign_artists(
         .select(ARTIST_ID, SPLIT)
     )
 
+
+def assignment_sha256(assignments: DataFrame) -> str:
+    digest = hashlib.sha256()
+    for row in assignments.orderBy(ARTIST_ID).toLocalIterator():
+        digest.update(f"{row[ARTIST_ID]}\t{row[SPLIT]}\n".encode("ascii"))
+    return digest.hexdigest()
+
+
+def split_statistics(labeled: DataFrame) -> dict[str, dict[str, int]]:
+    rows = labeled.groupBy(SPLIT).agg(
+        F.count("*").alias("tracks"),
+        F.countDistinct(ARTIST_ID).alias("artists"),
+    ).collect()
+    return {
+        row[SPLIT]: {"artists": int(row["artists"]), "tracks": int(row["tracks"])}
+        for row in rows
+    }
+
+
+def source_path(path: Path) -> str:
+    return path.as_posix()
+
+
+def audio_contract(path: Path) -> dict[str, Any]:
+    contract_path = path / "feature_contract.json"
+    with contract_path.open("r", encoding="ascii") as handle:
+        contract = json.load(handle)
+    batches = sorted(path.glob("features_*.parquet"))
+    require(len(batches) == 100, f"Expected 100 audio feature batches, got {len(batches)}")
+    require(contract["contract_version"] == AUDIO_CONTRACT_VERSION, "audio contract version differs")
+    require(int(contract["feature_count"]) == AUDIO_FEATURE_COUNT, "audio feature count differs")
+    require(len(contract["columns"]) == AUDIO_FEATURE_COUNT + 1, "audio contract columns differ")
+    require(contract["columns"][0] == TRACK_ID, "audio contract must start with track_id")
+    require(
+        contract["feature_order_sha256"] == AUDIO_FEATURE_ORDER_SHA256,
+        "audio feature order differs",
+    )
+    return {
+        "path": source_path(path),
+        "batch_count": len(batches),
+        "bytes": sum(item.stat().st_size for item in batches),
+        "contract_path": source_path(contract_path),
+        "contract_sha256": sha256_file(contract_path),
+        "contract_version": contract["contract_version"],
+        "feature_count": int(contract["feature_count"]),
+        "feature_order_sha256": contract["feature_order_sha256"],
+    }
+
+
+def build(args: argparse.Namespace, spark: SparkSession) -> Path:
+    require(0 < args.validation_percent < 100, "validation percent must be between 1 and 99")
+    require(not args.output.exists(), f"Output already exists: {args.output}")
+    require(sha256_file(args.train_artists) == OFFICIAL_TRAIN_SHA256, "train artist checksum differs")
+    require(sha256_file(args.test_artists) == OFFICIAL_TEST_SHA256, "test artist checksum differs")
+
+    scalar = spark.read.parquet(spark_path(args.scalar))
+    require_schema(scalar, SCALAR_COLUMNS, SCALAR_TYPES)
+    scalar_keys = scalar.select(TRACK_ID, ARTIST_ID, YEAR).persist(StorageLevel.MEMORY_AND_DISK)
+    scalar_row = scalar_keys.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.sum(F.when(F.col(YEAR).isNull(), 1).otherwise(0)).alias("unlabeled"),
+        F.sum(F.when(F.col(YEAR).between(MIN_YEAR, MAX_YEAR), 1).otherwise(0)).alias("labeled"),
+        F.sum(
+            F.when(F.col(YEAR).isNotNull() & ~F.col(YEAR).between(MIN_YEAR, MAX_YEAR), 1).otherwise(0)
+        ).alias("invalid_years"),
+        F.sum(
+            F.when(
+                F.col(TRACK_ID).isNull()
+                | (F.col(TRACK_ID) == "")
+                | F.col(ARTIST_ID).isNull()
+                | (F.col(ARTIST_ID) == ""),
+                1,
+            ).otherwise(0)
+        ).alias("invalid_ids"),
