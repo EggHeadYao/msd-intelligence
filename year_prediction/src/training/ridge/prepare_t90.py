@@ -67,3 +67,41 @@ def order_sha256(columns: list[str] | tuple[str, ...]) -> str:
     payload = json.dumps(list(columns), ensure_ascii=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
+
+def schema_payload(frame: DataFrame) -> list[dict[str, str]]:
+    return [
+        {"name": field.name, "type": field.dataType.simpleString()}
+        for field in frame.schema.fields
+    ]
+
+
+def source_columns(manifest: dict[str, Any]) -> tuple[str, ...]:
+    require(
+        manifest.get("contract_version") == SOURCE_CONTRACT_VERSION,
+        "Unexpected feature contract version",
+    )
+    require(tuple(manifest.get("audit_columns", ())) == AUDIT_COLUMNS, "Audit columns differ")
+    view = manifest.get("views", {}).get("t90", {})
+    columns = tuple(view.get("predictor_columns", ()))
+    require(len(columns) == T90_DIMENSION, "T90 feature count differs")
+    require(len(set(columns)) == T90_DIMENSION, "T90 feature names are duplicated")
+    require(view.get("predictor_count") == T90_DIMENSION, "T90 manifest dimension differs")
+    require(
+        view.get("predictor_order_sha256") == order_sha256(columns),
+        "T90 feature order hash differs",
+    )
+    return columns
+
+
+def require_source_schema(frame: DataFrame, columns: tuple[str, ...]) -> None:
+    require(tuple(frame.columns) == AUDIT_COLUMNS + columns, "T90 source column order differs")
+    types = {field.name: field.dataType.simpleString() for field in frame.schema.fields}
+    expected = {
+        TRACK_ID: "string",
+        ARTIST_ID: "string",
+        YEAR: "int",
+        SPLIT: "string",
+        **{column: "double" for column in columns},
+    }
+    require(types == expected, "T90 source schema differs")
+
