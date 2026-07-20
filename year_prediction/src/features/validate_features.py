@@ -437,3 +437,77 @@ def validate(args: argparse.Namespace, spark: SparkSession) -> None:
         == order_sha256(predictor_columns),
         "full order hash differs",
     )
+    groups = ordered_feature_groups(audio_contract)
+    require({name: len(columns) for name, columns in groups.items()} == EXPECTED_GROUP_COUNTS, "feature group dimensions differ")
+    require(manifest["feature_groups"] == {name: list(columns) for name, columns in groups.items()}, "manifest feature groups differ")
+    require(
+        tuple(manifest["excluded_audio_columns"]) == YEAR_EXCLUDED_COLUMNS,
+        "manifest excluded columns differ",
+    )
+    expected_predictor_contract = [
+        {
+            "name": column,
+            "type": full_types[column],
+            "source": column_source(column),
+            "unit": column_unit(column),
+            "missing": column_missing_rule(column),
+        }
+        for column in predictor_columns
+    ]
+    require(
+        manifest["predictor_contract"] == expected_predictor_contract,
+        "manifest predictor semantics differ",
+    )
+
+    split_counts = dataset_manifest["counts"]["splits"]
+    require_output_counts(t90, "T90", split_counts)
+    require_output_counts(full, "full tabular", split_counts)
+    expected = expected_audit(scalar, labels)
+    require_same(audio, expected, (TRACK_ID,), "audio/scalar coverage")
+    require_same(t90, expected, AUDIT_COLUMNS, "T90 audit fields")
+    require_same(full, expected, AUDIT_COLUMNS, "full audit fields")
+    require_same(t90, full, AUDIT_COLUMNS, "view audit relation")
+    require_same_values(t90, audio, T90_COLUMNS, "T90 projection")
+    require_same_values(full, audio, shared_columns, "full audio projection")
+    require_same_values(
+        full,
+        expected_globals(scalar),
+        GLOBAL_SCALAR_COLUMNS + DERIVED_SCALAR_COLUMNS,
+        "full global projection",
+    )
+    require_no_infinity(full, predictor_columns)
+    require_binary_flags(full)
+    require_categories(full)
+    require_mask_nulls(full)
+    require_ratio_identity(full)
+
+    if args.hdf5_root is not None:
+        validate_hdf5_samples(
+            args.hdf5_root,
+            args.hdf5_samples,
+            audio,
+            tuple(audio_contract["columns"][1:]),
+        )
+    print(
+        "year_features_valid "
+        f"tracks={EXPECTED_TRACKS}, t90={len(T90_COLUMNS)}, full={len(predictor_columns)}"
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionValidateFeatures")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .config("spark.sql.debug.maxToStringFields", "1000")
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        validate(args, spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
