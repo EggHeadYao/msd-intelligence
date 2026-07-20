@@ -125,3 +125,59 @@ def schema_payload(frame: DataFrame) -> list[dict[str, object]]:
     ]
 
 
+def build_metadata(scalar: DataFrame, labels: DataFrame) -> DataFrame:
+    labeled = labels.select(
+        TRACK_ID,
+        F.col(ARTIST_ID).alias("_label_artist_id"),
+        F.col(YEAR).alias("_label_year"),
+        F.col(SPLIT).alias("_label_split"),
+    )
+    joined = scalar.select(
+        TRACK_ID,
+        ARTIST_ID,
+        YEAR,
+        *GLOBAL_SCALAR_COLUMNS,
+    ).join(labeled, TRACK_ID, "left")
+    label_present = F.col("_label_split").isNotNull()
+    invalid = (
+        (F.col(YEAR).isNotNull() != label_present)
+        | (
+            label_present
+            & (
+                ~F.col(ARTIST_ID).eqNullSafe(F.col("_label_artist_id"))
+                | ~F.col(YEAR).eqNullSafe(F.col("_label_year"))
+            )
+        )
+    )
+    summary = joined.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.sum(F.when(label_present, 1).otherwise(0)).alias("labeled"),
+        F.sum(F.when(invalid, 1).otherwise(0)).alias("invalid"),
+    ).first()
+    require(int(summary["rows"]) == EXPECTED_TRACKS, "metadata row count differs")
+    require(int(summary["tracks"]) == EXPECTED_TRACKS, "metadata track IDs are duplicated")
+    require(int(summary["labeled"]) == EXPECTED_LABELED_TRACKS, "metadata label count differs")
+    require(int(summary["invalid"]) == 0, "dataset labels disagree with scalar data")
+    return joined.select(
+        TRACK_ID,
+        ARTIST_ID,
+        YEAR,
+        F.col("_label_split").alias(SPLIT),
+        *GLOBAL_SCALAR_COLUMNS,
+    )
+
+
+def predictor_metadata(columns: tuple[str, ...], types: dict[str, str]) -> list[dict[str, str]]:
+    return [
+        {
+            "name": column,
+            "type": types[column],
+            "source": column_source(column),
+            "unit": column_unit(column),
+            "missing": column_missing_rule(column),
+        }
+        for column in columns
+    ]
+
+
