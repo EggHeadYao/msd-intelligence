@@ -22,7 +22,7 @@ The builder refuses to overwrite an existing output directory.
 ## Validate
 
 ```bash
-spark-submit --master 'local[2]' --driver-memory 4g \
+spark-submit --master 'local[2]' --driver-memory 3g \
   p1team02/year_prediction/src/features/validate_features.py \
   --features parquets/year_prediction/features \
   --shuffle-partitions 32
