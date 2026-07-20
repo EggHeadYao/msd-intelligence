@@ -44,7 +44,24 @@ class FullTabularProjectionTest(unittest.TestCase):
         )
         rows = [
             ("valid", "artist", 2000, "train", 7.0, -5.0, 120.0, 100.0, 2, 0.8, 1, 0.9, 4, 0.7, 1.0, 90.0),
-            ("tolerated", "artist", 2000, "train", 8.0, -6.0, 100.0, 100.0, 3, 0.7, 0, 0.8, 3, 0.6, 1.0, 100.0005),
+            (
+                "tolerated",
+                "artist",
+                2000,
+                "train",
+                8.0,
+                -6.0,
+                100.0,
+                100.0,
+                3,
+                0.7,
+                0,
+                0.8,
+                3,
+                0.6,
+                1.0,
+                100.0005,
+            ),
             ("invalid", "artist", None, None, 9.0, -7.0, 0.0, 100.0, -1, 0.6, 2, 0.7, 0, 0.5, 10.0, 5.0),
         ]
         return self.spark.createDataFrame(rows, schema=schema)
