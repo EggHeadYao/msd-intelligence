@@ -187,3 +187,45 @@ def load_test_frame(
     require(int(summary["invalid_rows"]) == 0, "Test data contains invalid rows")
     return test
 
+
+def require_valid_predictions(predictions: DataFrame, expected_count: int) -> None:
+    require(
+        predictions.schema.simpleString() == PREDICTION_SCHEMA.simpleString(),
+        "Unexpected test prediction schema",
+    )
+    invalid = None
+    for name in (
+        "normalized_year",
+        "normalized_prediction",
+        "raw_prediction_year",
+        "clipped_prediction_year",
+        ABSOLUTE_ERROR_COLUMN,
+    ):
+        current = (
+            F.col(name).isNull()
+            | F.isnan(name)
+            | (F.abs(F.col(name)) == F.lit(float("inf")))
+        )
+        invalid = current if invalid is None else invalid | current
+    summary = predictions.agg(
+        F.count("*").alias("count"),
+        F.countDistinct("track_id").alias("distinct_tracks"),
+        F.sum(F.when(invalid, 1).otherwise(0)).alias("invalid_rows"),
+        F.sum(
+            F.when(
+                F.abs(
+                    F.col(ABSOLUTE_ERROR_COLUMN)
+                    - F.abs(F.col("clipped_prediction_year") - F.col("year"))
+                )
+                > 1.0e-12,
+                1,
+            ).otherwise(0)
+        ).alias("incorrect_errors"),
+    ).first()
+    require(summary is not None, "Prediction summary is missing")
+    require(int(summary["count"]) == expected_count, "Test prediction count differs")
+    require(int(summary["distinct_tracks"]) == expected_count, "Test predictions are duplicated")
+    require(int(summary["invalid_rows"]) == 0, "Test predictions contain invalid values")
+    require(int(summary["incorrect_errors"]) == 0, "Test absolute errors are incorrect")
+
+
