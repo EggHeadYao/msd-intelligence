@@ -10,12 +10,12 @@ The extraction scripts are checked by `pyrefly` and `ruff`.
 
 ### `extract_summary.py`
 
-Reads the selected scalar fields from `msd_summary_file.h5` into memory and writes one Parquet file with explicit missing-value semantics.
+Reads the selected scalar fields from `msd_summary_file.h5` in 10,000-row batches and atomically writes one Parquet file with explicit missing-value semantics.
 
 ```bash
 python extract_summary.py \
   millionsong/AdditionalFiles/msd_summary_file.h5 \
-  <output_dir>
+  <output_parquet>
 ```
 
 The fixed 23-column output is:
