@@ -71,3 +71,73 @@ ROBUST_COLUMNS = tuple(
     )
     for stat in ("mean", "std", "q10", "q50", "q90")
 )
+TEMPORAL_COLUMNS = tuple(
+    column
+    for part in range(4)
+    for column in (
+        *indexed(f"quarter_{part}_pitch_mean"),
+        *indexed(f"quarter_{part}_timbre_mean"),
+        f"quarter_{part}_loudness_max_mean",
+    )
+) + tuple(
+    column
+    for part in range(2)
+    for column in (
+        *indexed(f"half_{part}_pitch_mean"),
+        *indexed(f"half_{part}_timbre_mean"),
+        f"half_{part}_loudness_max_mean",
+    )
+) + tuple(f"has_quarter_{part}" for part in range(4)) + ("has_half_0", "has_half_1")
+TONALITY_COLUMNS = (
+    indexed("key_relative_pitch_mean")
+    + tuple(
+        column
+        for part in range(2)
+        for column in indexed(f"key_relative_half_{part}_pitch_mean")
+    )
+    + tuple(
+        column
+        for part in range(4)
+        for column in indexed(f"key_relative_quarter_{part}_pitch_mean")
+    )
+    + (
+        "pitch_profile_entropy",
+        "pitch_profile_concentration",
+        "has_pitch_profile",
+        "has_key_relative_pitch",
+    )
+)
+DYNAMICS_COLUMNS = (
+    "segment_count",
+    "segment_density",
+    *(f"segment_duration_{stat}" for stat in ("mean", "std", "q10", "q50", "q90", "cv")),
+    *(f"pitch_delta_cosine_{stat}" for stat in ("mean", "std", "q50", "q90")),
+    *(f"timbre_delta_abs_{stat}_{index}" for stat in ("mean", "std") for index in range(12)),
+    *(f"loudness_delta_abs_{stat}" for stat in ("mean", "std", "q50", "q90")),
+    "section_pitch_change_mean",
+    "section_pitch_change_std",
+    "section_timbre_change_mean",
+    "section_timbre_change_std",
+    "section_loudness_change_mean",
+    "section_loudness_change_std",
+)
+RHYTHM_COLUMNS = (
+    *(f"{event}_{suffix}" for event in ("beat", "bar", "tatum", "section") for suffix in ("count", "density")),
+    *(f"{event}_interval_{stat}" for event in ("beat", "bar", "tatum") for stat in ("median", "iqr", "cv")),
+    "beat_local_bpm_median",
+    "beat_local_bpm_cv",
+    "global_local_tempo_deviation",
+    "beats_per_bar_median",
+    "tatums_per_beat_median",
+    *(f"{event}_{suffix}" for event in ("segments", "beats", "bars", "tatums", "sections") for suffix in ("confidence_mean", "low_confidence_fraction")),
+    *(f"section_duration_{stat}" for stat in ("mean", "std", "q10", "q50", "q90", "cv")),
+    "section_longest_ratio",
+    *(f"{event}_interval_{quantile}" for event in ("beat", "bar", "tatum") for quantile in ("q10", "q90")),
+    "beat_local_bpm_q10",
+    "beat_local_bpm_q90",
+    "beat_local_bpm_iqr",
+    "section_duration_iqr",
+    "has_beat_intervals",
+    "has_bar_intervals",
+    "has_tatum_intervals",
+)
