@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 EXPECTED_ROWS = 1_000_000
+BATCH_SIZE = 10_000
 
 ANALYSIS_FIELDS: tuple[str, ...] = (
     "track_id",
@@ -116,29 +117,34 @@ def _row_to_dict(row: np.void, fields: Sequence[str]) -> dict[str, object | None
     return {field: _clean_value(field, row[field]) for field in fields}
 
 
-def read_summary(h5: h5py.File, limit: int | None = None) -> pa.Table:
-    """Read the selected summary fields and combine datasets by row position."""
-    selection = slice(None) if limit is None else slice(0, limit)
+def _row_count(h5: h5py.File) -> int:
+    analysis_count = len(h5["/analysis/songs"])
+    metadata_count = len(h5["/metadata/songs"])
+    musicbrainz_count = len(h5["/musicbrainz/songs"])
+    if metadata_count != analysis_count or musicbrainz_count != analysis_count:
+        raise RuntimeError(
+            "Row count mismatch: "
+            f"analysis={analysis_count}, metadata={metadata_count}, "
+            f"musicbrainz={musicbrainz_count}",
+        )
+    return analysis_count
+
+
+def _read_summary_slice(h5: h5py.File, start: int, stop: int) -> pa.Table:
+    selection = slice(start, stop)
     analysis_rows: np.ndarray = h5["/analysis/songs"][selection]
     metadata_rows: np.ndarray = h5["/metadata/songs"][selection]
     musicbrainz_rows: np.ndarray = h5["/musicbrainz/songs"][selection]
 
-    row_count = analysis_rows.shape[0]
-    if metadata_rows.shape[0] != row_count or musicbrainz_rows.shape[0] != row_count:
-        raise RuntimeError(
-            "Row count mismatch: "
-            f"analysis={row_count}, metadata={metadata_rows.shape[0]}, "
-            f"musicbrainz={musicbrainz_rows.shape[0]}",
-        )
-
     rows: list[dict[str, object | None]] = []
-    for index in range(row_count):
+    for index in range(analysis_rows.shape[0]):
         row = _row_to_dict(analysis_rows[index], ANALYSIS_FIELDS)
         row.update(_row_to_dict(metadata_rows[index], METADATA_FIELDS))
         row["year"] = _clean_value("year", musicbrainz_rows[index]["year"])
         rows.append(row)
 
     return pa.Table.from_pylist(rows, schema=OUTPUT_SCHEMA)
+
 
 
 def main() -> None:
@@ -151,16 +157,9 @@ def main() -> None:
     input_path = Path(sys.argv[1])
     output_path = Path(sys.argv[2])
 
-    with h5py.File(input_path, "r") as h5:
-        result = read_summary(h5)
-
-    if result.num_rows != EXPECTED_ROWS:
-        raise RuntimeError(f"Expected {EXPECTED_ROWS} rows, got {result.num_rows}")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(result, output_path)
+    row_count = write_summary(input_path, output_path)
     print(
-        f"Wrote {result.num_rows} rows, {result.num_columns} columns to {output_path}",
+        f"Wrote {row_count} rows, {len(OUTPUT_SCHEMA)} columns to {output_path}",
     )
 
 
