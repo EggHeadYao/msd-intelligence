@@ -141,3 +141,56 @@ RHYTHM_COLUMNS = (
     "has_bar_intervals",
     "has_tatum_intervals",
 )
+QUALITY_COLUMNS = (
+    "has_segments",
+    "has_beats",
+    "has_bars",
+    "has_tatums",
+    "has_sections",
+    "invalid_segment_duration_fraction",
+    "valid_analysis_duration_ratio",
+    "has_t90",
+)
+FEATURE_GROUPS = {
+    "robust": ROBUST_COLUMNS,
+    "temporal": TEMPORAL_COLUMNS,
+    "t90": T90_COLUMNS,
+    "tonality": TONALITY_COLUMNS,
+    "dynamics": DYNAMICS_COLUMNS,
+    "rhythm": RHYTHM_COLUMNS,
+    "quality": QUALITY_COLUMNS,
+}
+EXPECTED_GROUP_COUNTS = {
+    "robust": 140,
+    "temporal": 156,
+    "t90": 90,
+    "tonality": 88,
+    "dynamics": 46,
+    "rhythm": 52,
+    "quality": 8,
+}
+YEAR_SHARED_FEATURE_SET = frozenset(
+    column for columns in FEATURE_GROUPS.values() for column in columns
+)
+BINARY_FEATURE_COLUMNS = tuple(
+    column
+    for columns in FEATURE_GROUPS.values()
+    for column in columns
+    if column.startswith("has_")
+) + ("mode",)
+CATEGORICAL_COLUMNS = ("key", "mode", "time_signature")
+FORBIDDEN_PREDICTOR_COLUMNS = (
+    "track_id",
+    "song_id",
+    "artist_id",
+    "artist_name",
+    "title",
+    "release",
+    "song_hotttnesss",
+    "artist_hotttnesss",
+    "artist_familiarity",
+    "year",
+    "split",
+)
+
+
