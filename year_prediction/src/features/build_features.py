@@ -181,3 +181,26 @@ def predictor_metadata(columns: tuple[str, ...], types: dict[str, str]) -> list[
     ]
 
 
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionBuildFeatures")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .config("spark.sql.debug.maxToStringFields", "1000")
+        .config("spark.sql.broadcastTimeout", "1200")
+        .config("spark.hadoop.parquet.block.size", str(16 * 1024 * 1024))
+        .config("spark.hadoop.parquet.page.size", str(64 * 1024))
+        .config("spark.hadoop.parquet.dictionary.page.size", str(64 * 1024))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        output = build(args, spark)
+        print(f"year_features_built output={output.resolve()}")
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
