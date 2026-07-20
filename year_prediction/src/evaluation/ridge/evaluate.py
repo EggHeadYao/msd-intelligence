@@ -229,3 +229,65 @@ def require_valid_predictions(predictions: DataFrame, expected_count: int) -> No
     require(int(summary["incorrect_errors"]) == 0, "Test absolute errors are incorrect")
 
 
+def evaluate(
+    model_directory: Path,
+    output_root: Path,
+    spark: SparkSession,
+    prediction_partitions: int = 8,
+    overwrite: bool = False,
+) -> Path:
+    require(prediction_partitions > 0, "prediction_partitions must be positive")
+    started = time.perf_counter()
+    model_directory = model_directory.resolve()
+    model, manifest = load_model(model_directory)
+    data_started = time.perf_counter()
+    test = load_test_frame(spark, model, manifest)
+    data_validation_seconds = time.perf_counter() - data_started
+    output = output_root.resolve() / str(model["model_id"]) / TEST
+    output = prepare_output_directory(output, overwrite)
+    ship_worker_modules(spark)
+    weights = [float(value) for value in model["weights"]]
+    intercept = float(model["intercept"])
+    rows = test.select(
+        "track_id", "artist_id", "year", "normalized_year", FEATURES
+    ).rdd.map(
+        lambda row: prediction_row(
+            (
+                row["track_id"],
+                row["artist_id"],
+                int(row["year"]),
+                float(row["normalized_year"]),
+                row[FEATURES],
+            ),
+            weights,
+            intercept,
+        )
+    )
+    prediction_started = time.perf_counter()
+    predictions = add_absolute_error(spark.createDataFrame(rows, BASE_PREDICTION_SCHEMA))
+    predictions.repartition(prediction_partitions).write.mode("error").parquet(
+        spark_path(output / "predictions.parquet")
+    )
+    prediction_seconds = time.perf_counter() - prediction_started
+    metric_started = time.perf_counter()
+    saved_predictions = spark.read.parquet(spark_path(output / "predictions.parquet"))
+    expected_count = int(manifest["counts"]["splits"][TEST]["tracks"])
+    require_valid_predictions(saved_predictions, expected_count)
+    overall = aggregate_quality_metrics(saved_predictions)
+    decades = aggregate_decade_metrics(saved_predictions)
+    overall["macro_decade_mae_years"] = sum(
+        float(row["mae_years"]) for row in decades
+    ) / len(decades)
+    metric_seconds = time.perf_counter() - metric_started
+    metrics_document = {
+        "format_version": 1,
+        "model_id": model["model_id"],
+        "split": TEST,
+        "metrics": overall,
+    }
+    decade_document = {
+        "format_version": 1,
+        "model_id": model["model_id"],
+        "split": TEST,
+        "decades": decades,
+    }
