@@ -47,3 +47,66 @@ SCHEMA = StructType(
 def vector(first: float) -> list[float]:
     return [first, *([0.0] * (DIMENSION - 1))]
 
+
+class RidgeTestEvaluationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.spark = (
+            SparkSession.builder.master("local[2]")
+            .appName("RidgeTestEvaluationTest")
+            .config("spark.sql.shuffle.partitions", "2")
+            .getOrCreate()
+        )
+        cls.spark.sparkContext.setLogLevel("ERROR")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.spark.stop()
+
+    def test_complete_test_evaluation_outputs(self):
+        rows = [
+            ("TR0001", "AR0001", 1922, 0.0, vector(0.0), "test"),
+            ("TR0002", "AR0002", 1967, 45.0 / 89.0, vector(0.5), "test"),
+            ("TR0003", "AR0003", 2011, 1.0, vector(1.1), "test"),
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            vectors = root / "vectors.parquet"
+            manifest_path = root / "manifest.json"
+            model_directory = root / "models" / "ridge-test"
+            output_root = root / "results"
+            self.spark.createDataFrame(rows, SCHEMA).write.partitionBy("split").parquet(
+                vectors.resolve().as_uri()
+            )
+            manifest = {
+                "format_version": 1,
+                "contract_version": "year_prediction_t90_training_v1",
+                "source": {"predictor_order_sha256": "synthetic-t90-order"},
+                "target": target_contract(),
+                "preprocessing": {
+                    "fit_split": "train",
+                    "dimension": DIMENSION,
+                    "features": [
+                        {"name": f"t90_{index}"} for index in range(DIMENSION)
+                    ],
+                },
+                "counts": {
+                    "splits": {
+                        "train": {"tracks": 1, "artists": 1},
+                        "validation": {"tracks": 1, "artists": 1},
+                        "test": {"tracks": 3, "artists": 3},
+                    }
+                },
+                "output": {
+                    "path": "vectors.parquet",
+                    "partition_column": "split",
+                    "columns": [
+                        "track_id",
+                        "artist_id",
+                        "year",
+                        "normalized_year",
+                        "features",
+                        "split",
+                    ],
+                },
+            }
