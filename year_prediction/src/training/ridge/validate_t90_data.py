@@ -73,3 +73,43 @@ def finite_array(column: Column) -> Column:
         & ~F.isnan(value)
         & (F.abs(value) != F.lit(float("inf"))),
     )
+
+
+def validate_manifest(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+    require(
+        manifest.get("contract_version") == OUTPUT_CONTRACT_VERSION,
+        "Unexpected T90 training contract version",
+    )
+    require(manifest.get("format_version") == 1, "Unexpected T90 manifest format")
+    expected_target = target_contract()
+    require(manifest.get("target") == expected_target, "Target contract differs")
+    preprocessing = manifest.get("preprocessing", {})
+    require(preprocessing.get("fit_split") == "train", "Preprocessing was not fit on train")
+    require(preprocessing.get("imputation") == "train_mean", "Imputation contract differs")
+    require(
+        preprocessing.get("scaling") == "train_sample_standard_deviation_after_imputation",
+        "Scaling contract differs",
+    )
+    dimension = int(preprocessing.get("dimension", 0))
+    statistics = preprocessing.get("features", [])
+    require(dimension == 90 and len(statistics) == dimension, "T90 dimension differs")
+    names = [str(item.get("name")) for item in statistics]
+    require(len(set(names)) == dimension, "T90 statistic names are duplicated")
+    require(
+        manifest.get("source", {}).get("predictor_order_sha256") == order_sha256(names),
+        "T90 statistic order differs",
+    )
+    for item in statistics:
+        require(math.isfinite(float(item["mean"])), f"Non-finite mean for {item['name']}")
+        require(
+            math.isfinite(float(item["standard_deviation"]))
+            and float(item["standard_deviation"]) > 0.0,
+            f"Invalid standard deviation for {item['name']}",
+        )
+        require(int(item["finite_train_count"]) > 0, f"Empty train feature {item['name']}")
+        require(int(item["imputed_train_count"]) >= 0, f"Invalid missing count for {item['name']}")
+    output = manifest.get("output", {})
+    require(tuple(output.get("columns", ())) == OUTPUT_COLUMNS, "Output columns differ")
+    require(output.get("partition_column") == SPLIT, "Output partition contract differs")
+    return statistics, dimension
+
