@@ -269,3 +269,49 @@ def validate(args: argparse.Namespace, spark: SparkSession) -> None:
         assignment_sha256(assignments) == manifest["artist_assignment_sha256"],
         "artist assignment checksum differs",
     )
+
+    feature_paths = audio_paths(args.audio)
+    require(len(feature_paths) == 100, "audio feature batch count differs")
+    audio_ids = spark.read.parquet(*feature_paths).select(TRACK_ID)
+    audio_summary = audio_ids.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+    ).first()
+    require(int(audio_summary["rows"]) == EXPECTED_INPUT_TRACKS, "audio row count differs")
+    require(int(audio_summary["tracks"]) == EXPECTED_INPUT_TRACKS, "audio track IDs differ")
+    require_same(audio_ids, scalar_keys, (TRACK_ID,), "audio/scalar coverage")
+
+    require(manifest["counts"]["input_tracks"] == EXPECTED_INPUT_TRACKS, "manifest input count differs")
+    require(manifest["counts"]["labeled_tracks"] == EXPECTED_LABELED_TRACKS, "manifest label count differs")
+    require(manifest["counts"]["unlabeled_tracks"] == EXPECTED_UNLABELED_TRACKS, "manifest unlabeled count differs")
+    require(manifest["counts"]["labeled_artists"] == EXPECTED_LABELED_ARTISTS, "manifest artist count differs")
+    require(manifest["schema"]["labelled_tracks"] == LABEL_TYPES, "manifest label schema differs")
+    require(manifest["schema"]["split_assignments"] == ASSIGNMENT_TYPES, "manifest split schema differs")
+
+    assignments.unpersist()
+    labels.unpersist()
+    scalar_keys.unpersist()
+    print(
+        "year_dataset_valid "
+        f"tracks={EXPECTED_INPUT_TRACKS}, labeled={EXPECTED_LABELED_TRACKS}, "
+        f"train={stats[TRAIN]['tracks']}, validation={stats[VALIDATION]['tracks']}, "
+        f"test={stats[TEST]['tracks']}"
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionValidateDataset")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        validate(args, spark)
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
