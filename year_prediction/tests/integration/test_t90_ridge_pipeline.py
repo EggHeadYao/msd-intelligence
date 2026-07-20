@@ -45,6 +45,42 @@ SCHEMA = StructType(
 )
 
 
+def vector(first: float, second: float) -> list[float]:
+    return [first, second, *([0.0] * (DIMENSION - 2))]
+
+
+def write_manifest(path: Path, train_count: int, validation_count: int) -> None:
+    manifest = {
+        "format_version": 1,
+        "contract_version": "year_prediction_t90_training_v1",
+        "source": {"predictor_order_sha256": "synthetic-t90-order"},
+        "target": target_contract(),
+        "preprocessing": {
+            "fit_split": "train",
+            "dimension": DIMENSION,
+            "features": [{"name": f"t90_{index}"} for index in range(DIMENSION)],
+        },
+        "counts": {
+            "splits": {
+                "train": {"tracks": train_count},
+                "validation": {"tracks": validation_count},
+            }
+        },
+        "output": {
+            "path": "vectors.parquet",
+            "partition_column": "split",
+            "columns": [
+                "track_id",
+                "artist_id",
+                "year",
+                "normalized_year",
+                "features",
+                "split",
+            ],
+        },
+    }
+    path.write_text(json.dumps(manifest), encoding="ascii")
+
 
 class RidgePipelineTest(unittest.TestCase):
     @classmethod
@@ -63,7 +99,14 @@ class RidgePipelineTest(unittest.TestCase):
 
     def test_small_end_to_end_training_and_artifacts(self):
         rows = [
-
+            ("TR0001", "AR0001", 1931, 9.0 / 89.0, vector(-1.0, 0.0), "train"),
+            ("TR0002", "AR0002", 1940, 18.0 / 89.0, vector(-0.7, 0.2), "train"),
+            ("TR0003", "AR0003", 1958, 36.0 / 89.0, vector(-0.2, -0.4), "train"),
+            ("TR0004", "AR0004", 1976, 54.0 / 89.0, vector(0.2, 0.5), "train"),
+            ("TR0005", "AR0005", 1994, 72.0 / 89.0, vector(0.7, -0.1), "train"),
+            ("TR0006", "AR0006", 2003, 81.0 / 89.0, vector(1.0, 0.3), "train"),
+            ("TR0007", "AR0007", 1949, 27.0 / 89.0, vector(-0.5, 0.1), "validation"),
+            ("TR0008", "AR0008", 1985, 63.0 / 89.0, vector(0.5, 0.0), "validation"),
         ]
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
