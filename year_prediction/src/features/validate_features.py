@@ -431,15 +431,25 @@ def validate(args: argparse.Namespace, spark: SparkSession) -> None:
         not (set(full.columns) & set(FORBIDDEN_PREDICTOR_COLUMNS)) - set(AUDIT_COLUMNS),
         "forbidden predictors found",
     )
-    require(manifest["views"]["t90"]["predictor_order_sha256"] == order_sha256(T90_COLUMNS), "T90 order hash differs")
+    require(
+        manifest["views"]["t90"]["predictor_order_sha256"] == order_sha256(T90_COLUMNS),
+        "T90 order hash differs",
+    )
     require(
         manifest["views"]["full_tabular"]["predictor_order_sha256"]
         == order_sha256(predictor_columns),
         "full order hash differs",
     )
     groups = ordered_feature_groups(audio_contract)
-    require({name: len(columns) for name, columns in groups.items()} == EXPECTED_GROUP_COUNTS, "feature group dimensions differ")
-    require(manifest["feature_groups"] == {name: list(columns) for name, columns in groups.items()}, "manifest feature groups differ")
+    require(
+        {name: len(columns) for name, columns in groups.items()} == EXPECTED_GROUP_COUNTS,
+        "feature group dimensions differ",
+    )
+    require(
+        manifest["feature_groups"]
+        == {name: list(columns) for name, columns in groups.items()},
+        "manifest feature groups differ",
+    )
     require(
         tuple(manifest["excluded_audio_columns"]) == YEAR_EXCLUDED_COLUMNS,
         "manifest excluded columns differ",

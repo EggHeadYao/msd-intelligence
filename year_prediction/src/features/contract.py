@@ -122,14 +122,22 @@ DYNAMICS_COLUMNS = (
     "section_loudness_change_std",
 )
 RHYTHM_COLUMNS = (
-    *(f"{event}_{suffix}" for event in ("beat", "bar", "tatum", "section") for suffix in ("count", "density")),
+    *(
+        f"{event}_{suffix}"
+        for event in ("beat", "bar", "tatum", "section")
+        for suffix in ("count", "density")
+    ),
     *(f"{event}_interval_{stat}" for event in ("beat", "bar", "tatum") for stat in ("median", "iqr", "cv")),
     "beat_local_bpm_median",
     "beat_local_bpm_cv",
     "global_local_tempo_deviation",
     "beats_per_bar_median",
     "tatums_per_beat_median",
-    *(f"{event}_{suffix}" for event in ("segments", "beats", "bars", "tatums", "sections") for suffix in ("confidence_mean", "low_confidence_fraction")),
+    *(
+        f"{event}_{suffix}"
+        for event in ("segments", "beats", "bars", "tatums", "sections")
+        for suffix in ("confidence_mean", "low_confidence_fraction")
+    ),
     *(f"section_duration_{stat}" for stat in ("mean", "std", "q10", "q50", "q90", "cv")),
     "section_longest_ratio",
     *(f"{event}_interval_{quantile}" for event in ("beat", "bar", "tatum") for quantile in ("q10", "q90")),
