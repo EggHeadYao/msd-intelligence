@@ -376,6 +376,56 @@ def _write_vocabulary(
     return vocab_path
 
 
+def _save_uniform_adjacencies(
+    edges: DataFrame,
+    output_dir: str,
+    vocab_bc: Any,
+) -> None:
+    specs = (
+        (
+            "track_artist",
+            "track_to_artist",
+            ("src_type", "src_id"),
+            ("dst_type", "dst_id"),
+        ),
+        (
+            "track_artist",
+            "artist_to_tracks",
+            ("dst_type", "dst_id"),
+            ("src_type", "src_id"),
+        ),
+        (
+            "track_release",
+            "track_to_release",
+            ("src_type", "src_id"),
+            ("dst_type", "dst_id"),
+        ),
+        (
+            "track_release",
+            "release_to_tracks",
+            ("dst_type", "dst_id"),
+            ("src_type", "src_id"),
+        ),
+        (
+            "artist_similarity",
+            "artist_to_similar_artists",
+            ("src_type", "src_id"),
+            ("dst_type", "dst_id"),
+        ),
+    )
+    for edge_type, output_name, group, neighbor in specs:
+        _save_adjacency(
+            edges.where(F.col("edge_type") == edge_type),
+            output_dir,
+            output_name,
+            vocab_bc,
+            group_type_col=group[0],
+            group_id_col=group[1],
+            neighbor_type_col=neighbor[0],
+            neighbor_id_col=neighbor[1],
+        )
+
+
 def load_and_build_index(
     spark: SparkSession,
     input_path: str,
