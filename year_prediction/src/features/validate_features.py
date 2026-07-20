@@ -68,3 +68,61 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hdf5-samples", type=int, default=16)
     parser.add_argument("--shuffle-partitions", type=int, default=32)
     return parser.parse_args()
+
+
+def spark_path(path: str | Path) -> str:
+    text = str(path)
+    return text if "://" in text else Path(text).resolve().as_uri()
+
+
+def audio_paths(path: Path) -> list[str]:
+    return [spark_path(item) for item in sorted(path.glob("features_*.parquet"))]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="ascii") as handle:
+        return json.load(handle)
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def schema_types(frame: DataFrame) -> dict[str, str]:
+    return {field.name: field.dataType.simpleString() for field in frame.schema.fields}
+
+
+def require_schema(
+    frame: DataFrame,
+    columns: tuple[str, ...],
+    types: dict[str, str],
+    label: str,
+) -> None:
+    require(tuple(frame.columns) == columns, f"{label} column order differs")
+    actual = schema_types(frame)
+    require(actual == types, f"{label} schema differs")
+
+
+def require_same(left: DataFrame, right: DataFrame, columns: tuple[str, ...], label: str) -> None:
+    left_view = left.select(*columns)
+    right_view = right.select(*columns)
+    require(left_view.exceptAll(right_view).limit(1).count() == 0, f"{label}: unexpected rows")
+    require(right_view.exceptAll(left_view).limit(1).count() == 0, f"{label}: missing rows")
+
+
+def row_digest(frame: DataFrame, columns: tuple[str, ...], name: str) -> DataFrame:
+    payload = F.to_json(
+        F.struct(*(F.col(column) for column in columns)),
+        options={"ignoreNullFields": "false"},
+    )
+    return frame.select(TRACK_ID, F.sha2(payload, 256).alias(name))
+
