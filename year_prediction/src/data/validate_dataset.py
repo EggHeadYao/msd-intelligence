@@ -197,3 +197,75 @@ def validate(args: argparse.Namespace, spark: SparkSession) -> None:
     scalar_keys = scalar.select(TRACK_ID, ARTIST_ID, YEAR).persist(StorageLevel.MEMORY_AND_DISK)
     labels.persist(StorageLevel.MEMORY_AND_DISK)
     assignments.persist(StorageLevel.MEMORY_AND_DISK)
+
+    scalar_summary = scalar_keys.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.sum(F.when(F.col(YEAR).isNull(), 1).otherwise(0)).alias("unlabeled"),
+        F.sum(F.when(F.col(YEAR).between(MIN_YEAR, MAX_YEAR), 1).otherwise(0)).alias("labeled"),
+        F.sum(
+            F.when(F.col(YEAR).isNotNull() & ~F.col(YEAR).between(MIN_YEAR, MAX_YEAR), 1).otherwise(0)
+        ).alias("invalid_years"),
+    ).first()
+    require(int(scalar_summary["rows"]) == EXPECTED_INPUT_TRACKS, "scalar row count differs")
+    require(int(scalar_summary["tracks"]) == EXPECTED_INPUT_TRACKS, "scalar track IDs differ")
+    require(int(scalar_summary["unlabeled"]) == EXPECTED_UNLABELED_TRACKS, "unlabeled count differs")
+    require(int(scalar_summary["labeled"]) == EXPECTED_LABELED_TRACKS, "labeled count differs")
+    require(int(scalar_summary["invalid_years"]) == 0, "invalid years found")
+
+    for frame, label in ((labels, "labels"), (assignments, "assignments")):
+        summary = frame.agg(
+            F.count("*").alias("rows"),
+            F.countDistinct(TRACK_ID).alias("tracks"),
+            F.sum(
+                F.when(
+                    F.col(TRACK_ID).isNull()
+                    | (F.col(TRACK_ID) == "")
+                    | F.col(ARTIST_ID).isNull()
+                    | (F.col(ARTIST_ID) == "")
+                    | ~F.col(SPLIT).isin(TRAIN, VALIDATION, TEST),
+                    1,
+                ).otherwise(0)
+            ).alias("invalid"),
+        ).first()
+        require(int(summary["rows"]) == EXPECTED_LABELED_TRACKS, f"{label} row count differs")
+        require(int(summary["tracks"]) == EXPECTED_LABELED_TRACKS, f"{label} track IDs differ")
+        require(int(summary["invalid"]) == 0, f"{label} contains invalid values")
+
+    official_test = read_artist_ids(spark, args.test_artists)
+    labeled_source = scalar_keys.where(F.col(YEAR).isNotNull())
+    expected_artists = expected_artist_assignments(
+        labeled_source.select(ARTIST_ID).distinct(),
+        official_test,
+        int(manifest["config"]["split_seed"]),
+        int(manifest["config"]["validation_percent"]),
+    )
+    expected_labels = labeled_source.join(expected_artists, ARTIST_ID).select(*LABEL_COLUMNS)
+    expected_assignments = expected_labels.select(*ASSIGNMENT_COLUMNS)
+    require_same(labels, expected_labels, LABEL_COLUMNS, "labelled tracks")
+    require_same(assignments, expected_assignments, ASSIGNMENT_COLUMNS, "split assignments")
+    require_same(labels.drop(YEAR), assignments, ASSIGNMENT_COLUMNS, "label/assignment relation")
+    if args.reference_split is not None:
+        reference = spark.read.parquet(spark_path(args.reference_split))
+        require_same(assignments, reference, ASSIGNMENT_COLUMNS, "reference split")
+
+    stats = split_statistics(labels)
+    require(stats == EXPECTED_SPLITS, f"split statistics differ: {stats}")
+    require(stats == manifest["counts"]["splits"], "manifest split statistics differ")
+    leaks = (
+        assignments.select(ARTIST_ID, SPLIT)
+        .distinct()
+        .groupBy(ARTIST_ID)
+        .agg(F.countDistinct(SPLIT).alias("splits"))
+        .where(F.col("splits") > 1)
+        .limit(1)
+        .count()
+    )
+    require(leaks == 0, "artists leak across splits")
+    test_artists = assignments.where(F.col(SPLIT) == TEST).select(ARTIST_ID).distinct()
+    require(test_artists.count() == EXPECTED_OFFICIAL_TEST_ARTISTS, "test artist count differs")
+    require_same(test_artists, official_test, (ARTIST_ID,), "official test artists")
+    require(
+        assignment_sha256(assignments) == manifest["artist_assignment_sha256"],
+        "artist assignment checksum differs",
+    )
