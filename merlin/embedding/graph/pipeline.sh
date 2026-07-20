@@ -1,5 +1,5 @@
 #!/bin/bash
-# MERLIN C2 Complete Pipeline: Meta-path walks → Word2Vec → FAISS
+# MERLIN C2 Complete Pipeline: Meta-path walks -> Word2Vec -> FAISS
 
 set -e
 
