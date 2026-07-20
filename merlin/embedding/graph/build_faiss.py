@@ -77,14 +77,14 @@ def main() -> None:
 
     index_path = str(output_path / "index_graph.faiss")
     faiss.write_index(index, index_path)
-    print(f"✓ Saved FAISS index to {index_path}")
+    print(f"[OK] Saved FAISS index to {index_path}")
 
     # Write track_id mapping
     mapping = {i: track_id for i, track_id in enumerate(track_ids)}
     mapping_path = output_path / "graph_embeddings_id_map.json"
     with mapping_path.open("w") as f:
         json.dump(mapping, f)
-    print(f"✓ Saved ID mapping to {mapping_path}")
+    print(f"[OK] Saved ID mapping to {mapping_path}")
 
     # Write metadata
     metadata = {
@@ -97,9 +97,9 @@ def main() -> None:
     metadata_path = output_path / "faiss_metadata.json"
     with metadata_path.open("w") as f:
         json.dump(metadata, f, indent=2)
-    print(f"✓ Saved metadata to {metadata_path}")
+    print(f"[OK] Saved metadata to {metadata_path}")
 
-    print(f"\n✓ FAISS index built: {len(track_ids)} songs indexed")
+    print(f"\n[OK] FAISS index built: {len(track_ids)} songs indexed")
 
 
 if __name__ == "__main__":

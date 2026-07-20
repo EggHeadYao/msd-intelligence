@@ -56,7 +56,7 @@ python3 merlin/embedding/graph/build_faiss.py \
 
 echo ""
 echo "=========================================="
-echo "✓ C2 Pipeline Complete!"
+echo "[OK] C2 Pipeline Complete!"
 echo "=========================================="
 echo "Outputs:"
 echo "  - Walks:      $WALKS_DIR"

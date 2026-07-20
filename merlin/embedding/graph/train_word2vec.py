@@ -158,12 +158,12 @@ def main() -> None:
 
         embeddings_path = str(output_path / "song_embeddings_graph.parquet")
         embeddings.write.mode("overwrite").parquet(embeddings_path)
-        print(f"✓ Saved embeddings to {embeddings_path}")
+        print(f"[OK] Saved embeddings to {embeddings_path}")
 
         # Save Word2Vec model
         model_path = str(output_path / "word2vec_model")
         w2v_model.write().overwrite().save(model_path)
-        print(f"✓ Saved Word2Vec model to {model_path}")
+        print(f"[OK] Saved Word2Vec model to {model_path}")
 
         # Count results
         song_count = embeddings.count()
@@ -187,10 +187,10 @@ def main() -> None:
         with metadata_path.open("w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, sort_keys=True)
             f.write("\n")
-        print(f"✓ Saved metadata to {metadata_path}")
+        print(f"[OK] Saved metadata to {metadata_path}")
 
         print(
-            f"\n✓ Word2Vec training complete: {song_count} songs, "
+            f"\n[OK] Word2Vec training complete: {song_count} songs, "
             f"{vocab_size} vocabulary size, embedding_dim={args.vector_size}"
         )
 
