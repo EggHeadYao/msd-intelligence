@@ -420,7 +420,8 @@ def load_and_build_index(
         int_to_type: integer index -> node type string.
     """
     node_to_int, int_to_node, int_to_type = build_node_vocabulary(
-        spark, input_path,
+        spark,
+        input_path,
     )
 
     edges: DataFrame = spark.read.parquet(input_path)
