@@ -199,3 +199,69 @@ def expected_globals(scalar: DataFrame) -> DataFrame:
         )
         .select(TRACK_ID, *GLOBAL_SCALAR_COLUMNS, *DERIVED_SCALAR_COLUMNS)
     )
+
+
+def expected_audit(scalar: DataFrame, labels: DataFrame) -> DataFrame:
+    split = labels.select(TRACK_ID, SPLIT)
+    return scalar.select(TRACK_ID, ARTIST_ID, YEAR).join(split, TRACK_ID, "left").select(
+        *AUDIT_COLUMNS
+    )
+
+
+def require_output_counts(frame: DataFrame, label: str, split_counts: dict[str, Any]) -> None:
+    summary = frame.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.sum(F.when(F.col(YEAR).isNotNull(), 1).otherwise(0)).alias("labeled"),
+        F.sum(
+            F.when(F.col(YEAR).isNotNull() != F.col(SPLIT).isNotNull(), 1).otherwise(0)
+        ).alias("label_split_mismatch"),
+        F.sum(
+            F.when(
+                F.col(TRACK_ID).isNull()
+                | (F.col(TRACK_ID) == "")
+                | F.col(ARTIST_ID).isNull()
+                | (F.col(ARTIST_ID) == ""),
+                1,
+            ).otherwise(0)
+        ).alias("invalid_ids"),
+    ).first()
+    require(int(summary["rows"]) == EXPECTED_TRACKS, f"{label} row count differs")
+    require(int(summary["tracks"]) == EXPECTED_TRACKS, f"{label} track IDs are duplicated")
+    require(int(summary["labeled"]) == EXPECTED_LABELED_TRACKS, f"{label} label count differs")
+    require(int(summary["label_split_mismatch"]) == 0, f"{label} label/split relation differs")
+    require(int(summary["invalid_ids"]) == 0, f"{label} contains invalid IDs")
+    actual_splits = {
+        row[SPLIT]: int(row["tracks"])
+        for row in frame.where(F.col(SPLIT).isNotNull()).groupBy(SPLIT).count().withColumnRenamed(
+            "count", "tracks"
+        ).collect()
+    }
+    expected_splits = {name: int(values["tracks"]) for name, values in split_counts.items()}
+    require(actual_splits == expected_splits, f"{label} split counts differ")
+
+
+def require_no_infinity(frame: DataFrame, numeric_columns: tuple[str, ...]) -> None:
+    values = F.array(*(F.col(column).cast("double") for column in numeric_columns))
+    invalid = F.exists(values, lambda value: F.isnan(value) | (F.abs(value) == float("inf")))
+    require(frame.where(invalid).limit(1).count() == 0, "full view contains NaN or Inf")
+
+
+def require_binary_flags(frame: DataFrame) -> None:
+    masks = tuple(column for column in BINARY_FEATURE_COLUMNS if column != "mode")
+    invalid_masks = reduce(
+        lambda left, right: left | right,
+        (F.col(column).isNull() | ~F.col(column).isin(0.0, 1.0) for column in masks),
+    )
+    invalid_mode = F.col("mode").isNotNull() & ~F.col("mode").isin(0, 1)
+    require(frame.where(invalid_masks | invalid_mode).limit(1).count() == 0, "binary flags differ")
+
+
+def require_categories(frame: DataFrame) -> None:
+    invalid = (
+        (F.col("key").isNotNull() & ~F.col("key").between(0, 11))
+        | (F.col("mode").isNotNull() & ~F.col("mode").isin(0, 1))
+        | (F.col("time_signature").isNotNull() & (F.col("time_signature") <= 0))
+    )
+    require(frame.where(invalid).limit(1).count() == 0, "categorical values differ")
+
