@@ -291,3 +291,60 @@ def evaluate(
         "split": TEST,
         "decades": decades,
     }
+    metadata = {
+        "format_version": 1,
+        "evaluation": "course_test_benchmark",
+        "model_id": model["model_id"],
+        "model_directory": str(model_directory),
+        "model_sha256": sha256_file(model_directory / "model.json"),
+        "feature_manifest": model["feature_source"]["manifest"],
+        "feature_manifest_sha256": model["feature_source"]["manifest_sha256"],
+        "input": model["feature_source"]["input"],
+        "split": TEST,
+        "counts": {
+            "tracks": expected_count,
+            "artists": int(manifest["counts"]["splits"][TEST]["artists"]),
+        },
+        "spark": {
+            "application_id": spark.sparkContext.applicationId,
+            "master": spark.sparkContext.master,
+            "version": spark.version,
+            "default_parallelism": spark.sparkContext.defaultParallelism,
+        },
+        "timing_seconds": {
+            "data_validation": data_validation_seconds,
+            "prediction_write": prediction_seconds,
+            "metric_calculation": metric_seconds,
+            "total": time.perf_counter() - started,
+        },
+    }
+    write_json(output / "metrics.json", metrics_document)
+    write_json(output / "metrics_by_decade.json", decade_document)
+    write_json(output / "run_metadata.json", metadata)
+    print(
+        "year_ridge_test_evaluated "
+        f"model_id={model['model_id']}, rows={expected_count}, "
+        f"mae={overall['mae_years']:.6f}, rmse={overall['rmse_years']:.6f}, "
+        f"output={output}"
+    )
+    return output
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionEvaluateRidgeTest").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        evaluate(
+            args.model,
+            args.output_root,
+            spark,
+            prediction_partitions=args.prediction_partitions,
+            overwrite=args.overwrite,
+        )
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
