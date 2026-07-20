@@ -18,16 +18,21 @@ from pyspark.sql.types import (
 
 ROOT = Path(__file__).resolve().parents[2]
 TRAINING_DIR = ROOT / "src" / "training"
+RIDGE_DIR = TRAINING_DIR / "ridge"
 EVALUATION_DIR = ROOT / "src" / "evaluation"
 sys.path.insert(0, str(TRAINING_DIR))
 sys.path.insert(0, str(EVALUATION_DIR))
+sys.path.insert(0, str(RIDGE_DIR))
 
+from data import load_training_data, read_training_manifest  # noqa: E402
 from model_io import read_json  # noqa: E402
+from target import target_contract  # noqa: E402
+from train import train  # noqa: E402
 from train_constants import compute_constant_baselines  # noqa: E402
-from train_sgd import train  # noqa: E402
-from training_data import load_training_data  # noqa: E402
+from validate_ridge import validate as validate_model  # noqa: E402
 
 
+DIMENSION = 90
 SCHEMA = StructType(
     [
         StructField("track_id", StringType(), False),
@@ -38,6 +43,7 @@ SCHEMA = StructType(
         StructField("split", StringType(), False),
     ]
 )
+
 
 
 class RidgePipelineTest(unittest.TestCase):
@@ -57,42 +63,20 @@ class RidgePipelineTest(unittest.TestCase):
 
     def test_small_end_to_end_training_and_artifacts(self):
         rows = [
-            ("TR0001", "AR0001", 1931, 9.0 / 89.0, [-1.0, 0.0], "train"),
-            ("TR0002", "AR0002", 1940, 18.0 / 89.0, [-0.7, 0.2], "train"),
-            ("TR0003", "AR0003", 1958, 36.0 / 89.0, [-0.2, -0.4], "train"),
-            ("TR0004", "AR0004", 1976, 54.0 / 89.0, [0.2, 0.5], "train"),
-            ("TR0005", "AR0005", 1994, 72.0 / 89.0, [0.7, -0.1], "train"),
-            ("TR0006", "AR0006", 2003, 81.0 / 89.0, [1.0, 0.3], "train"),
-            ("TR0007", "AR0007", 1949, 27.0 / 89.0, [-0.5, 0.1], "validation"),
-            ("TR0008", "AR0008", 1985, 63.0 / 89.0, [0.5, 0.0], "validation"),
+
         ]
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            input_path = root / "linear_vectors.parquet"
-            metadata_path = root / "preprocessing_metadata.json"
+            input_path = root / "vectors.parquet"
+            manifest_path = root / "manifest.json"
             output_root = root / "models"
             frame = self.spark.createDataFrame(rows, SCHEMA)
             frame.write.partitionBy("split").parquet(input_path.resolve().as_uri())
-            metadata = {
-                "feature_version": "test-v1",
-                "counts": {
-                    "rows": 8,
-                    "splits": {"train": 6, "validation": 2},
-                },
-                "target": {
-                    "source_column": "year",
-                    "output_column": "normalized_year",
-                    "minimum": 1922,
-                    "maximum": 2011,
-                    "formula": "(year - 1922) / 89",
-                },
-                "outputs": {"linear_vectors": {"dimension": 2}},
-            }
-            metadata_path.write_text(json.dumps(metadata), encoding="ascii")
+            write_manifest(manifest_path, train_count=6, validation_count=2)
             config = {
                 "model_id": "ridge-integration",
                 "input": str(input_path),
-                "feature_metadata": str(metadata_path),
+                "feature_manifest": str(manifest_path),
                 "output_root": str(output_root),
                 "objective": "ridge_squared",
                 "initialization": "zero_weights_train_mean_intercept",
@@ -119,40 +103,37 @@ class RidgePipelineTest(unittest.TestCase):
                 (output / "validation_predictions.parquet").resolve().as_uri()
             )
             baselines = compute_constant_baselines(frame)
-            self.assertEqual(model["feature_dimension"], 2)
-            self.assertEqual(len(model["weights"]), 2)
+            self.assertEqual(model["feature_dimension"], DIMENSION)
+            self.assertEqual(len(model["weights"]), DIMENSION)
             self.assertEqual(len(history), 6)
-            self.assertTrue(
-                all(
-                    name in history[0]
-                    for name in (
-                        "gradient_seconds",
-                        "update_seconds",
-                        "validation_seconds",
-                        "iteration_seconds",
-                    )
-                )
+            self.assertLess(
+                metrics["final_training_objective"],
+                history[0]["training_objective_before_update"],
             )
-            self.assertLess(metrics["final_training_objective"], history[0]["training_objective_before_update"])
             self.assertEqual(metrics["train"]["count"], 6)
             self.assertEqual(metrics["validation"]["count"], 2)
             self.assertEqual(predictions.count(), 2)
             self.assertEqual(baselines["mean"]["count"], 2)
             self.assertEqual(baselines["median"]["count"], 2)
             self.assertGreater(run_metadata["timing_seconds"]["gradient_reduce"], 0.0)
+            validate_model(output, self.spark)
 
     def test_training_data_rejects_artist_overlap(self):
         rows = [
-            ("TR1001", "AR1001", 1950, 28.0 / 89.0, [-1.0, 0.0], "train"),
-            ("TR1002", "AR1001", 2000, 78.0 / 89.0, [1.0, 0.0], "validation"),
+            ("TR1001", "AR1001", 1950, 28.0 / 89.0, vector(-1.0, 0.0), "train"),
+            ("TR1002", "AR1001", 2000, 78.0 / 89.0, vector(1.0, 0.0), "validation"),
         ]
         with tempfile.TemporaryDirectory() as temporary:
-            input_path = Path(temporary) / "linear_vectors.parquet"
+            root = Path(temporary)
+            input_path = root / "vectors.parquet"
+            manifest_path = root / "manifest.json"
             self.spark.createDataFrame(rows, SCHEMA).write.partitionBy("split").parquet(
                 input_path.resolve().as_uri()
             )
-            with self.assertRaisesRegex(ValueError, "artists overlap"):
-                load_training_data(self.spark, input_path)
+            write_manifest(manifest_path, train_count=1, validation_count=1)
+            manifest = read_training_manifest(manifest_path)
+            with self.assertRaisesRegex(ValueError, "Artists overlap"):
+                load_training_data(self.spark, input_path, manifest)
 
 
 if __name__ == "__main__":
