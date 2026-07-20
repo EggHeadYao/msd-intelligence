@@ -11,10 +11,21 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import DoubleType, IntegerType, StringType, StructField, StructType
 
 MODULE_DIR = Path(__file__).resolve().parent
-EVALUATION_DIR = MODULE_DIR.parent / "evaluation"
+TRAINING_DIR = MODULE_DIR.parent
+SOURCE_DIR = TRAINING_DIR.parent
+PROJECT_DIR = SOURCE_DIR.parent
+EVALUATION_DIR = SOURCE_DIR / "evaluation"
 sys.path.insert(0, str(MODULE_DIR))
+sys.path.insert(0, str(TRAINING_DIR))
 sys.path.insert(0, str(EVALUATION_DIR))
 
+from data import (  # noqa: E402
+    TRAIN,
+    VALIDATION,
+    load_training_data,
+    read_training_manifest,
+    spark_path,
+)
 from distributed import (  # noqa: E402
     direct_full_batch_statistics,
     evaluate_linear_model,
@@ -27,13 +38,6 @@ from model_io import (  # noqa: E402
     write_json,
 )
 from optimizer import gradient_norm, gradient_step  # noqa: E402
-from training_data import (  # noqa: E402
-    TRAIN,
-    VALIDATION,
-    load_training_data,
-    read_feature_metadata,
-    spark_path,
-)
 
 
 PREDICTION_SCHEMA = StructType(
@@ -50,7 +54,7 @@ PREDICTION_SCHEMA = StructType(
 
 
 def default_config_path() -> Path:
-    return MODULE_DIR.parents[1] / "config" / "experiment_b" / "d0_direct.json"
+    return PROJECT_DIR / "config" / "experiment_a" / "ridge_t90.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,7 +79,7 @@ def validate_config(config: dict[str, Any]) -> None:
     required = {
         "model_id",
         "input",
-        "feature_metadata",
+        "feature_manifest",
         "output_root",
         "objective",
         "initialization",
@@ -92,7 +96,7 @@ def validate_config(config: dict[str, Any]) -> None:
     if missing:
         raise ValueError(f"Missing training configuration fields: {missing}")
     if config["objective"] != "ridge_squared":
-        raise ValueError("train_sgd currently supports objective=ridge_squared")
+        raise ValueError("Ridge trainer supports only objective=ridge_squared")
     if config["initialization"] not in {"zeros", "zero_weights_train_mean_intercept"}:
         raise ValueError("Unsupported initialization")
     for name in ("max_iterations", "validation_interval", "shuffle_partitions", "prediction_partitions"):
@@ -128,10 +132,11 @@ def load_config(
 
 def ship_worker_modules(spark: SparkSession) -> None:
     for path in (
+        TRAINING_DIR / "target.py",
         EVALUATION_DIR / "metrics.py",
         MODULE_DIR / "objectives.py",
         MODULE_DIR / "distributed.py",
-        MODULE_DIR / "training_data.py",
+        MODULE_DIR / "data.py",
     ):
         spark.sparkContext.addPyFile(str(path))
 
@@ -147,10 +152,10 @@ def train(
     output = Path(config["output_root"]) / str(config["model_id"])
     if output.exists() and not overwrite:
         raise FileExistsError(f"Output already exists: {output.resolve()}")
-    metadata_path = Path(config["feature_metadata"]).resolve()
-    feature_metadata = read_feature_metadata(metadata_path)
+    manifest_path = Path(config["feature_manifest"]).resolve()
+    feature_manifest = read_training_manifest(manifest_path)
     data_started = time.perf_counter()
-    data = load_training_data(spark, config["input"], feature_metadata)
+    data = load_training_data(spark, config["input"], feature_manifest)
     data_validation_seconds = time.perf_counter() - data_started
     ship_worker_modules(spark)
     training_points = data.points(TRAIN)
@@ -246,12 +251,15 @@ def train(
         "weights": weights,
         "intercept": intercept,
         "l2": float(config["l2"]),
-        "target": feature_metadata["target"],
+        "target": feature_manifest["target"],
         "feature_source": {
             "input": str(Path(config["input"]).resolve()),
-            "metadata": str(metadata_path),
-            "metadata_sha256": sha256_file(metadata_path),
-            "feature_version": feature_metadata["feature_version"],
+            "manifest": str(manifest_path),
+            "manifest_sha256": sha256_file(manifest_path),
+            "contract_version": feature_manifest["contract_version"],
+            "predictor_order_sha256": feature_manifest["source"][
+                "predictor_order_sha256"
+            ],
         },
     }
     metrics = {
