@@ -277,3 +277,47 @@ def build(args: argparse.Namespace, spark: SparkSession) -> Path:
                 "sha256": OFFICIAL_TEST_SHA256,
             },
         },
+        "counts": {
+            "input_tracks": EXPECTED_INPUT_TRACKS,
+            "labeled_tracks": EXPECTED_LABELED_TRACKS,
+            "unlabeled_tracks": EXPECTED_UNLABELED_TRACKS,
+            "labeled_artists": EXPECTED_LABELED_ARTISTS,
+            "official_split_omitted_artists": omitted,
+            "splits": stats,
+        },
+        "schema": {
+            "labelled_tracks": LABEL_TYPES,
+            "split_assignments": ASSIGNMENT_TYPES,
+        },
+        "artist_assignment_sha256": assignment_sha256(artist_assignments),
+    }
+    with (args.output / "manifest.json").open("w", encoding="ascii") as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+    labeled.unpersist()
+    artist_assignments.unpersist()
+    official_test.unpersist()
+    official_train.unpersist()
+    labeled_artists.unpersist()
+    scalar_keys.unpersist()
+    return args.output
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionBuildDataset")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        output = build(args, spark)
+        print(f"year_dataset_built output={output.resolve()}")
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
