@@ -317,3 +317,68 @@ def require_ratio_identity(frame: DataFrame) -> None:
     require(frame.where(invalid).limit(1).count() == 0, "fade ratios do not sum to one")
 
 
+def validate_hdf5_samples(
+    root: Path,
+    sample_count: int,
+    audio: DataFrame,
+    audio_columns: tuple[str, ...],
+) -> None:
+    require(sample_count > 0, "HDF5 sample count must be positive")
+    project_root = Path(__file__).resolve().parents[3]
+    sys.path.insert(0, str(project_root))
+    try:
+        import numpy as np
+        from tools.hdf5.audio_features import FEATURE_COLUMNS
+        from tools.hdf5.extract_musics import process_one_file
+    except ImportError as error:
+        raise ValueError("The shared 628-dimensional HDF5 extractor branch is not available") from error
+
+    require(tuple(FEATURE_COLUMNS) == audio_columns, "HDF5 extractor contract differs")
+    rows = audio.orderBy(TRACK_ID).limit(sample_count).collect()
+    for row in rows:
+        track_id = row[TRACK_ID]
+        path = root / track_id[2] / track_id[3] / track_id[4] / f"{track_id}.h5"
+        extracted_id, extracted = process_one_file(path)
+        require(extracted_id == track_id, f"HDF5 track ID differs: {track_id}")
+        stored = np.asarray(
+            [np.nan if row[column] is None else row[column] for column in audio_columns],
+            dtype=np.float64,
+        )
+        require(
+            bool(np.allclose(stored, extracted, rtol=1e-10, atol=1e-10, equal_nan=True)),
+            f"HDF5 recomputation differs: {track_id}",
+        )
+
+
+def validate(args: argparse.Namespace, spark: SparkSession) -> None:
+    manifest_path = args.features / "manifest.json"
+    manifest = load_json(manifest_path)
+    audio_contract_path = args.audio / "feature_contract.json"
+    audio_contract = load_audio_contract(audio_contract_path)
+    dataset_manifest_path = args.dataset / "manifest.json"
+    dataset_manifest = load_json(dataset_manifest_path)
+    require(manifest["contract_version"] == FEATURE_CONTRACT_VERSION, "feature contract differs")
+    require(manifest["format_version"] == 1, "feature manifest format differs")
+    require(tuple(manifest["audit_columns"]) == AUDIT_COLUMNS, "manifest audit columns differ")
+    require(manifest["sources"]["scalar"]["sha256"] == sha256_file(args.scalar), "scalar checksum differs")
+    require(
+        manifest["sources"]["audio"]["contract_sha256"] == sha256_file(audio_contract_path),
+        "audio contract checksum differs",
+    )
+    require(
+        manifest["sources"]["dataset"]["manifest_sha256"] == sha256_file(dataset_manifest_path),
+        "dataset manifest checksum differs",
+    )
+    require(
+        manifest["sources"]["audio"]["feature_order_sha256"]
+        == AUDIO_FEATURE_ORDER_SHA256,
+        "audio order hash differs",
+    )
+
+    paths = audio_paths(args.audio)
+    require(len(paths) == 100, "audio batch count differs")
+    audio = spark.read.parquet(*paths)
+    scalar = spark.read.parquet(spark_path(args.scalar))
+    labels = spark.read.parquet(spark_path(args.dataset / "labelled_tracks.parquet"))
+    t90 = spark.read.parquet(spark_path(args.features / "t90.parquet"))
+    full = spark.read.parquet(spark_path(args.features / "full_tabular.parquet"))
