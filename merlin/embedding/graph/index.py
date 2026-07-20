@@ -426,6 +426,37 @@ def _save_uniform_adjacencies(
         )
 
 
+def _save_p3_adjacencies(
+    edges: DataFrame,
+    output_dir: str,
+    vocab_bc: Any,
+) -> float:
+    """Write both directions of the eligible artist-term relation."""
+    weighted_edges, idf_cap = _build_p3_edges(edges)
+    _save_adjacency(
+        weighted_edges,
+        output_dir,
+        "artist_to_terms",
+        vocab_bc,
+        group_type_col="src_type",
+        group_id_col="src_id",
+        neighbor_type_col="dst_type",
+        neighbor_id_col="dst_id",
+        weight_col="p3_weight",
+    )
+    _save_adjacency(
+        weighted_edges,
+        output_dir,
+        "term_to_artists",
+        vocab_bc,
+        group_type_col="dst_type",
+        group_id_col="dst_id",
+        neighbor_type_col="src_type",
+        neighbor_id_col="src_id",
+    )
+    return idf_cap
+
+
 def load_and_build_index(
     spark: SparkSession,
     input_path: str,
