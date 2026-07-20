@@ -11,7 +11,7 @@ This layer projects the frozen shared audio and dataset contracts into two model
 ## Build
 
 ```bash
-spark-submit --master 'local[2]' --driver-memory 4g \
+spark-submit --master 'local[1]' --driver-memory 3g \
   p1team02/year_prediction/src/features/build_features.py \
   --output parquets/year_prediction/features \
   --shuffle-partitions 32
