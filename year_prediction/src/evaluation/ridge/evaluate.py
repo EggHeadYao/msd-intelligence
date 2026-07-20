@@ -130,3 +130,60 @@ def load_model(model_directory: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     require(int(test_counts.get("tracks", 0)) > 0, "T90 manifest has no test tracks")
     require(int(test_counts.get("artists", 0)) > 0, "T90 manifest has no test artists")
     return model, manifest
+
+
+def load_test_frame(
+    spark: SparkSession,
+    model: dict[str, Any],
+    manifest: dict[str, Any],
+) -> DataFrame:
+    frame = spark.read.parquet(spark_path(model["feature_source"]["input"]))
+    require(tuple(frame.columns) == EXPECTED_COLUMNS, "Unexpected T90 vector columns")
+    test = frame.where(F.col(SPLIT) == TEST)
+    invalid_feature = F.exists(
+        F.col(FEATURES),
+        lambda value: value.isNull()
+        | F.isnan(value)
+        | (F.abs(value) == F.lit(float("inf"))),
+    )
+    expected_normalized_year = (
+        F.col("year").cast("double") - F.lit(float(MIN_YEAR))
+    ) / F.lit(float(YEAR_SPAN))
+    summary = test.agg(
+        F.count("*").alias("count"),
+        F.countDistinct("track_id").alias("distinct_tracks"),
+        F.countDistinct("artist_id").alias("distinct_artists"),
+        F.min(F.size(FEATURES)).alias("minimum_dimension"),
+        F.max(F.size(FEATURES)).alias("maximum_dimension"),
+        F.sum(
+            F.when(
+                F.col(FEATURES).isNull()
+                | invalid_feature
+                | F.col("normalized_year").isNull()
+                | F.isnan("normalized_year")
+                | (F.abs(F.col("normalized_year")) == F.lit(float("inf")))
+                | (F.abs(F.col("normalized_year") - expected_normalized_year) > 1.0e-12),
+                1,
+            ).otherwise(0)
+        ).alias("invalid_rows"),
+    ).first()
+    require(summary is not None, "Test summary is missing")
+    expected = manifest["counts"]["splits"][TEST]
+    require(int(summary["count"]) == int(expected["tracks"]), "Test row count differs")
+    require(
+        int(summary["distinct_tracks"]) == int(expected["tracks"]),
+        "Test track IDs are duplicated",
+    )
+    require(
+        int(summary["distinct_artists"]) == int(expected["artists"]),
+        "Test artist count differs",
+    )
+    dimension = int(model["feature_dimension"])
+    require(
+        int(summary["minimum_dimension"]) == dimension
+        and int(summary["maximum_dimension"]) == dimension,
+        "Test feature dimensions differ from the model",
+    )
+    require(int(summary["invalid_rows"]) == 0, "Test data contains invalid rows")
+    return test
+
