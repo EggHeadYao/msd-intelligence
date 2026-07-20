@@ -9,10 +9,12 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 MODULE_DIR = Path(__file__).resolve().parent
+RIDGE_DIR = MODULE_DIR / "ridge"
 sys.path.insert(0, str(MODULE_DIR))
+sys.path.insert(0, str(RIDGE_DIR))
 
+from data import TRAIN, VALIDATION, load_training_data, read_training_manifest  # noqa: E402
 from model_io import write_json  # noqa: E402
-from training_data import TRAIN, VALIDATION, load_training_data  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,7 +22,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path("parquets/year_prediction/features/t90.parquet"),
+        default=Path("parquets/year_prediction/training/t90/vectors.parquet"),
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path("parquets/year_prediction/training/t90/manifest.json"),
     )
     parser.add_argument(
         "--output",
@@ -75,7 +82,8 @@ def main() -> None:
     )
     spark.sparkContext.setLogLevel("WARN")
     try:
-        data = load_training_data(spark, args.input)
+        manifest = read_training_manifest(args.manifest)
+        data = load_training_data(spark, args.input, manifest)
         result = compute_constant_baselines(data.frame)
         write_json(args.output.resolve(), result)
         print(
