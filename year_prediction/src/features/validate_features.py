@@ -265,3 +265,55 @@ def require_categories(frame: DataFrame) -> None:
     )
     require(frame.where(invalid).limit(1).count() == 0, "categorical values differ")
 
+
+def require_mask_nulls(frame: DataFrame) -> None:
+    dependencies = {
+        "has_beat_intervals": tuple(
+            column
+            for column in frame.columns
+            if column.startswith("beat_interval_") or column.startswith("beat_local_bpm_")
+        ),
+        "has_bar_intervals": tuple(
+            column for column in frame.columns if column.startswith("bar_interval_")
+        ),
+        "has_tatum_intervals": tuple(
+            column for column in frame.columns if column.startswith("tatum_interval_")
+        ),
+        "has_t90": T90_COLUMNS,
+        "has_pitch_profile": ("pitch_profile_entropy", "pitch_profile_concentration"),
+        "has_key_relative_pitch": tuple(
+            column for column in frame.columns if column.startswith("key_relative_")
+        ),
+    }
+    for part in range(4):
+        dependencies[f"has_quarter_{part}"] = tuple(
+            column
+            for column in frame.columns
+            if column.startswith(f"quarter_{part}_")
+            or column.startswith(f"key_relative_quarter_{part}_")
+        )
+    for part in range(2):
+        dependencies[f"has_half_{part}"] = tuple(
+            column
+            for column in frame.columns
+            if column.startswith(f"half_{part}_")
+            or column.startswith(f"key_relative_half_{part}_")
+        )
+    for mask, columns in dependencies.items():
+        present_when_missing = reduce(
+            lambda left, right: left | right,
+            (F.col(column).isNotNull() for column in columns),
+        )
+        require(
+            frame.where((F.col(mask) == 0.0) & present_when_missing).limit(1).count() == 0,
+            f"{mask} does not agree with dependent nulls",
+        )
+
+
+def require_ratio_identity(frame: DataFrame) -> None:
+    ratios = [F.col(column) for column in DERIVED_SCALAR_COLUMNS]
+    all_present = reduce(lambda left, right: left & right, (column.isNotNull() for column in ratios))
+    invalid = all_present & (F.abs(sum(ratios[1:], ratios[0]) - 1.0) > 1e-12)
+    require(frame.where(invalid).limit(1).count() == 0, "fade ratios do not sum to one")
+
+
