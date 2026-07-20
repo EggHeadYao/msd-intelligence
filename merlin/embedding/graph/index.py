@@ -16,7 +16,7 @@ from pyspark.sql import functions as F
 from pyspark.sql import types as T
 from pyspark.sql.types import BinaryType
 
-from merlin.embedding.graph.config import DIRECTED_EDGES, EDGE_SCHEMA
+from merlin.embedding.graph.config import ADJACENCY_NAMES, DIRECTED_EDGES, EDGE_SCHEMA
 
 VOCAB_VERSION = "c2_typed_vocab_v1"
 GRAPH_COLUMNS: tuple[str, ...] = (
@@ -195,6 +195,66 @@ def _pairs_to_binary(
         struct.pack(f"<{len(neighbor_ids)}i", *neighbor_ids),
         struct.pack(f"<{len(weights)}f", *weights),
     )
+
+
+def _save_adjacency(
+    frame: DataFrame,
+    output_dir: str,
+    output_name: str,
+    vocab_bc: Any,
+    *,
+    group_type_col: str,
+    group_id_col: str,
+    neighbor_type_col: str,
+    neighbor_id_col: str,
+    weight_col: str | None = None,
+) -> int:
+    """Aggregate sorted neighbor/weight pairs and write one adjacency table."""
+    if output_name not in ADJACENCY_NAMES:
+        raise ValueError(f"Unknown adjacency output: {output_name}")
+
+    weight = F.col(weight_col).cast("double") if weight_col else F.lit(1.0)
+    pairs = F.sort_array(
+        F.collect_list(
+            F.struct(
+                F.col(neighbor_type_col).alias("neighbor_type"),
+                F.col(neighbor_id_col).alias("neighbor_raw_id"),
+                weight.alias("weight"),
+            ),
+        ),
+    )
+    grouped = frame.groupBy(group_type_col, group_id_col).agg(
+        pairs.alias("neighbor_pairs"),
+    )
+
+    binary_schema = T.StructType(
+        (
+            T.StructField("neighbor_ids", T.BinaryType(), False),
+            T.StructField("weights", T.BinaryType(), False),
+        ),
+    )
+    encode_pairs = F.udf(
+        lambda values: _pairs_to_binary(values, vocab_bc.value),
+        binary_schema,
+    )
+    encode_node = F.udf(
+        lambda node_type, raw_id: vocab_bc.value[
+            encode_typed_key(str(node_type), str(raw_id))
+        ],
+        T.IntegerType(),
+    )
+
+    encoded = grouped.withColumn("encoded", encode_pairs("neighbor_pairs"))
+    output = encoded.select(
+        encode_node(group_type_col, group_id_col).alias("node_id"),
+        F.col("encoded.neighbor_ids").alias("neighbor_ids"),
+        F.col("encoded.weights").alias("weights"),
+    )
+    output_path = f"{output_dir}/{output_name}.parquet"
+    output.write.mode("errorifexists").parquet(output_path)
+    count = frame.sparkSession.read.parquet(output_path).count()
+    print(f"  {output_name}: {count} nodes")
+    return count
 
 
 def _strs_to_int_binary(strs: list, vocab: dict[str, int]) -> bytes:
