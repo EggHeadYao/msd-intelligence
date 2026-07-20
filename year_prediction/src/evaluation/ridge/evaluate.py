@@ -63,3 +63,70 @@ PREDICTION_SCHEMA = StructType(
     ]
 )
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Evaluate a Ridge model on the test split.")
+    parser.add_argument("--model", type=Path, required=True)
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path("parquets/year_prediction/results/experiment_a/ridge"),
+    )
+    parser.add_argument("--prediction-partitions", type=int, default=8)
+    parser.add_argument("--overwrite", action="store_true")
+    return parser.parse_args()
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def require_finite_numbers(values: list[float], message: str) -> None:
+    require(all(math.isfinite(float(value)) for value in values), message)
+
+
+def ship_worker_modules(spark: SparkSession) -> None:
+    for path in (
+        TRAINING_DIR / "target.py",
+        EVALUATION_DIR / "metrics.py",
+        RIDGE_DIR / "objectives.py",
+        RIDGE_DIR / "distributed.py",
+    ):
+        spark.sparkContext.addPyFile(str(path))
+
+
+def load_model(model_directory: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    model_path = model_directory.resolve() / "model.json"
+    model = read_json(model_path)
+    require(model.get("format_version") == 1, "Unexpected Ridge model format")
+    require(model.get("model_type") == "linear_ridge", "Unexpected model type")
+    weights = [float(value) for value in model.get("weights", [])]
+    dimension = int(model.get("feature_dimension", 0))
+    require(dimension > 0 and len(weights) == dimension, "Invalid Ridge weight dimension")
+    require_finite_numbers([*weights, float(model["intercept"])], "Non-finite model parameters")
+    feature_source = model.get("feature_source", {})
+    manifest_path = Path(feature_source["manifest"])
+    require(
+        sha256_file(manifest_path) == feature_source.get("manifest_sha256"),
+        "T90 training manifest checksum differs",
+    )
+    manifest = read_training_manifest(manifest_path)
+    require(model.get("target") == manifest["target"], "Model target contract differs")
+    require(
+        feature_source.get("contract_version") == manifest["contract_version"],
+        "T90 contract version differs",
+    )
+    require(
+        feature_source.get("predictor_order_sha256")
+        == manifest["source"]["predictor_order_sha256"],
+        "T90 predictor order differs",
+    )
+    require(
+        dimension == int(manifest["preprocessing"]["dimension"]),
+        "Model and T90 dimensions differ",
+    )
+    test_counts = manifest.get("counts", {}).get("splits", {}).get(TEST, {})
+    require(int(test_counts.get("tracks", 0)) > 0, "T90 manifest has no test tracks")
+    require(int(test_counts.get("artists", 0)) > 0, "T90 manifest has no test artists")
+    return model, manifest
