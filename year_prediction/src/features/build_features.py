@@ -181,7 +181,67 @@ def predictor_metadata(columns: tuple[str, ...], types: dict[str, str]) -> list[
     ]
 
 
+def build(args: argparse.Namespace, spark: SparkSession) -> Path:
+    require(not args.output.exists(), f"Output already exists: {args.output}")
+    paths = audio_paths(args.audio)
+    require(len(paths) == 100, f"Expected 100 audio batches, got {len(paths)}")
 
+    audio_contract_path = args.audio / "feature_contract.json"
+    audio_contract = load_audio_contract(audio_contract_path)
+    dataset_manifest_path = args.dataset / "manifest.json"
+    dataset_manifest = load_json(dataset_manifest_path)
+    scalar_sha256 = sha256_file(args.scalar)
+    audio_contract_sha256 = sha256_file(audio_contract_path)
+    require(dataset_manifest["contract_version"] == "year_prediction_dataset_v3", "dataset contract differs")
+    require(dataset_manifest["sources"]["scalar"]["sha256"] == scalar_sha256, "scalar checksum differs")
+    require(
+        dataset_manifest["sources"]["audio_features"]["contract_sha256"]
+        == audio_contract_sha256,
+        "audio contract checksum differs",
+    )
+
+    audio = spark.read.parquet(*paths)
+    scalar = spark.read.parquet(spark_path(args.scalar))
+    labels = spark.read.parquet(spark_path(args.dataset / "labelled_tracks.parquet"))
+    require(tuple(audio.columns) == tuple(audio_contract["columns"]), "audio schema order differs")
+    require_types(
+        audio,
+        {TRACK_ID: "string", **{column: "double" for column in audio.columns[1:]}},
+        "audio",
+    )
+    require(tuple(labels.columns) == LABEL_COLUMNS, "label schema order differs")
+    require_types(labels, LABEL_TYPES, "labels")
+    require_types(scalar, SCALAR_TYPES, "scalar")
+
+    audio_summary = audio.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID).alias("tracks"),
+        F.sum(F.when(F.col(TRACK_ID).isNull() | (F.col(TRACK_ID) == ""), 1).otherwise(0)).alias(
+            "invalid"
+        ),
+    ).first()
+    require(int(audio_summary["rows"]) == EXPECTED_TRACKS, "audio row count differs")
+    require(int(audio_summary["tracks"]) == EXPECTED_TRACKS, "audio track IDs are duplicated")
+    require(int(audio_summary["invalid"]) == 0, "audio contains invalid track IDs")
+
+    metadata = build_metadata(scalar, labels).persist(StorageLevel.DISK_ONLY)
+    metadata.count()
+    require(
+        audio.select(TRACK_ID).join(metadata.select(TRACK_ID), TRACK_ID, "left_anti").limit(1).count()
+        == 0,
+        "audio and metadata track coverage differs",
+    )
+
+    shared_columns = year_shared_columns(audio_contract)
+    joined = audio.join(F.broadcast(metadata), TRACK_ID, "inner")
+    t90 = build_t90(joined)
+    full = build_full_tabular(joined, shared_columns)
+    require(len(t90.columns) == len(AUDIT_COLUMNS) + 90, "T90 dimension differs")
+    require(len(full.columns) == len(AUDIT_COLUMNS) + 594, "full dimension differs")
+    require(
+        not (set(full.columns) & set(FORBIDDEN_PREDICTOR_COLUMNS)) - set(AUDIT_COLUMNS),
+        "forbidden predictors found",
+    )
 
     full.write.parquet(spark_path(args.output / "full_tabular.parquet"))
     t90.write.parquet(spark_path(args.output / "t90.parquet"))
