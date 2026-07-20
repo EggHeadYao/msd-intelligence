@@ -240,3 +240,53 @@ def recompute_statistics(
         )
 
 
+def require_source_equivalence(
+    source: DataFrame,
+    vectors: DataFrame,
+    statistics: list[dict[str, Any]],
+) -> None:
+    feature_values = [
+        (
+            (F.coalesce(F.col(str(item["name"])), F.lit(float(item["mean"]))) - float(item["mean"]))
+            / float(item["standard_deviation"])
+        ).cast("double")
+        for item in statistics
+    ]
+    target = target_contract()
+    expected = source.where(F.col(SPLIT).isNotNull()).select(
+        TRACK_ID,
+        ARTIST_ID,
+        YEAR,
+        SPLIT,
+        ((F.col(YEAR).cast("double") - target["minimum"]) / target["span"]).alias(TARGET_COLUMN),
+        F.array(*feature_values).alias(FEATURES),
+    )
+    joined = expected.alias("expected").join(vectors.alias("actual"), TRACK_ID, "full_outer")
+    vector_match = F.forall(
+        F.zip_with(
+            F.col(f"expected.{FEATURES}"),
+            F.col(f"actual.{FEATURES}"),
+            lambda left, right: F.abs(left - right) <= F.lit(VALUE_TOLERANCE),
+        ),
+        lambda value: value,
+    )
+    matches = (
+        F.col(f"expected.{TRACK_ID}").isNotNull()
+        & F.col(f"actual.{TRACK_ID}").isNotNull()
+        & F.col(f"expected.{ARTIST_ID}").eqNullSafe(F.col(f"actual.{ARTIST_ID}"))
+        & F.col(f"expected.{YEAR}").eqNullSafe(F.col(f"actual.{YEAR}"))
+        & F.col(f"expected.{SPLIT}").eqNullSafe(F.col(f"actual.{SPLIT}"))
+        & (
+            F.abs(
+                F.col(f"expected.{TARGET_COLUMN}") - F.col(f"actual.{TARGET_COLUMN}")
+            )
+            <= VALUE_TOLERANCE
+        )
+        & vector_match
+    )
+    require(
+        joined.where(~F.coalesce(matches, F.lit(False))).limit(1).count() == 0,
+        "Vector contents differ from the source transformation",
+    )
+
+
