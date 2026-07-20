@@ -1,9 +1,11 @@
-"""C2 adjacency index builder: node vocabulary + forward/reverse adjacency."""
+"""Build the typed C2 vocabulary and canonical paired adjacency tables."""
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 import numpy as np
@@ -11,20 +13,51 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import BinaryType
 
+VOCAB_VERSION = "c2_typed_vocab_v1"
+GRAPH_COLUMNS: tuple[str, ...] = (
+    "src_type",
+    "src_id",
+    "dst_type",
+    "dst_id",
+    "directed",
+    "edge_type",
+)
+
 
 def _local_path(path: str) -> Path:
     """Convert a plain path or file URI to a local Path."""
     parsed = urlparse(path)
     if parsed.scheme not in {"", "file"}:
-        msg = f"Vocabulary persistence requires a local path, got: {path}"
+        msg = f"C2 local persistence requires a local path, got: {path}"
         raise ValueError(msg)
     if parsed.scheme == "file":
         return Path(unquote(parsed.path))
     return Path(path)
 
 
+def encode_typed_key(node_type: str, raw_id: str) -> str:
+    """Encode a typed node key without delimiter collision."""
+    return json.dumps(
+        [node_type, raw_id],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+
+
+def decode_typed_key(key: str) -> tuple[str, str]:
+    """Decode and validate a serialized typed node key."""
+    value: Any = json.loads(key)
+    if (
+        not isinstance(value, list)
+        or len(value) != 2
+        or not all(isinstance(item, str) for item in value)
+    ):
+        raise ValueError(f"Invalid typed node key: {key!r}")
+    return value[0], value[1]
+
+
 def persist_vocabulary(index_dir: str, output_dir: str) -> str:
-    """Copy the temporary vocabulary into the durable walk output directory."""
+    """Copy the vocabulary next to the durable walk output."""
     source = _local_path(index_dir) / "vocab.json"
     if not source.is_file():
         raise FileNotFoundError(f"Missing C2 vocabulary: {source}")
