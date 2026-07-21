@@ -1,28 +1,29 @@
-"""C2 meta-path guided random walk generator (core logic)."""
+"""Generate eligibility-aware mixed walks over the canonical C2 index."""
 
 from __future__ import annotations
 
-import os
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
+from urllib.parse import unquote, urlparse
 
 import numpy as np
 
-from merlin.embedding.graph.config import EDGE_SCHEMA, META_PATHS, META_PATH_WEIGHTS
+from merlin.embedding.graph.config import ADJACENCY_NAMES, META_PATHS
+from merlin.embedding.graph.index import decode_typed_key, encode_typed_key
 
-# Maps adjacency Parquet file basename (without .parquet) to edge_type key.
-_FILE_EDGE_MAP: dict[str, str] = {
-    "fwd_song_artist": "song_artist",
-    "fwd_song_album": "song_album",
-    "fwd_song_tag": "song_tag",
-    "fwd_song_similar_artist": "song_similar_artist",
-    "fwd_song_year": "song_year",
-    "rev_song_artist": "song_artist",
-    "rev_song_album": "song_album",
-    "rev_song_tag": "song_tag",
-    "rev_song_year": "song_year",
-    "rev_artist_tag_fwd": "artist_tag",
-    "rev_artist_tag_rev": "artist_tag",
-    "rev_artist_similarity": "artist_similarity",
+AdjacencyEntry = tuple[np.ndarray, np.ndarray]
+
+_ADJACENCY_TYPES: dict[str, tuple[str, str]] = {
+    "track_to_artist": ("track", "artist"),
+    "artist_to_tracks": ("artist", "track"),
+    "track_to_release": ("track", "release"),
+    "release_to_tracks": ("release", "track"),
+    "artist_to_terms": ("artist", "term"),
+    "term_to_artists": ("term", "artist"),
+    "artist_to_similar_artists": ("artist", "artist"),
 }
 
 
