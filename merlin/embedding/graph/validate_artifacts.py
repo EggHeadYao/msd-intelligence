@@ -49,3 +49,60 @@ def read_json(path: Path) -> dict:
     require(path.is_file(), f"missing metadata file: {path}")
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def validate_embeddings(output: Path, expected_rows: int, dimension: int) -> None:
+    embeddings_path = output / EMBEDDINGS_NAME
+    require(embeddings_path.is_dir(), f"missing embeddings: {embeddings_path}")
+    table = pq.read_table(embeddings_path)
+    require(
+        table.column_names == ["node_id", "track_id", "embedding"],
+        "embedding columns mismatch",
+    )
+    require(table.num_rows == expected_rows, "embedding row count mismatch")
+    require(table["node_id"].null_count == 0, "embedding node_id contains null")
+    require(table["track_id"].null_count == 0, "embedding track_id contains null")
+    require(table["embedding"].null_count == 0, "embedding contains null vectors")
+    require(
+        int(pc.count_distinct(table["node_id"]).as_py()) == expected_rows,
+        "embedding node_id is not unique",
+    )
+    require(
+        int(pc.count_distinct(table["track_id"]).as_py()) == expected_rows,
+        "embedding track_id is not unique",
+    )
+    lengths = pc.list_value_length(table["embedding"])
+    require(
+        int(pc.min(lengths).as_py()) == dimension
+        and int(pc.max(lengths).as_py()) == dimension,
+        "embedding dimension mismatch",
+    )
+
+
+def validate_mapping(output: Path, expected_rows: int) -> None:
+    mapping_path = output / MAPPING_NAME
+    require(mapping_path.is_dir(), f"missing FAISS mapping: {mapping_path}")
+    mapping = pq.read_table(mapping_path)
+    require(
+        mapping.column_names == ["row_id", "node_id", "track_id"],
+        "FAISS mapping columns mismatch",
+    )
+    require(mapping.num_rows == expected_rows, "FAISS mapping row count mismatch")
+    for column in mapping.column_names:
+        require(
+            mapping[column].null_count == 0, f"FAISS mapping {column} contains null"
+        )
+        require(
+            int(pc.count_distinct(mapping[column]).as_py()) == expected_rows,
+            f"FAISS mapping {column} is not unique",
+        )
+    row_ids = mapping["row_id"].to_numpy(zero_copy_only=False)
+    node_ids = mapping["node_id"].to_numpy(zero_copy_only=False)
+    require(
+        np.array_equal(row_ids, np.arange(expected_rows)),
+        "FAISS row IDs are not contiguous",
+    )
+    require(
+        node_ids.size == 1 or np.all(node_ids[1:] > node_ids[:-1]),
+        "FAISS mapping is not ordered by node_id",
+    )
