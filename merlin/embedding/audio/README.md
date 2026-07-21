@@ -66,3 +66,28 @@ spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate_faiss.p
 - Checks index size, embedding dimension, mapping size, and mapping uniqueness.
 - Runs sample top-K searches and verifies that query tracks retrieve themselves.
 - Uses inner product because embeddings are L2-normalized, so scores equal cosine similarity.
+
+## Validate L1-1 Feature Sanity
+
+Compare cleaned and scaled pre-PCA cosine with final PCA-128 cosine on the exact
+same same-artist, same-release, and matched-random pairs:
+
+```bash
+spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate_feature_sanity.py \
+  --raw-input parquets/prepared/song_audio_features_raw.parquet \
+  --songs-metadata parquets/prepared/songs_metadata.parquet \
+  --output parquets/merlin/audio \
+  --pair-count 10000 \
+  --bootstrap-samples 2000 \
+  --seed 42 \
+  --shuffle-partitions 64
+```
+
+The validator applies only the medians, clipping bounds, feature order, scaler,
+and PCA model saved during training. It does not fit a second model. It writes
+`validation_report.json` with similarity distributions, Hedges' g versus random,
+bootstrap 95% confidence intervals, pairwise pre/post-PCA diagnostics, and exact
+embedding-reproduction error.
+
+`--allow-partial-pairs` is for small smoke artifacts only. Such a run is marked
+`SMOKE_PASS` and cannot support the formal L1-1 conclusion.

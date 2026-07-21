@@ -6,6 +6,7 @@
 - `add_log_clipped_features(df)`: Clips `tempo`, `duration`, and `loudness` at approximate 1st/99th percentiles, then applies `log1p` to tempo and duration.
 - `drop_zero_variance_features(df, columns)`: Removes constant features before StandardScaler and PCA.
 - `preprocess_audio_features(df)`: Runs the full preprocessing sequence and returns the transformed DataFrame, selected feature columns, and metadata.
+- `frozen_preprocess.apply_frozen_preprocess(...)`: Replays the saved training transform without recomputing medians, quantiles, or dropped features; used by L1-1 validation.
 - `metadata.clip_bounds`: Stores clipping thresholds for reproducibility.
 - `metadata.segment_means`: Stores segment fill values used for missing segment aggregates.
 - `metadata.time_signature_values`: Stores the raw time signature categories used for one-hot encoding.
