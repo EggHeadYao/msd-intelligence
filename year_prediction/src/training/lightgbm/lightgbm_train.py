@@ -208,3 +208,10 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
     try:
         result = run(args, spark)
+        print(json.dumps(result, sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
