@@ -153,7 +153,48 @@ def read_walks(
     return walks
 
 
+def validate_walks(
+    walks: DataFrame,
+    expected_tracks: int,
+    walks_per_track: int,
+    max_sentence_length: int,
+) -> dict[str, int]:
+    path_count_total = F.aggregate(
+        F.col("path_counts"),
+        F.lit(0),
+        lambda total, value: total + value,
+    )
+    invalid_condition = (
+        F.col("track_id").isNull()
+        | (F.length("track_id") == 0)
+        | F.col("walk_id").isNull()
+        | (F.col("walk_id") < 0)
+        | (F.col("walk_id") >= walks_per_track)
+        | F.col("walk_seq").isNull()
+        | F.col("walk_len").isNull()
+        | F.col("transition_count").isNull()
+        | F.col("path_counts").isNull()
+        | F.col("path_eligible_counts").isNull()
+        | F.col("termination_reason").isNull()
+        | (F.size("walk_seq") < 1)
+        | (F.size("walk_seq") > max_sentence_length)
+        | F.exists("walk_seq", lambda value: value.isNull() | (value < 0))
+        | (F.col("walk_len") != F.size("walk_seq"))
+        | (F.col("transition_count") != F.size("walk_seq") - 1)
+        | (F.size("path_counts") != 4)
+        | (F.size("path_eligible_counts") != 4)
+        | F.exists("path_counts", lambda value: value.isNull() | (value < 0))
+        | F.exists(
+            "path_eligible_counts",
+            lambda value: value.isNull() | (value < 0),
         )
+        | (path_count_total != F.col("transition_count"))
+        | ~F.col("termination_reason").isin("target_length", "no_eligible_path")
+    )
+    require(
+        walks.where(invalid_condition).limit(1).count() == 0,
+        "walk input violates the canonical schema or value contract",
+    )
 
         )
 
