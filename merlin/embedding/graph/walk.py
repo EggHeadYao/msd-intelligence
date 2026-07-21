@@ -86,20 +86,6 @@ class ArtistOptions:
     terms: np.ndarray
     term_weights: np.ndarray
 
-def load_adjacency(
-    adj_dir: str,
-    node_to_int: dict[str, int],
-) -> tuple[
-    dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
-    dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
-]:
-    """Load adjacency Parquet files into two dicts.
-
-    Returns:
-        song_adj: {song_int_id: {edge_type: (neighbor_ints, weights)}}
-        node_adj: {non_song_int_id: {edge_type: (neighbor_ints, weights)}}
-    """
-    import pyarrow.parquet as pq
 
 @dataclass(frozen=True)
 class TransitionOptions:
@@ -125,43 +111,39 @@ class TransitionOptions:
             if available
         )
 
-    for fname in sorted(os.listdir(adj_dir)):
-        if not fname.endswith(".parquet"):
-            continue
-        base: str = Path(fname).stem
-        if base not in _FILE_EDGE_MAP:
-            continue
 
-        edge_type: str = _FILE_EDGE_MAP[base]
-        is_fwd: bool = base.startswith("fwd_")
-
-        table = pq.read_table(os.path.join(adj_dir, fname))
-        for row in table.to_pylist():
-            node_str: str = row["node_str"]
-            if node_str not in node_to_int:
-                continue
-            node_int: int = node_to_int[node_str]
-
-            nids: np.ndarray = np.frombuffer(
-                row["neighbor_ids"],
-                dtype=np.int32,
-            )
-            wts: np.ndarray = np.frombuffer(
-                row["weights"],
-                dtype=np.float32,
-            )
-
-            target = song_adj if is_fwd else node_adj
-            target.setdefault(node_int, {})[edge_type] = (nids, wts)
-
-    return song_adj, node_adj
+def _local_path(path: str) -> Path:
+    parsed = urlparse(path)
+    if parsed.scheme not in {"", "file"}:
+        raise ValueError(f"C2 adjacency requires a local path, got: {path}")
+    return Path(unquote(parsed.path)) if parsed.scheme == "file" else Path(path)
 
 
-def resolve_edge_type(edge_spec: str) -> str:
-    """Strip 'rev:' prefix from an edge-type spec."""
-    if edge_spec.startswith("rev:"):
-        return edge_spec[4:]
-    return edge_spec
+def _validate_vocabulary(node_to_int: dict[str, int]) -> np.ndarray:
+    if not node_to_int:
+        raise ValueError("C2 vocabulary is empty")
+
+    type_codes = np.full(len(node_to_int), -1, dtype=np.int8)
+    for typed_key, node_id in node_to_int.items():
+        node_type, raw_id = decode_typed_key(typed_key)
+        if encode_typed_key(node_type, raw_id) != typed_key:
+            raise ValueError(f"Non-canonical typed vocabulary key: {typed_key!r}")
+        if not isinstance(node_id, int) or not 0 <= node_id < len(type_codes):
+            raise ValueError(f"Invalid vocabulary integer ID: {node_id!r}")
+        if type_codes[node_id] != -1:
+            raise ValueError(f"Duplicate vocabulary integer ID: {node_id}")
+        if node_type not in _NODE_TYPE_CODE:
+            raise ValueError(f"Invalid vocabulary node type: {node_type!r}")
+        type_codes[node_id] = _NODE_TYPE_CODE[node_type]
+
+    if (type_codes < 0).any():
+        raise ValueError("C2 vocabulary integer IDs must be contiguous from zero")
+    return type_codes
+
+
+def clear_adjacency_cache() -> None:
+    """Clear worker-local adjacency state, primarily for isolated tests."""
+    _ADJACENCY_CACHE.clear()
 
 
 def pick_neighbor(neighbor_ids: np.ndarray, rng: np.random.Generator) -> int:
