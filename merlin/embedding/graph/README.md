@@ -84,6 +84,58 @@ Both path arrays use the fixed order `[P1, P2, P3, P4]`. `termination_reason` is
 
 The default configuration generates 10 walks per track with a target length of 40 and seed 42.
 
+## Graph embeddings
+
+`train_word2vec.py` trains Spark Word2Vec directly on the integer track-token sequences. The canonical configuration is 128 dimensions, window size 5, minimum count 1, five iterations, step size 0.025, 20 Word2Vec partitions, maximum sentence length 40, and seed 42.
+
+Each output embedding is the learned vector of the corresponding root track token. Walk-neighborhood vectors are not averaged after training. Root `track_id` values are mapped to their first `walk_seq` token, the resulting vectors are converted to float32, and every vector is L2 normalized. Training fails if coverage is incomplete or if an embedding is duplicated, non-finite, zero, incorrectly sized, or not normalized.
+
+The outputs are:
+
+```text
+song_embeddings_graph.parquet/
+word2vec_model/
+graph_encoder_metadata.json
+```
+
+The embedding table contains `node_id`, `track_id`, and `embedding`.
+
+## Graph FAISS
+
+`build_faiss.py` sorts embeddings by `node_id`, validates their numeric contract in bounded batches, and builds an exact `IndexFlatIP`. The mapping is written from the same sorted table used to populate FAISS, so row identity does not depend on Parquet file or Spark partition order.
+
+The outputs are:
+
+```text
+index_graph.faiss
+index_graph_track_ids.parquet/
+graph_faiss_metadata.json
+```
+
+The mapping contains `row_id`, `node_id`, and `track_id`. `validate_artifacts.py` independently checks embedding and mapping coverage, uniqueness, dimensions, normalization, the FAISS metric and size, the index hash, and deterministic self-retrieval samples.
+
+## Commands
+
+From the repository root, train on an existing canonical walk artifact:
+
+```bash
+PYTHONPATH=. spark-submit --master 'local[*]' --driver-memory 22g \
+  merlin/embedding/graph/train_word2vec.py \
+  --walks ../parquets_new/merlin/graph/walk_sequences.parquet \
+  --output ../parquets_new/merlin/graph
+```
+
+Then build and validate the exact graph index:
+
+```bash
+python3 -m merlin.embedding.graph.build_faiss \
+  --embeddings ../parquets_new/merlin/graph/song_embeddings_graph.parquet \
+  --output ../parquets_new/merlin/graph
+
+python3 -m merlin.embedding.graph.validate_artifacts \
+  --output ../parquets_new/merlin/graph
+```
+
 ## Tests
 
-The tests cover typed raw-ID collisions, strict input rejection, deterministic vocabulary assignment, all seven adjacency directions, paired binary decoding, hierarchical path sampling, eligibility recomputation, self exclusion, early termination, and deterministic mixed walks.
+The tests cover typed raw-ID collisions, strict input rejection, deterministic vocabulary assignment, all seven adjacency directions, paired binary decoding, hierarchical path sampling, eligibility recomputation, self exclusion, early termination, deterministic mixed walks, direct Word2Vec track-vector export, normalization, exact inner-product indexing, mapping identity, and persisted artifact validation.
