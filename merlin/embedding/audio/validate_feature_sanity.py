@@ -206,3 +206,30 @@ def verify_model_metadata(
     require(pca_model.pc.numRows == int(encoder_metadata["feature_count"]), "PCA row mismatch")
     require(pca_model.pc.numCols == int(encoder_metadata["selected_k"]), "PCA column mismatch")
 
+
+def score_pairs(pairs: DataFrame, vectors: DataFrame) -> DataFrame:
+    query = vectors.select(
+        F.col(TRACK_ID_COLUMN).alias("query_track_id"),
+        F.col("pre_pca_vector").alias("query_pre"),
+        F.col("final_embedding").alias("query_post"),
+    )
+    candidate = vectors.select(
+        F.col(TRACK_ID_COLUMN).alias("candidate_track_id"),
+        F.col("pre_pca_vector").alias("candidate_pre"),
+        F.col("final_embedding").alias("candidate_post"),
+    )
+    joined = pairs.join(query, "query_track_id", "inner").join(
+        candidate, "candidate_track_id", "inner"
+    )
+    return joined.select(
+        "pair_type",
+        "query_track_id",
+        "candidate_track_id",
+        "year_matched",
+        "coverage_matched",
+        "artist_matched",
+        "release_matched",
+        cosine(F.col("query_pre"), F.col("candidate_pre")).alias("pre_pca_cosine"),
+        cosine(F.col("query_post"), F.col("candidate_post")).alias("pca_128_cosine"),
+    )
+
