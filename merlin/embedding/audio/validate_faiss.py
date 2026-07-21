@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 
@@ -11,6 +10,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from shared_contract import CONTRACT_VERSION
+from lineage import sha256_path
 
 
 TRACK_ID_COLUMN = "track_id"
@@ -53,15 +53,12 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def validate_manifest(output_dir: Path, index_path: Path, expected_rows: int) -> None:
+def validate_manifest(
+    output_dir: Path,
+    index_path: Path,
+    mapping_path: Path,
+    expected_rows: int,
+) -> None:
     manifest_path = output_dir / FAISS_MANIFEST_NAME
     metadata_path = output_dir / "audio_encoder_metadata.json"
     require(manifest_path.exists(), f"missing FAISS manifest: {manifest_path}")
@@ -72,9 +69,10 @@ def validate_manifest(output_dir: Path, index_path: Path, expected_rows: int) ->
     require(manifest.get("index_type") == "IndexFlatIP", "wrong FAISS index type")
     require(int(manifest.get("dimension", -1)) == 128, "wrong manifest dimension")
     require(int(manifest.get("row_count", -1)) == expected_rows, "wrong manifest row count")
-    require(manifest.get("index_sha256") == sha256_file(index_path), "FAISS index hash mismatch")
+    require(manifest.get("index_sha256") == sha256_path(index_path), "FAISS index hash mismatch")
+    require(manifest.get("mapping_sha256") == sha256_path(mapping_path), "FAISS mapping hash mismatch")
     require(
-        manifest.get("encoder_metadata_sha256") == sha256_file(metadata_path),
+        manifest.get("encoder_metadata_sha256") == sha256_path(metadata_path),
         "encoder metadata hash mismatch",
     )
 
@@ -175,7 +173,7 @@ def main() -> None:
     mapping_path = args.output / args.track_ids_name
     require(index_path.exists(), f"missing FAISS index: {index_path}")
     require(mapping_path.exists(), f"missing track-id mapping: {mapping_path}")
-    validate_manifest(args.output, index_path, args.expected_rows)
+    validate_manifest(args.output, index_path, mapping_path, args.expected_rows)
 
     index = faiss.read_index(str(index_path))
     selected_k = read_selected_k(args.output)

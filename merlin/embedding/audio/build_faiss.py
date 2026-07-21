@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from shared_contract import CONTRACT_VERSION
+from lineage import sha256_path
 
 
 TRACK_ID_COLUMN = "track_id"
@@ -52,14 +52,6 @@ def spark_path(path: Path) -> str:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def expected_dimension(output_dir: Path) -> int:
@@ -159,6 +151,7 @@ def main() -> None:
         index_path = args.output / args.index_name
         faiss.write_index(index, str(index_path))
         metadata_path = args.output / "audio_encoder_metadata.json"
+        mapping_path = args.output / args.track_ids_name
         manifest = {
             "shared_audio_contract_version": CONTRACT_VERSION,
             "c1_feature_version": 2,
@@ -167,8 +160,9 @@ def main() -> None:
             "row_count": index.ntotal,
             "index_file": args.index_name,
             "track_ids_path": args.track_ids_name,
-            "index_sha256": sha256_file(index_path),
-            "encoder_metadata_sha256": sha256_file(metadata_path),
+            "index_sha256": sha256_path(index_path),
+            "mapping_sha256": sha256_path(mapping_path),
+            "encoder_metadata_sha256": sha256_path(metadata_path),
         }
         with (args.output / FAISS_MANIFEST_NAME).open("w", encoding="utf-8") as handle:
             json.dump(manifest, handle, indent=2, sort_keys=True)
