@@ -66,6 +66,26 @@ def publish_directory(staging: Path, output: Path, run_id: str) -> None:
             warnings.warn(f"failed to remove old C1 backup {backup}: {error}", RuntimeWarning)
 
 
+def replace_artifact(source: Path, target: Path, run_id: str) -> None:
+    backup = target.parent / f".{target.name}.backup-{run_id}"
+    if backup.exists() or backup.is_symlink():
+        raise FileExistsError(f"artifact backup already exists: {backup}")
+    had_target = target.exists() or target.is_symlink()
+    if had_target:
+        target.replace(backup)
+    try:
+        source.replace(target)
+    except BaseException:
+        if had_target and backup.exists() and not target.exists():
+            backup.replace(target)
+        raise
+    if had_target:
+        try:
+            remove_path(backup)
+        except OSError as error:
+            warnings.warn(f"failed to remove artifact backup {backup}: {error}", RuntimeWarning)
+
+
 def build_c1_manifest(staging: Path, metadata: dict[str, Any]) -> dict[str, Any]:
     outputs = {
         name: {"path": relative, "sha256": sha256_path(staging / relative)}
