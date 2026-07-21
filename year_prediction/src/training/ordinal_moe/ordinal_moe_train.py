@@ -68,3 +68,73 @@ def parse_args() -> argparse.Namespace:
         default=Path("parquets/year_prediction/features/full_tabular.parquet"),
     )
     parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path("parquets/year_prediction/features/manifest.json"),
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("parquets/year_prediction/models/ordinal-moe-spark-v1"),
+    )
+    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--evaluate-test", action="store_true")
+    parser.add_argument("--max-rows-per-split", type=int)
+    parser.add_argument("--fold-assignments", type=Path)
+    parser.add_argument("--validation-fold", type=int)
+    parser.add_argument("--partitions", type=int, default=32)
+    parser.add_argument("--epochs", type=int, default=35)
+    parser.add_argument("--patience", type=int, default=6)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--sample-fraction", type=float, default=1.0)
+    parser.add_argument("--learning-rate", type=float, default=0.002)
+    parser.add_argument("--l2", type=float, default=1.0e-4)
+    parser.add_argument("--gradient-clip", type=float, default=5.0)
+    parser.add_argument("--loss-ordinal", type=float, default=0.35)
+    parser.add_argument("--loss-moe", type=float, default=0.45)
+    parser.add_argument("--loss-direct", type=float, default=0.05)
+    parser.add_argument("--loss-decade", type=float, default=0.12)
+    parser.add_argument("--loss-consistency", type=float, default=0.03)
+    parser.add_argument("--huber-delta", type=float, default=3.0)
+    parser.add_argument("--expert-span", type=float, default=8.0)
+    parser.add_argument("--blend-ordinal", type=float, default=0.20)
+    parser.add_argument("--blend-moe", type=float, default=0.80)
+    parser.add_argument("--blend-direct", type=float, default=0.0)
+    parser.add_argument("--seed", type=int, default=472)
+    return parser.parse_args()
+
+
+def loss_config(args: argparse.Namespace) -> LossConfig:
+    config = LossConfig(
+        ordinal=args.loss_ordinal,
+        moe=args.loss_moe,
+        direct=args.loss_direct,
+        decade=args.loss_decade,
+        consistency=args.loss_consistency,
+        huber_delta=args.huber_delta,
+        expert_span=args.expert_span,
+        blend_ordinal=args.blend_ordinal,
+        blend_moe=args.blend_moe,
+        blend_direct=args.blend_direct,
+    )
+    config.validate()
+    return config
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if args.epochs <= 0 or args.patience <= 0 or args.batch_size <= 0:
+        raise ValueError("training counts must be positive")
+    if args.partitions <= 0:
+        raise ValueError("partitions must be positive")
+    if not 0.0 < args.sample_fraction <= 1.0:
+        raise ValueError("sample_fraction must be in (0, 1]")
+    if args.learning_rate <= 0.0 or args.l2 < 0.0:
+        raise ValueError("optimizer values are invalid")
+    if (args.fold_assignments is None) != (args.validation_fold is None):
+        raise ValueError("fold assignments and validation fold must be set together")
+    if args.fold_assignments is not None and args.evaluate_test:
+        raise ValueError("OOF training cannot evaluate the test split")
+
+
+def year_histogram(train: DataFrame) -> list[int]:
+    result = [0] * (int(MAX_YEAR - MIN_YEAR) + 1)
