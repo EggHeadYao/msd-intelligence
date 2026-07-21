@@ -278,3 +278,73 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
             "epoch": epoch,
             "learning_rate": rate,
             "batch_count": batch_count,
+            "gradient_norm": gradient_norm,
+            "validation_blend_mae_years": mae,
+            "improved": improved,
+            "seconds": time.perf_counter() - epoch_started,
+            "loss": losses,
+        }
+        history.append(record)
+        write_json(args.output / "history.json", history)
+        print(json.dumps(record, sort_keys=True), flush=True)
+        if stale_epochs >= args.patience:
+            break
+    np.savez_compressed(args.output / "model.npz", parameters=best_parameters)
+    validation_predictions = prediction_frame(
+        spark, validation_points, best_parameters, layout, config, args.batch_size
+    )
+    if args.validation_fold is not None:
+        validation_predictions = validation_predictions.withColumn(
+            "fold", F.lit(args.validation_fold)
+        )
+    validation_predictions = validation_predictions.cache()
+    write_parquet_parts(
+        validation_predictions, args.output / "validation_predictions.parquet"
+    )
+    metrics: dict[str, Any] = {"validation": evaluate_heads(validation_predictions)}
+    if args.evaluate_test:
+        test_frame = standardized.where(F.col("split") == "test")
+        test_points = point_rdd(test_frame)
+        test_predictions = prediction_frame(
+            spark, test_points, best_parameters, layout, config, args.batch_size
+        ).cache()
+        write_parquet_parts(
+            test_predictions, args.output / "test_predictions.parquet"
+        )
+        metrics["test"] = evaluate_heads(test_predictions)
+        test_predictions.unpersist()
+    write_json(args.output / "metrics.json", metrics)
+    write_json(args.output / "preprocessing.json", standardization.as_dict())
+    write_json(
+        args.output / "model.json",
+        {
+            "model_type": "spark_distributed_ordinal_moe",
+            "dimension": layout.dimension,
+            "parameter_count": layout.size,
+            "loss_config": asdict(config),
+            "feature_order_sha256": contract.order_sha256,
+            "minimum_year": MIN_YEAR,
+            "maximum_year": MAX_YEAR,
+        },
+    )
+    metadata = {
+        "spark_version": spark.version,
+        "spark_master": spark.sparkContext.master,
+        "application_id": spark.sparkContext.applicationId,
+        "split_counts": counts,
+        "epochs_completed": len(history),
+        "best_validation_mae_years": best_mae,
+        "test_read": args.evaluate_test,
+        "total_seconds": time.perf_counter() - started,
+    }
+    write_json(args.output / "run_metadata.json", metadata)
+    validation_predictions.unpersist()
+    train_points.unpersist()
+    validation_points.unpersist()
+    train_frame.unpersist()
+    validation_frame.unpersist()
+    raw_train.unpersist()
+    return {"metrics": metrics, "metadata": metadata}
+
+
+def main() -> None:
