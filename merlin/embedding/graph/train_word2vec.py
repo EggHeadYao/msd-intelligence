@@ -371,6 +371,14 @@ def validate_embeddings(
     }
 
 
+def write_metadata(path: Path, metadata: dict[str, Any]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    temporary.replace(path)
+
+
 
         print(
         )
