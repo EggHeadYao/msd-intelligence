@@ -360,6 +360,7 @@ def load_inputs(
     args: argparse.Namespace,
     encoder_metadata: dict[str, Any],
     feature_columns: Sequence[str],
+    persisted_frames: list[DataFrame],
 ) -> tuple[DataFrame, DataFrame, DataFrame, int, int]:
     raw = spark.read.parquet(spark_path(args.raw_input))
     require(tuple(raw.columns) == PREPARED_AUDIO_COLUMNS, "raw input contract mismatch")
@@ -368,13 +369,16 @@ def load_inputs(
     saved_embeddings = spark.read.parquet(
         spark_path(args.output / "song_embeddings_audio.parquet")
     ).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
-    output_rows = saved_embeddings.count()
+    output_ids = persist_frame(
+        saved_embeddings.select(TRACK_ID_COLUMN),
+        persisted_frames,
+    )
+    output_rows = output_ids.count()
     require(output_rows == int(encoder_metadata["row_count"]), "embedding row count mismatch")
 
-    output_ids = saved_embeddings.select(TRACK_ID_COLUMN)
     id_lookup = F.broadcast(output_ids) if output_rows <= 100_000 else output_ids
     coverage = add_coverage(raw.join(id_lookup, TRACK_ID_COLUMN, "inner"), feature_columns)
-    base = (
+    base = persist_frame(
         songs_metadata.select(*METADATA_COLUMNS)
         .join(id_lookup, TRACK_ID_COLUMN, "inner")
         .join(coverage, TRACK_ID_COLUMN, "inner")
@@ -383,16 +387,22 @@ def load_inputs(
             F.when(
                 (F.col("has_year") == 1) & F.col("year").isNotNull(), F.col("year")
             ).otherwise(F.lit(0)),
-        )
-    ).cache()
+        ),
+        persisted_frames,
+    )
     base_rows = base.count()
     require(base_rows == output_rows, "songs metadata/raw coverage does not cover C1 output")
+    release_frame(output_ids, persisted_frames)
     return raw, saved_embeddings, base, output_rows, base_rows
 
 
-def prepare_pairs(base: DataFrame, args: argparse.Namespace) -> tuple[DataFrame, dict[str, int], int]:
+def prepare_pairs(
+    base: DataFrame,
+    args: argparse.Namespace,
+    persisted_frames: list[DataFrame],
+) -> tuple[DataFrame, dict[str, int], int]:
     pair_frames = {
-        name: frame.cache()
+        name: persist_frame(frame, persisted_frames)
         for name, frame in build_pairs(base, args.pair_count, args.seed).items()
     }
     pair_counts = {name: frame.count() for name, frame in pair_frames.items()}
@@ -403,9 +413,12 @@ def prepare_pairs(base: DataFrame, args: argparse.Namespace) -> tuple[DataFrame,
     pairs = pair_frames[PAIR_TYPES[0]]
     for pair_type in PAIR_TYPES[1:]:
         pairs = pairs.unionByName(pair_frames[pair_type])
-    pairs = pairs.cache()
+    pairs = persist_frame(pairs, persisted_frames)
     total_pairs = pairs.count()
     require(total_pairs == sum(pair_counts.values()), "pair union count mismatch")
+    for frame in pair_frames.values():
+        release_frame(frame, persisted_frames)
+    release_frame(base, persisted_frames)
     return pairs, pair_counts, total_pairs
 
 
@@ -417,10 +430,15 @@ def recompute_embeddings(
     encoder_metadata: dict[str, Any],
     feature_columns: Sequence[str],
     selected_k: int,
-) -> tuple[DataFrame, int]:
-    selected_ids = pairs.select(F.col("query_track_id").alias(TRACK_ID_COLUMN)).union(
-        pairs.select(F.col("candidate_track_id").alias(TRACK_ID_COLUMN))
-    ).distinct()
+    persisted_frames: list[DataFrame],
+) -> tuple[DataFrame, int, DataFrame]:
+    selected_ids = persist_frame(
+        pairs.select(F.col("query_track_id").alias(TRACK_ID_COLUMN)).union(
+            pairs.select(F.col("candidate_track_id").alias(TRACK_ID_COLUMN))
+        ).distinct(),
+        persisted_frames,
+    )
+    selected_count = selected_ids.count()
     selected_raw = raw.join(F.broadcast(selected_ids), TRACK_ID_COLUMN, "inner")
     processed = apply_frozen_preprocess(
         selected_raw, feature_columns, encoder_metadata["preprocess"]
@@ -440,10 +458,13 @@ def recompute_embeddings(
         vector_to_array(F.col(SCALED_FEATURES_COLUMN)).alias("pre_pca_vector"),
         F.col(EMBEDDING_COLUMN).alias("recomputed_embedding"),
     )
+    selected_saved = saved_embeddings.join(
+        F.broadcast(selected_ids), TRACK_ID_COLUMN, "inner"
+    ).select(
+        TRACK_ID_COLUMN, F.col(EMBEDDING_COLUMN).alias("final_embedding")
+    )
     compared = recomputed.join(
-        saved_embeddings.select(
-            TRACK_ID_COLUMN, F.col(EMBEDDING_COLUMN).alias("final_embedding")
-        ),
+        selected_saved,
         TRACK_ID_COLUMN,
         "inner",
     ).withColumn(
@@ -455,8 +476,14 @@ def recompute_embeddings(
                 lambda left, right: F.abs(left.cast("double") - right.cast("double")),
             )
         ),
+    ).select(
+        TRACK_ID_COLUMN,
+        "pre_pca_vector",
+        "final_embedding",
+        "maximum_difference",
     )
-    return compared, selected_ids.count()
+    compared = persist_frame(compared, persisted_frames)
+    return compared, selected_count, selected_ids
 
 
 def validate_reproduction(
@@ -573,18 +600,23 @@ def main() -> None:
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
+    persisted_frames: list[DataFrame] = []
     try:
         raw, saved, base, output_rows, base_rows = load_inputs(
-            spark, args, encoder_metadata, feature_columns
+            spark, args, encoder_metadata, feature_columns, persisted_frames
         )
-        pairs, pair_counts, total_pairs = prepare_pairs(base, args)
-        compared, selected_count = recompute_embeddings(
-            args, raw, saved, pairs, encoder_metadata, feature_columns, selected_k
+        pairs, pair_counts, total_pairs = prepare_pairs(base, args, persisted_frames)
+        compared, selected_count, selected_ids = recompute_embeddings(
+            args, raw, saved, pairs, encoder_metadata, feature_columns, selected_k,
+            persisted_frames,
         )
         vectors, maximum_difference = validate_reproduction(
             compared, selected_count, args.reproduction_tolerance
         )
+        release_frame(selected_ids, persisted_frames)
         score_rows, scored_count = collect_scores(pairs, vectors, total_pairs)
+        release_frame(pairs, persisted_frames)
+        release_frame(compared, persisted_frames)
         distributions, effects, diagnostics = summarize_scores(
             score_rows, args.bootstrap_samples, args.seed
         )
@@ -606,6 +638,8 @@ def main() -> None:
             f"report={report_path}"
         )
     finally:
+        for frame in reversed(persisted_frames.copy()):
+            release_frame(frame, persisted_frames)
         try:
             spark.stop()
         except Exception as error:
