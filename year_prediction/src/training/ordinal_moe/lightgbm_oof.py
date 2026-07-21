@@ -68,3 +68,28 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict:
     held_out = frame.where(F.col("split") == "validation").cache()
     fit_frame = train.unionByName(held_out.withColumn("is_validation", F.lit(True)))
     model = build_estimator(args, list(contract.categorical_indexes)).fit(fit_frame)
+    predictions = add_prediction_columns(model.transform(held_out)).select(
+        "track_id", "artist_id", "year", "raw_prediction_year",
+        "clipped_prediction_year", "absolute_error_years",
+    ).withColumn("fold", F.lit(args.fold)).cache()
+    write_native_model(args.output / "model.txt", model.getNativeModel())
+    rows = write_parquet_parts(predictions, args.output / "predictions.parquet")
+    metrics = regression_metrics(predictions)
+    metrics.update({"fold": args.fold, "rows": rows})
+    write_json(args.output / "metrics.json", metrics)
+    predictions.unpersist()
+    held_out.unpersist()
+    return metrics
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionLightGBMOOF").getOrCreate()
+    try:
+        print(json.dumps(run(args, spark), sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
