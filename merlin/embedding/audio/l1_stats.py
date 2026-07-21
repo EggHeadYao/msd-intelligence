@@ -97,3 +97,20 @@ def bootstrap_hedges_g_ci(
     return [float(low), float(high)]
 
 
+def preservation_summary(
+    before: Sequence[float],
+    after: Sequence[float],
+) -> dict[str, float | int | None]:
+    before_array = finite_array(before, "pre-PCA sample")
+    after_array = finite_array(after, "PCA sample")
+    if before_array.size != after_array.size:
+        raise ValueError("pre-PCA and PCA samples must contain the same pairs")
+    correlation: float | None = None
+    if before_array.size > 1 and np.std(before_array) > 0.0 and np.std(after_array) > 0.0:
+        correlation = float(np.corrcoef(before_array, after_array)[0, 1])
+    return {
+        "count": int(before_array.size),
+        "pearson_correlation": correlation,
+        "mean_absolute_similarity_delta": float(np.mean(np.abs(after_array - before_array))),
+        "mean_signed_similarity_delta": float(np.mean(after_array - before_array)),
+    }
