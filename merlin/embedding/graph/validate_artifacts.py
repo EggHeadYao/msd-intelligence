@@ -106,3 +106,56 @@ def validate_mapping(output: Path, expected_rows: int) -> None:
         node_ids.size == 1 or np.all(node_ids[1:] > node_ids[:-1]),
         "FAISS mapping is not ordered by node_id",
     )
+
+
+def validate_faiss(
+    output: Path,
+    expected_rows: int,
+    dimension: int,
+    query_count: int,
+) -> None:
+    index_path = output / INDEX_NAME
+    require(index_path.is_file(), f"missing FAISS index: {index_path}")
+    index = faiss.read_index(str(index_path))
+    require(index.ntotal == expected_rows, "FAISS index row count mismatch")
+    require(index.d == dimension, "FAISS index dimension mismatch")
+    require(
+        index.metric_type == faiss.METRIC_INNER_PRODUCT,
+        "FAISS metric is not inner product",
+    )
+
+    query_count = min(query_count, expected_rows)
+    sample_ids = np.linspace(0, expected_rows - 1, query_count, dtype=np.int64)
+    queries = np.vstack(
+        [index.reconstruct(int(row_id)) for row_id in sample_ids]
+    ).astype(
+        np.float32,
+        copy=False,
+    )
+    require(np.all(np.isfinite(queries)), "FAISS reconstructed vector is not finite")
+    require(
+        np.all(np.abs(np.linalg.norm(queries, axis=1) - 1.0) <= NORM_TOLERANCE),
+        "FAISS reconstructed vector is not normalized",
+    )
+    scores, neighbors = index.search(queries, min(10, expected_rows))
+    for position, row_id in enumerate(sample_ids):
+        require(
+            int(row_id) in neighbors[position], "FAISS query did not retrieve itself"
+        )
+        require(0.9999 <= scores[position][0] <= 1.0001, "FAISS self score mismatch")
+
+    faiss_metadata = read_json(output / METADATA_NAME)
+    require(
+        faiss_metadata["index"]["type"] == "IndexFlatIP", "FAISS metadata type mismatch"
+    )
+    require(
+        faiss_metadata["index"]["rows"] == expected_rows, "FAISS metadata rows mismatch"
+    )
+    require(
+        faiss_metadata["index"]["dimension"] == dimension,
+        "FAISS metadata dimension mismatch",
+    )
+    require(
+        faiss_metadata["index"]["sha256"] == sha256_file(index_path),
+        "FAISS index hash mismatch",
+    )
