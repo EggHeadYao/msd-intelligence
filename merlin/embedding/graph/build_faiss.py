@@ -76,20 +76,43 @@ def read_expected_dimension(output: Path, fallback: int) -> int:
     require(
         dimension == fallback, "requested dimension conflicts with encoder metadata"
     )
-    parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="Output directory for FAISS index and mapping files",
+    return dimension
+
+
+def read_embeddings(path: Path, expected_rows: int) -> pa.Table:
+    table = pq.read_table(path, columns=list(REQUIRED_COLUMNS))
+    require(table.num_rows == expected_rows, "embedding row count mismatch")
+    require(table.column_names == list(REQUIRED_COLUMNS), "embedding columns mismatch")
+    require(table["node_id"].null_count == 0, "embedding node_id contains null")
+    require(table["track_id"].null_count == 0, "embedding track_id contains null")
+    require(table["embedding"].null_count == 0, "embedding vector contains null")
+    require(
+        int(pc.count_distinct(table["node_id"]).as_py()) == expected_rows,
+        "embedding node_id is not unique",
     )
-    parser.add_argument(
-        "--index-type",
-        type=str,
-        default="flat",
-        choices=["flat", "ivf"],
-        help="FAISS index type (flat for exact, ivf for faster approximate)",
+    require(
+        int(pc.count_distinct(table["track_id"]).as_py()) == expected_rows,
+        "embedding track_id is not unique",
     )
-    return parser.parse_args()
+    return table.sort_by([("node_id", "ascending")])
+
+
+def embedding_matrix(array: pa.Array, dimension: int) -> np.ndarray:
+    require(array.null_count == 0, "embedding batch contains null vectors")
+    lengths = pc.list_value_length(array).to_numpy(zero_copy_only=False)
+    require(
+        np.all(lengths == dimension),
+        "embedding vector dimension mismatch",
+    )
+    flattened = pc.list_flatten(array).to_numpy(zero_copy_only=False)
+    matrix = np.asarray(flattened, dtype=np.float32).reshape(len(array), dimension)
+    require(np.all(np.isfinite(matrix)), "embedding contains NaN or infinite values")
+    norms = np.linalg.norm(matrix, axis=1)
+    require(
+        np.all(np.abs(norms - 1.0) <= NORM_TOLERANCE),
+        "embedding is not L2 normalized",
+    )
+    return np.ascontiguousarray(matrix, dtype=np.float32)
 
 
 def main() -> None:
