@@ -25,6 +25,7 @@ from columns import (
 )
 
 NEAR_ZERO_RANGE_EPSILON = 1e-12
+SEGMENT_MEDIAN_BATCH_SIZE = 32
 
 
 def _finite(column: str) -> Column:
@@ -145,15 +146,17 @@ def add_log_clipped_features(df: DataFrame) -> tuple[DataFrame, dict[str, tuple[
 
 
 def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
-    medians_row = df.agg(
-        *(F.percentile_approx(F.col(column).cast("double"), 0.5, 10_000).alias(column)
-          for column in SEGMENT_FEATURE_COLUMNS)
-    ).first()
     medians = {}
-    for column in SEGMENT_FEATURE_COLUMNS:
-        value = medians_row[column]
-        median = float(value) if value is not None else 0.0
-        medians[column] = median if math.isfinite(median) else 0.0
+    for offset in range(0, len(SEGMENT_FEATURE_COLUMNS), SEGMENT_MEDIAN_BATCH_SIZE):
+        batch = SEGMENT_FEATURE_COLUMNS[offset:offset + SEGMENT_MEDIAN_BATCH_SIZE]
+        medians_row = df.agg(
+            *(F.percentile_approx(F.col(column).cast("double"), 0.5, 10_000).alias(column)
+              for column in batch)
+        ).first()
+        for column in batch:
+            value = medians_row[column]
+            median = float(value) if value is not None else 0.0
+            medians[column] = median if math.isfinite(median) else 0.0
     expressions = []
     for column in df.columns:
         if column in medians:
