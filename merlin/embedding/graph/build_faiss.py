@@ -206,71 +206,52 @@ def write_metadata(path: Path, metadata: dict[str, Any]) -> None:
 
 def main() -> None:
     args = parse_args()
+    require(args.expected_rows > 0, "expected row count must be positive")
+    require(args.dimension > 0, "embedding dimension must be positive")
+    index_path, mapping_path, metadata_path = prepare_output(
+        args.output, args.overwrite
+    )
+    dimension = read_expected_dimension(args.output, args.dimension)
 
-    # Read embeddings using PyArrow
-    print(f"Reading embeddings from {args.embeddings}")
-    table = pq.read_table(args.embeddings)
-    
-    track_ids = table["track_id"].to_pylist()
-    embeddings_list = table["embedding"].to_pylist()
-    
-    print(f"Processing {len(track_ids)} songs...")
+    print(f"graph_faiss_read_start embeddings={args.embeddings}")
+    table = read_embeddings(args.embeddings, args.expected_rows)
+    print(f"graph_faiss_build_start rows={table.num_rows}, dimension={dimension}")
+    index = build_index(table, dimension, args.batch_size)
+    validation = validate_index(index, table.num_rows, dimension)
 
-    # Convert embeddings to numpy array
-    vectors = []
-    for emb in embeddings_list:
-        if isinstance(emb, list):
-            vectors.append(emb)
-        else:
-            vectors.append(list(emb))
+    temporary_index = index_path.with_suffix(index_path.suffix + ".tmp")
+    remove_path(temporary_index)
+    faiss.write_index(index, str(temporary_index))
+    temporary_index.replace(index_path)
+    write_mapping(table, mapping_path)
 
-    vectors_np = np.array(vectors, dtype=np.float32)
-    dim = vectors_np.shape[1]
-
-    print(f"Building FAISS index: {vectors_np.shape[0]} vectors, dim={dim}")
-
-    # Build FAISS index
-    if args.index_type == "flat":
-        index = faiss.IndexFlatL2(dim)  # L2 distance
-        index.add(vectors_np)
-    else:  # ivf
-        n_list = max(100, len(track_ids) // 100)
-        quantizer = faiss.IndexFlatL2(dim)
-        index = faiss.IndexIVFFlat(quantizer, dim, n_list)
-        index.train(vectors_np)
-        index.add(vectors_np)
-
-    # Write outputs
-    output_path = Path(args.output)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    index_path = str(output_path / "index_graph.faiss")
-    faiss.write_index(index, index_path)
-    print(f"[OK] Saved FAISS index to {index_path}")
-
-    # Write track_id mapping
-    mapping = {i: track_id for i, track_id in enumerate(track_ids)}
-    mapping_path = output_path / "graph_embeddings_id_map.json"
-    with mapping_path.open("w") as f:
-        json.dump(mapping, f)
-    print(f"[OK] Saved ID mapping to {mapping_path}")
-
-    # Write metadata
     metadata = {
-        "index_type": args.index_type,
-        "total_songs": len(track_ids),
-        "embedding_dimension": dim,
-        "index_file": "index_graph.faiss",
-        "mapping_file": "graph_embeddings_id_map.json",
+        "artifact": "merlin_c2_graph_faiss",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "input_embeddings": str(args.embeddings.resolve()),
+        "index": {
+            "file": INDEX_NAME,
+            "type": "IndexFlatIP",
+            "metric": "inner_product",
+            "rows": int(index.ntotal),
+            "dimension": int(index.d),
+            "sha256": sha256_file(index_path),
+        },
+        "mapping": {
+            "path": MAPPING_NAME,
+            "columns": ["row_id", "node_id", "track_id"],
+            "order": "node_id_ascending",
+            "rows": table.num_rows,
+        },
+        "validation": validation,
     }
-    metadata_path = output_path / "faiss_metadata.json"
-    with metadata_path.open("w") as f:
-        json.dump(metadata, f, indent=2)
-    print(f"[OK] Saved metadata to {metadata_path}")
-
-    print(f"\n[OK] FAISS index built: {len(track_ids)} songs indexed")
+    write_metadata(metadata_path, metadata)
+    print(
+        "graph_faiss_build_done "
+        f"rows={index.ntotal}, dimension={index.d}, index={index_path}, "
+        f"mapping={mapping_path}",
+    )
 
 
 if __name__ == "__main__":
     main()
-
