@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -271,7 +272,10 @@ def main() -> None:
         validate_embeddings(embeddings, args.expected_rows, selected_k, args.norm_tolerance)
         print("MERLIN audio PCA validation passed.")
     finally:
-        spark.stop()
+        try:
+            spark.stop()
+        except Exception as error:
+            warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -566,7 +567,10 @@ def main() -> None:
             f"report={report_path}"
         )
     finally:
-        spark.stop()
+        try:
+            spark.stop()
+        except Exception as error:
+            warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
 
 
 if __name__ == "__main__":

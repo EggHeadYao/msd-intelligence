@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import warnings
 from pathlib import Path
 
 import faiss
@@ -205,7 +206,10 @@ def main() -> None:
             f"rows={index.ntotal}, dimension={index.d}, queries={len(queries)}, top_k={args.top_k}",
         )
     finally:
-        spark.stop()
+        try:
+            spark.stop()
+        except Exception as error:
+            warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
 
 
 if __name__ == "__main__":
