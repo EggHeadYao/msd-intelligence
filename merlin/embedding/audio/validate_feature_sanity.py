@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+from pyspark import StorageLevel
 from pyspark.ml.feature import PCAModel, StandardScalerModel, VectorAssembler
 from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, SparkSession, Window
@@ -92,6 +93,23 @@ def write_json(data: dict[str, Any], path: Path) -> None:
         json.dump(data, handle, indent=2, sort_keys=True)
         handle.write("\n")
     temporary.replace(path)
+
+
+def persist_frame(df: DataFrame, persisted_frames: list[DataFrame]) -> DataFrame:
+    cached = df.persist(StorageLevel.MEMORY_AND_DISK)
+    persisted_frames.append(cached)
+    return cached
+
+
+def release_frame(df: DataFrame, persisted_frames: list[DataFrame]) -> None:
+    try:
+        df.unpersist(blocking=False)
+    except Exception as error:
+        warnings.warn(f"failed to unpersist L1-1 Spark frame: {error}", RuntimeWarning)
+    for index, cached in enumerate(persisted_frames):
+        if cached is df:
+            del persisted_frames[index]
+            break
 
 
 def require_columns(df: DataFrame, columns: Sequence[str], name: str) -> None:
