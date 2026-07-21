@@ -379,6 +379,45 @@ def write_metadata(path: Path, metadata: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def main() -> None:
+    args = parse_args()
+    validate_parameters(args)
+    effective_tracks = args.limit_tracks or args.expected_tracks
+    if args.limit_tracks:
+        require(
+            args.limit_tracks == args.expected_tracks,
+            "when limit-tracks is set, expected-tracks must equal the limit",
+        )
+    prepare_output(args.output, args.overwrite)
+
+    spark = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    started = time.monotonic()
+    root_mapping: DataFrame | None = None
+    embeddings: DataFrame | None = None
+    try:
+        walks = read_walks(spark, args.walks, args.limit_tracks)
+        walk_stats = validate_walks(
+            walks,
+            effective_tracks,
+            args.walks_per_track,
+            args.max_sentence_length,
+        )
+        print(
+            "walk_validation_passed "
+            f"rows={walk_stats['rows']}, tracks={walk_stats['tracks']}, "
+            f"length={walk_stats['min_walk_len']}..{walk_stats['max_walk_len']}",
+        )
+
+        root_mapping = make_root_mapping(walks)
+        corpus = make_corpus(walks)
+        print(
+            "word2vec_training_start "
+            f"vector_size={args.vector_size}, window={args.window_size}, "
+            f"max_iter={args.max_iter}, step_size={args.step_size}, "
+            f"partitions={args.num_partitions}, seed={args.seed}",
+        )
+        model = fit_word2vec(corpus, args)
 
         print(
         )
