@@ -107,3 +107,51 @@ def fill_scalar_missing_values_frozen(df: DataFrame, medians: Any) -> DataFrame:
         )
     return df
 
+
+def apply_frozen_preprocess(
+    df: DataFrame,
+    feature_columns: Sequence[str],
+    metadata: Any,
+) -> DataFrame:
+    """Apply training-time preprocessing without fitting any statistics."""
+    if not isinstance(metadata, dict):
+        raise ValueError("frozen preprocessing metadata must be an object")
+    required = {
+        "clip_bounds",
+        "dropped_features",
+        "near_zero_range_epsilon",
+        "scalar_medians",
+        "segment_medians",
+        "time_signature_columns",
+        "time_signature_values",
+    }
+    missing = sorted(required - set(metadata))
+    if missing:
+        raise ValueError(f"frozen preprocessing metadata missing keys: {missing}")
+
+    df = fill_segment_missing_values_frozen(df, metadata["segment_medians"])
+    df = add_scalar_availability(df)
+    df = add_fade_ratios(df)
+    df = add_key_circular_features(df)
+    df, time_values, time_columns = add_time_signature_one_hot(
+        df,
+        metadata["time_signature_values"],
+    )
+    if tuple(metadata["time_signature_values"]) != time_values:
+        raise ValueError("frozen time_signature_values are not canonical integers")
+    if tuple(metadata["time_signature_columns"]) != time_columns:
+        raise ValueError("frozen time_signature_columns do not match their values")
+    df = add_log_clipped_features_frozen(df, metadata["clip_bounds"])
+    df = fill_scalar_missing_values_frozen(df, metadata["scalar_medians"])
+
+    candidates = build_feature_columns(time_columns)
+    dropped = tuple(metadata["dropped_features"])
+    if len(dropped) != len(set(dropped)) or not set(dropped).issubset(candidates):
+        raise ValueError("frozen dropped_features are invalid")
+    expected_features = tuple(column for column in candidates if column not in set(dropped))
+    if tuple(feature_columns) != expected_features:
+        raise ValueError("frozen feature_columns do not match preprocessing metadata")
+    epsilon = float(metadata["near_zero_range_epsilon"])
+    if not math.isfinite(epsilon) or epsilon < 0.0:
+        raise ValueError("frozen near_zero_range_epsilon is invalid")
+    return df
