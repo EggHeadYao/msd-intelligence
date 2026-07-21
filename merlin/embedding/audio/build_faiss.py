@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import warnings
 from pathlib import Path
+from uuid import uuid4
 
 import faiss
 import numpy as np
@@ -11,7 +13,13 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
-from artifacts import C1_MANIFEST_NAME, validate_c1_manifest
+from artifacts import (
+    C1_MANIFEST_NAME,
+    remove_path,
+    replace_artifact,
+    validate_c1_manifest,
+    write_json_atomic,
+)
 from shared_contract import CONTRACT_VERSION
 from lineage import sha256_path
 
@@ -134,12 +142,17 @@ def build_index(
 
 def main() -> None:
     args = parse_args()
+    run_id = str(uuid4())
     args.output.mkdir(parents=True, exist_ok=True)
     expected_dim = expected_dimension(args.output)
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
+    embeddings: DataFrame | None = None
+    staging: Path | None = None
     try:
+        staging = args.output / f".faiss-staging-{run_id}"
+        staging.mkdir()
         embeddings = read_embeddings(spark, args.input, args.limit)
         row_count = embeddings.count()
         null_rows = embeddings.where(
@@ -148,12 +161,12 @@ def main() -> None:
         require(row_count > 0, "input embedding table is empty")
         require(null_rows == 0, "input embedding table contains null rows")
 
-        write_track_id_mapping(embeddings, args.output / args.track_ids_name)
+        staged_mapping = staging / args.track_ids_name
+        write_track_id_mapping(embeddings, staged_mapping)
         index = build_index(embeddings, args.batch_size, expected_dim)
-        index_path = args.output / args.index_name
-        faiss.write_index(index, str(index_path))
+        staged_index = staging / args.index_name
+        faiss.write_index(index, str(staged_index))
         metadata_path = args.output / "audio_encoder_metadata.json"
-        mapping_path = args.output / args.track_ids_name
         manifest = {
             "shared_audio_contract_version": CONTRACT_VERSION,
             "c1_feature_version": 2,
@@ -162,22 +175,40 @@ def main() -> None:
             "row_count": index.ntotal,
             "index_file": args.index_name,
             "track_ids_path": args.track_ids_name,
-            "index_sha256": sha256_path(index_path),
-            "mapping_sha256": sha256_path(mapping_path),
+            "index_sha256": sha256_path(staged_index),
+            "mapping_sha256": sha256_path(staged_mapping),
             "embeddings_sha256": sha256_path(args.input),
             "encoder_metadata_sha256": sha256_path(metadata_path),
             "c1_manifest_sha256": sha256_path(args.output / C1_MANIFEST_NAME),
         }
-        with (args.output / FAISS_MANIFEST_NAME).open("w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, indent=2, sort_keys=True)
-            handle.write("\n")
+        staged_manifest = staging / FAISS_MANIFEST_NAME
+        write_json_atomic(manifest, staged_manifest)
+        published_manifest = args.output / FAISS_MANIFEST_NAME
+        published_manifest.unlink(missing_ok=True)
+        replace_artifact(staged_mapping, args.output / args.track_ids_name, run_id)
+        replace_artifact(staged_index, args.output / args.index_name, run_id)
+        staged_manifest.replace(published_manifest)
         print(
             "audio_faiss_build_done "
             f"rows={row_count}, dimension={index.d}, index_size={index.ntotal}, "
-            f"index={args.output / args.index_name}, track_ids={args.output / args.track_ids_name}",
+            f"index={args.output / args.index_name}, "
+            f"track_ids={args.output / args.track_ids_name}",
         )
     finally:
-        spark.stop()
+        if embeddings is not None:
+            try:
+                embeddings.unpersist(blocking=False)
+            except Exception as error:
+                warnings.warn(f"failed to unpersist FAISS input: {error}", RuntimeWarning)
+        try:
+            spark.stop()
+        except Exception as error:
+            warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
+        if staging is not None and staging.exists():
+            try:
+                remove_path(staging)
+            except OSError as error:
+                warnings.warn(f"failed to remove FAISS staging: {error}", RuntimeWarning)
 
 
 if __name__ == "__main__":
