@@ -278,3 +278,8 @@ def point_rdd(frame: DataFrame) -> RDD[tuple[str, str, int, np.ndarray]]:
     return frame.select("track_id", "artist_id", "year", "features").rdd.map(
         lambda row: (
             str(row["track_id"]),
+            str(row["artist_id"]),
+            int(row["year"]),
+            np.asarray(row["features"].toArray(), dtype=np.float64),
+        )
+    )
