@@ -68,3 +68,73 @@ class ParameterLayout:
             ("ordinal_b", 1),
             ("thresholds", THRESHOLD_COUNT),
             ("gate_w", DECADE_COUNT * d),
+            ("gate_b", DECADE_COUNT),
+            ("expert_w", DECADE_COUNT * d),
+            ("expert_b", DECADE_COUNT),
+            ("direct_w", d),
+            ("direct_b", 1),
+        ):
+            result[name] = slice(cursor, cursor + size)
+            cursor += size
+        return result
+
+    @property
+    def size(self) -> int:
+        return self.slices()["direct_b"].stop
+
+    def weight_mask(self) -> np.ndarray:
+        mask = np.zeros(self.size, dtype=bool)
+        slices = self.slices()
+        for name in ("ordinal_w", "gate_w", "expert_w", "direct_w"):
+            mask[slices[name]] = True
+        return mask
+
+
+def decade_index(years: np.ndarray) -> np.ndarray:
+    return np.clip(((years.astype(np.int64) - 1920) // 10), 0, DECADE_COUNT - 1)
+
+
+def _logit(probability: np.ndarray) -> np.ndarray:
+    values = np.clip(probability, 1.0e-4, 1.0 - 1.0e-4)
+    return np.log(values / (1.0 - values))
+
+
+def initialize_parameters(
+    layout: ParameterLayout,
+    year_counts: Sequence[int],
+    seed: int,
+) -> np.ndarray:
+    if len(year_counts) != THRESHOLD_COUNT + 1:
+        raise ValueError("year histogram has the wrong dimension")
+    rng = np.random.default_rng(seed)
+    parameters = np.zeros(layout.size, dtype=np.float64)
+    slices = layout.slices()
+    total = max(1, int(sum(year_counts)))
+    survival = np.asarray(
+        [sum(year_counts[index + 1 :]) / total for index in range(THRESHOLD_COUNT)],
+        dtype=np.float64,
+    )
+    parameters[slices["thresholds"]] = -_logit(survival)
+    scale = 0.01 / math.sqrt(layout.dimension)
+    for name in ("ordinal_w", "gate_w", "expert_w", "direct_w"):
+        parameters[slices[name]] = rng.normal(0.0, scale, slices[name].stop - slices[name].start)
+    return parameters
+
+
+def unpack(parameters: np.ndarray, layout: ParameterLayout) -> dict[str, np.ndarray | float]:
+    if parameters.shape != (layout.size,):
+        raise ValueError("parameter vector has the wrong shape")
+    d = layout.dimension
+    slices = layout.slices()
+    return {
+        "ordinal_w": parameters[slices["ordinal_w"]],
+        "ordinal_b": float(parameters[slices["ordinal_b"]][0]),
+        "thresholds": parameters[slices["thresholds"]],
+        "gate_w": parameters[slices["gate_w"]].reshape(DECADE_COUNT, d),
+        "gate_b": parameters[slices["gate_b"]],
+        "expert_w": parameters[slices["expert_w"]].reshape(DECADE_COUNT, d),
+        "expert_b": parameters[slices["expert_b"]],
+        "direct_w": parameters[slices["direct_w"]],
+        "direct_b": float(parameters[slices["direct_b"]][0]),
+    }
+
