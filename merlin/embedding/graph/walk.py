@@ -250,6 +250,55 @@ def _neighbor_entry(
     return entry
 
 
+def _nodes_with_rows(
+    values: np.ndarray,
+    table: AdjacencyTable,
+    *,
+    excluded: int | None = None,
+) -> np.ndarray:
+    unique = np.unique(values)
+    in_range = (unique >= 0) & (unique < table.row_by_node.size)
+    unique = unique[in_range]
+    active = unique[table.row_by_node[unique] >= 0]
+    if excluded is not None:
+        active = active[active != excluded]
+    return active.astype(np.int32, copy=False)
+
+
+def artist_transition_options(
+    source_artist: int,
+    adjacency: AdjacencyIndex,
+) -> ArtistOptions:
+    """Compute reusable P1-P3 choices for one source artist."""
+    tracks, _ = _neighbor_entry(adjacency, "artist_to_tracks", source_artist)
+    similar_artists, _ = _neighbor_entry(
+        adjacency,
+        "artist_to_similar_artists",
+        source_artist,
+    )
+    active_similar = _nodes_with_rows(
+        similar_artists,
+        adjacency["artist_to_tracks"],
+        excluded=source_artist,
+    )
+
+    terms, weights = _neighbor_entry(adjacency, "artist_to_terms", source_artist)
+    eligible = np.zeros(terms.size, dtype=bool)
+    for index, term_value in enumerate(terms):
+        target_artists, _ = _neighbor_entry(
+            adjacency,
+            "term_to_artists",
+            int(term_value),
+        )
+        eligible[index] = np.any(target_artists != source_artist)
+    return ArtistOptions(
+        tracks=tracks,
+        similar_artists=active_similar,
+        terms=terms[eligible],
+        term_weights=weights[eligible],
+    )
+
+
     rng: np.random.Generator,
     target_len: int = 40,
 ) -> list[int]:
