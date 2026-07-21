@@ -399,61 +399,43 @@ def sample_transition(
     raise ValueError(f"Unknown C2 path: {path_name}")
 
 
+def generate_mixed_walk(
+    start_track: int,
+    adjacency: AdjacencyIndex,
     rng: np.random.Generator,
     target_len: int = 40,
-) -> list[int]:
-    """Generate one meta-path guided random walk.
+    options_getter: Callable[[int], TransitionOptions] | None = None,
+) -> tuple[list[int], list[int], list[int], str]:
+    """Generate one mixed walk containing only track tokens."""
+    if target_len < 1:
+        raise ValueError("target_len must be at least one")
 
-    Args:
-        start_song: integer ID of the starting song.
-        path_template: list of edge-type specs (e.g. ["song_tag", "rev:song_tag"]).
-        song_adj: per-song forward adjacency.
-        node_adj: per-intermediate-node reverse adjacency.
-        rng: per-walk numpy random generator.
-        target_len: desired number of song nodes in the output sequence.
+    path_names = tuple(META_PATHS)
+    path_index = {name: index for index, name in enumerate(path_names)}
+    path_counts = [0] * len(path_names)
+    eligible_counts = [0] * len(path_names)
+    walk = [start_track]
 
-    Returns:
-        List of song int IDs representing the walk.  Length may be
-        less than *target_len* if the walk encounters a dead end.
-    """
-    walk_seq: list[int] = [start_song]
-    current_node: int = start_song
-    is_song: bool = True
-    path_len: int = len(path_template)
+    while len(walk) < target_len:
+        options = (
+            options_getter(walk[-1])
+            if options_getter is not None
+            else eligible_transition_options(walk[-1], adjacency)
+        )
+        eligible_paths = options.eligible_paths()
+        for name in eligible_paths:
+            eligible_counts[path_index[name]] += 1
+        if not eligible_paths:
+            return walk, path_counts, eligible_counts, "no_eligible_path"
 
-    # Pre-compute which steps yield song nodes
-    song_steps: list[bool] = [_step_dst_is_song(s) for s in path_template]
+        path_name = eligible_paths[int(rng.integers(0, len(eligible_paths)))]
+        endpoint = sample_transition(path_name, options, adjacency, rng)
+        if endpoint == walk[-1]:
+            raise RuntimeError(f"Self-transition escaped exclusion for {path_name}")
+        walk.append(endpoint)
+        path_counts[path_index[path_name]] += 1
 
-    step: int = 0
-    while len(walk_seq) < target_len:
-        edge_spec: str = path_template[step % path_len]
-        base_type: str = resolve_edge_type(edge_spec)
-
-        adj = song_adj if is_song else node_adj
-        entry = adj.get(current_node, {}).get(base_type)
-        if entry is None:
-            break  # dead end
-
-        neighbor_ids, _weights = entry
-        current_node = pick_neighbor(neighbor_ids, rng)
-        is_song = song_steps[step % path_len]
-        if is_song:
-            walk_seq.append(current_node)
-        step += 1
-
-    return walk_seq
-
-
-def _choose_meta_path(rng: np.random.Generator) -> tuple[str, list[str]]:
-    """Weighted random selection of a meta-path template."""
-    names: list[str] = list(META_PATH_WEIGHTS.keys())
-    weights: np.ndarray = np.array(
-        [META_PATH_WEIGHTS[n] for n in names],
-        dtype=np.float64,
-    )
-    probs: np.ndarray = weights / weights.sum()
-    choice: str = rng.choice(names, p=probs)
-    return choice, META_PATHS[choice]
+    return walk, path_counts, eligible_counts, "target_length"
 
 
 def generate_walks_for_partition(
