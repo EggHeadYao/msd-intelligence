@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Sequence
 
+from pyspark import StorageLevel
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
 from pyspark.sql import functions as F
@@ -215,7 +216,10 @@ def drop_zero_variance_features(
     return kept, dropped
 
 
-def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...], dict[str, Any]]:
+def preprocess_audio_features(
+    df: DataFrame,
+    storage_level: StorageLevel | None = None,
+) -> tuple[DataFrame, tuple[str, ...], dict[str, Any]]:
     df, segment_medians = fill_segment_missing_values(df)
     df = add_scalar_availability(df)
     df = add_fade_ratios(df)
@@ -224,7 +228,14 @@ def preprocess_audio_features(df: DataFrame) -> tuple[DataFrame, tuple[str, ...]
     df, clip_bounds = add_log_clipped_features(df)
     df, scalar_medians = fill_scalar_missing_values(df)
     candidates = build_feature_columns(time_columns)
-    features, dropped = drop_zero_variance_features(df, candidates)
+    if storage_level is not None:
+        df = df.persist(storage_level)
+    try:
+        features, dropped = drop_zero_variance_features(df, candidates)
+    except Exception:
+        if storage_level is not None:
+            df.unpersist(blocking=False)
+        raise
     metadata = {
         "clip_bounds": clip_bounds,
         "dropped_features": dropped,

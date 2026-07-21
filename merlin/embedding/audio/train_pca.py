@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pyspark import StorageLevel
 from pyspark.ml.feature import PCA, StandardScaler, VectorAssembler
 from pyspark.ml.functions import vector_to_array
 from pyspark.ml.linalg import Vector
@@ -88,20 +90,24 @@ def validate_raw_input(df: DataFrame) -> int:
         lambda value: value.isNotNull()
         & (F.isnan(value) | (F.abs(value) == float("inf"))),
     )
-    if df.where(has_non_finite).limit(1).count():
+    invalid_id = F.col(TRACK_ID_COLUMN).isNull() | (
+        ~F.col(TRACK_ID_COLUMN).rlike(r"^TR.{16}$")
+    )
+    stats = df.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct(TRACK_ID_COLUMN).alias("unique_ids"),
+        F.max(F.when(has_non_finite, 1).otherwise(0)).alias("has_non_finite"),
+        F.max(F.when(invalid_id, 1).otherwise(0)).alias("has_invalid_id"),
+    ).first()
+    if stats["has_non_finite"]:
         raise ValueError("C1 raw input contains NaN or infinite feature values")
 
-    row_count = df.count()
+    row_count = int(stats["rows"])
     if row_count == 0:
         raise ValueError("C1 raw input is empty")
-    invalid_ids = df.where(
-        F.col(TRACK_ID_COLUMN).isNull()
-        | (~F.col(TRACK_ID_COLUMN).rlike(r"^TR.{16}$"))
-    ).limit(1).count()
-    if invalid_ids:
+    if stats["has_invalid_id"]:
         raise ValueError("C1 raw input contains an invalid track_id")
-    unique_ids = df.select(TRACK_ID_COLUMN).distinct().count()
-    if unique_ids != row_count:
+    if int(stats["unique_ids"]) != row_count:
         raise ValueError("C1 raw input contains duplicate track_id values")
     return row_count
 
@@ -177,13 +183,17 @@ def main() -> None:
     prepared_lineage = parent_lineage(parent_manifest, parent_path, parent_digest)
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
+    persisted_frames: list[DataFrame] = []
     try:
         raw = spark.read.parquet(spark_path(args.input))
         input_schema_hash = sha256_text(raw.schema.json())
         if args.limit > 0:
             raw = raw.limit(args.limit)
         row_count = validate_raw_input(raw)
-        processed, feature_columns, preprocess_metadata = preprocess_audio_features(raw)
+        processed, feature_columns, preprocess_metadata = preprocess_audio_features(
+            raw, StorageLevel.DISK_ONLY
+        )
+        persisted_frames.append(processed)
 
         assembler = VectorAssembler(inputCols=list(feature_columns), outputCol=FEATURES_COLUMN)
         assembled = assembler.transform(processed).select(TRACK_ID_COLUMN, FEATURES_COLUMN)
@@ -196,18 +206,24 @@ def main() -> None:
         )
         scaler_model = scaler.fit(assembled)
         scaled = scaler_model.transform(assembled).select(TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN)
+        scaled = scaled.persist(StorageLevel.DISK_ONLY)
+        persisted_frames.append(scaled)
 
         max_components = PCA_DIMENSION
         if len(feature_columns) < PCA_DIMENSION:
             raise ValueError("C1 requires at least 128 non-constant input features")
         pca = PCA(k=max_components, inputCol=SCALED_FEATURES_COLUMN, outputCol=PCA_FEATURES_COLUMN)
         pca_model = pca.fit(scaled)
+        processed.unpersist(blocking=True)
+        persisted_frames.remove(processed)
         explained = vector_to_list(pca_model.explainedVariance)
         cumulative_explained = cumulative(explained)
         selected_k = PCA_DIMENSION
 
         projected = pca_model.transform(scaled).select(TRACK_ID_COLUMN, PCA_FEATURES_COLUMN)
         embeddings = add_normalized_embedding(projected, selected_k).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+        embeddings = embeddings.persist(StorageLevel.DISK_ONLY)
+        persisted_frames.append(embeddings)
         require_valid_embeddings(embeddings)
 
         args.output.mkdir(parents=True, exist_ok=True)
@@ -255,7 +271,15 @@ def main() -> None:
             f"below_90_percent={metadata['pca_128_below_90_percent']}",
         )
     finally:
-        spark.stop()
+        for frame in reversed(persisted_frames):
+            try:
+                frame.unpersist(blocking=False)
+            except Exception as error:
+                warnings.warn(f"failed to unpersist Spark frame: {error}", RuntimeWarning)
+        try:
+            spark.stop()
+        except Exception as error:
+            warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
 
 
 if __name__ == "__main__":
