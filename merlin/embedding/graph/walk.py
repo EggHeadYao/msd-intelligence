@@ -439,41 +439,55 @@ def generate_mixed_walk(
 
 
 def generate_walks_for_partition(
-    iterator,
+    iterator: Iterator[Any],
     adj_dir: str,
     node_to_int: dict[str, int],
     r: int,
     target_len: int,
     seed: int,
-):
-    """mapPartitions callable: generate walks for one partition of songs.
+) -> Iterator[tuple[str, int, list[int], int, int, list[int], list[int], str]]:
+    """Generate deterministic mixed walks for one Spark input partition."""
+    if r < 1:
+        raise ValueError("r must be at least one")
+    adjacency = load_adjacency(adj_dir, node_to_int)
 
-    Each executor loads the adjacency Parquet files once, then
-    generates *r* walks per song in its partition.
-    """
-    song_adj, node_adj = load_adjacency(adj_dir, node_to_int)
+    @lru_cache(maxsize=50_000)
+    def cached_artist_options(artist_id: int) -> ArtistOptions:
+        return artist_transition_options(artist_id, adjacency)
+
+    @lru_cache(maxsize=200_000)
+    def cached_options(track_id: int) -> TransitionOptions:
+        return eligible_transition_options(
+            track_id,
+            adjacency,
+            cached_artist_options,
+        )
 
     for row in iterator:
-        track_id: str = row.track_id
-        if track_id not in node_to_int:
+        track_id = str(row.track_id)
+        track_key = encode_typed_key("track", track_id)
+        if track_key not in node_to_int:
             continue
-        song_int: int = node_to_int[track_id]
+        track_int = node_to_int[track_key]
 
         for walk_id in range(r):
-            walk_rng = np.random.default_rng(
-                seed + song_int * 1000 + walk_id,
+            rng = np.random.default_rng(
+                np.random.SeedSequence([seed, track_int, walk_id]),
             )
-            path_name, path_template = _choose_meta_path(walk_rng)
-
-            walk_seq_ints: list[int] = follow_meta_path(
-                song_int, path_template, song_adj, node_adj,
-                walk_rng, target_len=target_len,
+            walk, path_counts, eligible_counts, reason = generate_mixed_walk(
+                track_int,
+                adjacency,
+                rng,
+                target_len,
+                cached_options,
             )
-
             yield (
-                str(track_id),
-                int(walk_id),
-                str(path_name),
-                [int(x) for x in walk_seq_ints],
-                int(len(walk_seq_ints)),
+                track_id,
+                walk_id,
+                walk,
+                len(walk),
+                len(walk) - 1,
+                path_counts,
+                eligible_counts,
+                reason,
             )
