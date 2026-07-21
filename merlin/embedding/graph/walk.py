@@ -77,7 +77,14 @@ AdjacencyIndex = dict[str, AdjacencyTable]
 _ADJACENCY_CACHE: dict[tuple[str, int], AdjacencyIndex] = {}
 
 
+@dataclass(frozen=True)
+class ArtistOptions:
+    """Reusable path choices determined only by the source artist."""
 
+    tracks: np.ndarray
+    similar_artists: np.ndarray
+    terms: np.ndarray
+    term_weights: np.ndarray
 
 def load_adjacency(
     adj_dir: str,
@@ -94,8 +101,29 @@ def load_adjacency(
     """
     import pyarrow.parquet as pq
 
-    song_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
-    node_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+@dataclass(frozen=True)
+class TransitionOptions:
+    """Eligible hierarchical choices for one track-to-track transition."""
+
+    current_track: int
+    source_artist: int
+    p1_tracks: np.ndarray
+    p2_artists: np.ndarray
+    p3_terms: np.ndarray
+    p3_weights: np.ndarray
+    p4_releases: np.ndarray
+
+    def eligible_paths(self) -> tuple[str, ...]:
+        return tuple(
+            name
+            for name, available in (
+                ("P1", self.p1_tracks.size > 1),
+                ("P2", self.p2_artists.size > 0),
+                ("P3", self.p3_terms.size > 0),
+                ("P4", self.p4_releases.size > 0),
+            )
+            if available
+        )
 
     for fname in sorted(os.listdir(adj_dir)):
         if not fname.endswith(".parquet"):
