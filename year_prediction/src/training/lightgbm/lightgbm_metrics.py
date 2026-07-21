@@ -68,3 +68,41 @@ def regression_metrics(predictions: DataFrame) -> dict[str, int | float]:
     if row is None or int(row["count"]) <= 0:
         raise ValueError("cannot evaluate empty predictions")
     return {name: _number(value) for name, value in row.asDict().items()}
+
+
+def decade_metrics(predictions: DataFrame) -> list[dict[str, int | float]]:
+    clipped_error = F.col("clipped_prediction_year") - F.col("year")
+    rows = (
+        predictions.withColumn(
+            "decade", (F.floor(F.col("year") / 10.0) * 10).cast("int")
+        )
+        .groupBy("decade")
+        .agg(
+            F.count("*").alias("count"),
+            F.avg("absolute_error_years").alias("mae_years"),
+            F.sqrt(F.avg(clipped_error * clipped_error)).alias("rmse_years"),
+        )
+        .orderBy("decade")
+        .collect()
+    )
+    return [
+        {name: _number(value) for name, value in row.asDict().items()}
+        for row in rows
+    ]
+
+
+def constant_baselines(train: DataFrame, validation: DataFrame) -> dict[str, Any]:
+    row = train.agg(
+        F.avg("year").alias("mean"),
+        F.percentile_approx("year", 0.5, 100000).alias("median"),
+    ).first()
+    if row is None:
+        raise ValueError("cannot fit baselines on empty training data")
+    output: dict[str, Any] = {}
+    for name in ("mean", "median"):
+        value = float(row[name])
+        predictions = add_prediction_columns(
+            validation.withColumn("prediction", F.lit(value))
+        )
+        output[name] = {"prediction_year": value, **regression_metrics(predictions)}
+    return output
