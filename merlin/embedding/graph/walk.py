@@ -146,26 +146,6 @@ def clear_adjacency_cache() -> None:
     _ADJACENCY_CACHE.clear()
 
 
-def pick_neighbor(neighbor_ids: np.ndarray, rng: np.random.Generator) -> int:
-    """Uniform random pick from an int32 neighbor array.  O(1)."""
-    idx: int = rng.integers(0, len(neighbor_ids))
-    return int(neighbor_ids[idx])
-
-
-def _step_dst_is_song(edge_spec: str) -> bool:
-    """True if the destination of this meta-path step is a song node."""
-    is_rev: bool = edge_spec.startswith("rev:")
-    base: str = edge_spec[4:] if is_rev else edge_spec
-    src_type, dst_type = EDGE_SCHEMA[base]
-    neighbor_type: str = src_type if is_rev else dst_type
-    return neighbor_type == "song"
-
-
-def follow_meta_path(
-    start_song: int,
-    path_template: list[str],
-    song_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
-    node_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
 def _load_adjacency_table(
     dataset_path: Path,
     name: str,
@@ -233,6 +213,41 @@ def _load_adjacency_table(
     row_by_node = np.full(len(type_codes), -1, dtype=np.int32)
     row_by_node[node_ids] = np.arange(node_ids.size, dtype=np.int32)
     return AdjacencyTable(row_by_node, offsets, neighbor_ids, weights)
+
+
+def load_adjacency(
+    adj_dir: str,
+    node_to_int: dict[str, int],
+) -> AdjacencyIndex:
+    """Load and validate the seven paired adjacency datasets once per worker."""
+    local_dir = _local_path(adj_dir).resolve()
+    cache_key = (str(local_dir), id(node_to_int))
+    cached = _ADJACENCY_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    type_codes = _validate_vocabulary(node_to_int)
+    adjacency: AdjacencyIndex = {}
+    for name in ADJACENCY_NAMES:
+        dataset_path = local_dir / f"{name}.parquet"
+        if not dataset_path.exists():
+            raise FileNotFoundError(f"Missing C2 adjacency dataset: {dataset_path}")
+
+        adjacency[name] = _load_adjacency_table(dataset_path, name, type_codes)
+
+    _ADJACENCY_CACHE[cache_key] = adjacency
+    return adjacency
+
+
+def _neighbor_entry(
+    adjacency: AdjacencyIndex,
+    name: str,
+    node_id: int,
+) -> AdjacencyEntry:
+    entry = adjacency[name].get(node_id)
+    if entry is None:
+        return np.empty(0, dtype=np.int32), np.empty(0, dtype=np.float32)
+    return entry
 
 
     rng: np.random.Generator,
