@@ -25,7 +25,7 @@ Run the local unit tests:
 
 ```bash
 python3 -m unittest discover \
-  -s p1team02/year_prediction/tests/oracles/ridge \
+  -s year_prediction/tests/oracles/ridge \
   -p 'test_reference.py'
 ```
 
@@ -33,7 +33,7 @@ Run the Spark oracle:
 
 ```bash
 spark-submit --master 'local[*]' \
-  p1team02/year_prediction/tests/oracles/ridge/spark_oracle.py
+  year_prediction/tests/oracles/ridge/spark_oracle.py
 ```
 
 A successful Spark run prints a JSON object with `"status": "valid"`.

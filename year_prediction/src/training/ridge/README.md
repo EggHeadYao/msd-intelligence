@@ -8,7 +8,7 @@ This directory prepares the T90 feature view, trains the custom Spark SGD Ridge 
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
-  p1team02/year_prediction/src/training/ridge/prepare_t90.py \
+  year_prediction/src/training/ridge/prepare_t90.py \
   --input parquets/year_prediction/features/t90.parquet \
   --feature-manifest parquets/year_prediction/features/manifest.json \
   --output parquets/year_prediction/training/t90 \
@@ -24,7 +24,7 @@ The builder refuses to overwrite an existing output directory.
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
-  p1team02/year_prediction/src/training/ridge/validate_t90_data.py \
+  year_prediction/src/training/ridge/validate_t90_data.py \
   --input parquets/year_prediction/training/t90 \
   --shuffle-partitions 32
 ```
@@ -42,8 +42,8 @@ The Ridge trainer consumes only this validated artifact.
 
 ```bash
 spark-submit --master 'local[4]' --driver-memory 3g \
-  p1team02/year_prediction/src/training/ridge/train.py \
-  --config p1team02/year_prediction/config/experiment_a/ridge_t90.json
+  year_prediction/src/training/ridge/train.py \
+  --config year_prediction/config/experiment_a/ridge_t90.json
 ```
 
 Use a new `model_id` for every immutable run. The trainer refuses to overwrite an existing model directory unless `--overwrite` is explicitly supplied.
@@ -54,7 +54,7 @@ Use a new `model_id` for every immutable run. The trainer refuses to overwrite a
 
 ```bash
 spark-submit --master 'local[4]' --driver-memory 3g \
-  p1team02/year_prediction/src/evaluation/ridge/validate.py \
+  year_prediction/src/evaluation/ridge/validate.py \
   --model parquets/year_prediction/models/<model_id>
 ```
 

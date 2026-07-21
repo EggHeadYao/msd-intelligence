@@ -1,23 +1,24 @@
-# Year Prediction Training
+# Year prediction training
 
-The training layer turns validated feature views into model-ready inputs, trains the two model families, and persists reproducible artifacts.
+All scalable model paths use PySpark. Input rows stay in Spark DataFrames or
+RDDs, preprocessing is fitted on training rows, and partition results are
+reduced before optimizer updates.
 
-## Shared Files
+## Model families
 
-- `target.py`: the fixed `[1922, 2011]` year normalization contract.
-- `model_io.py`: JSON loading, checksums, atomic JSON writes, and immutable output handling.
-- `train_constants.py`: mean and median sanity-check baselines.
+- `ridge`: custom Spark SGD Ridge on the T90 view.
+- `lightgbm`: SynapseML distributed Huber LightGBM on 594 tabular features.
+- `ordinal_moe`: distributed analytic-gradient Ordinal-MoE on the same contract.
 
-Run the constant baselines before fitting a learned model:
+Each model directory documents Linux `spark-submit` commands and artifact
+contracts. Normal training may use train and validation only. The fixed test
+split is reserved for scripts under `src/evaluation`.
+
+Run tests from the repository root:
 
 ```bash
-spark-submit --master 'local[4]' --driver-memory 3g \
-  p1team02/year_prediction/src/training/train_constants.py
+python3 -m unittest discover -s year_prediction/tests -p 'test_*.py'
 ```
 
-## Model Families
-
-- `ridge/`: T90 preprocessing, custom Spark SGD Ridge, and its validation tools.
-- `lightgbm/`: full-tabular loading, strongest-model training, and feature audit.
-
-Each model directory documents its own commands, input contract, and outputs.
+Run SynapseML integration tests through `spark-submit` with the package supplied
+to the driver and executors.
