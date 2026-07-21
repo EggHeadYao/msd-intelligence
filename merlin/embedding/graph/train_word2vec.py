@@ -245,8 +245,36 @@ def validate_walks(
     }
 
 
+def make_root_mapping(walks: DataFrame) -> DataFrame:
+    mapping = walks.select(
+        F.element_at("walk_seq", 1).cast("int").alias("node_id"),
+        "track_id",
+    ).distinct()
+    collisions = mapping.groupBy("node_id").count().where(F.col("count") != 1)
+    require(collisions.limit(1).count() == 0, "walk root node maps to multiple tracks")
+    return mapping.persist(StorageLevel.DISK_ONLY)
 
 
+def make_corpus(walks: DataFrame) -> DataFrame:
+    return walks.select(
+        F.transform("walk_seq", lambda node: node.cast("string")).alias("tokens"),
+    )
+
+
+def fit_word2vec(corpus: DataFrame, args: argparse.Namespace) -> Word2VecModel:
+    estimator = Word2Vec(
+        vectorSize=args.vector_size,
+        windowSize=args.window_size,
+        minCount=args.min_count,
+        maxIter=args.max_iter,
+        stepSize=args.step_size,
+        numPartitions=args.num_partitions,
+        maxSentenceLength=args.max_sentence_length,
+        seed=args.seed,
+        inputCol="tokens",
+        outputCol="sentence_embedding",
+    )
+    return estimator.fit(corpus)
 
 
 
