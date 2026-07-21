@@ -433,3 +433,36 @@ def recompute_embeddings(
     )
     return compared, selected_ids.count()
 
+
+def validate_reproduction(
+    compared: DataFrame,
+    selected_count: int,
+    tolerance: float,
+) -> tuple[DataFrame, float]:
+    require(compared.count() == selected_count, "selected vectors are incomplete")
+    maximum_difference = float(
+        compared.agg(F.max("maximum_difference").alias("value")).first()["value"]
+    )
+    require(
+        math.isfinite(maximum_difference) and maximum_difference <= tolerance,
+        "frozen preprocessing/PCA does not reproduce saved embeddings",
+    )
+    vectors = compared.select(TRACK_ID_COLUMN, "pre_pca_vector", "final_embedding").cache()
+    return vectors, maximum_difference
+
+
+def collect_scores(pairs: DataFrame, vectors: DataFrame, total_pairs: int) -> tuple[list[Any], int]:
+    scored = score_pairs(pairs, vectors).cache()
+    scored_count = scored.count()
+    require(scored_count == total_pairs, "not every selected pair was scored")
+    invalid_scores = scored.where(
+        F.col("pre_pca_cosine").isNull()
+        | F.isnan("pre_pca_cosine")
+        | (F.abs("pre_pca_cosine") == float("inf"))
+        | F.col("pca_128_cosine").isNull()
+        | F.isnan("pca_128_cosine")
+        | (F.abs("pca_128_cosine") == float("inf"))
+    ).limit(1).count()
+    require(invalid_scores == 0, "L1-1 produced a non-finite cosine")
+    return scored.collect(), scored_count
+
