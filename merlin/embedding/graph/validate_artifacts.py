@@ -159,3 +159,41 @@ def validate_faiss(
         faiss_metadata["index"]["sha256"] == sha256_file(index_path),
         "FAISS index hash mismatch",
     )
+
+
+def validate_encoder_metadata(output: Path, expected_rows: int, dimension: int) -> None:
+    metadata = read_json(output / ENCODER_METADATA_NAME)
+    require(
+        metadata["embedding_source"] == "direct_word2vec_track_token",
+        "graph embedding source mismatch",
+    )
+    require(
+        metadata["output"]["rows"] == expected_rows, "encoder metadata rows mismatch"
+    )
+    require(
+        metadata["output"]["dimension"] == dimension,
+        "encoder metadata dimension mismatch",
+    )
+    require(metadata["output"]["dtype"] == "float32", "encoder metadata dtype mismatch")
+    require(
+        metadata["output"]["l2_normalized"] is True, "encoder metadata norm mismatch"
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    require(args.expected_rows > 0, "expected row count must be positive")
+    require(args.dimension > 0, "embedding dimension must be positive")
+    require(args.queries > 0, "query count must be positive")
+    validate_encoder_metadata(args.output, args.expected_rows, args.dimension)
+    validate_embeddings(args.output, args.expected_rows, args.dimension)
+    validate_mapping(args.output, args.expected_rows)
+    validate_faiss(args.output, args.expected_rows, args.dimension, args.queries)
+    print(
+        "graph_artifact_validation_passed "
+        f"rows={args.expected_rows}, dimension={args.dimension}, queries={args.queries}",
+    )
+
+
+if __name__ == "__main__":
+    main()
