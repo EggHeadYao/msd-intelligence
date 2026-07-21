@@ -138,3 +138,45 @@ def run(args: argparse.Namespace, spark: SparkSession) -> list[dict[str, Any]]:
                 parameters["num_iterations"] = min(
                     int(parameters["num_iterations"]), args.num_iterations_limit
                 )
+                parameters["early_stopping_rounds"] = min(
+                    int(parameters["early_stopping_rounds"]),
+                    max(1, args.num_iterations_limit // 4),
+                )
+            key = {"stage": stage, "index": index, "parameters": parameters}
+            if any(
+                item["stage"] == stage and item["index"] == index for item in results
+            ):
+                continue
+            namespace = SimpleNamespace(**parameters, num_tasks=args.num_tasks)
+            started = time.perf_counter()
+            model = build_estimator(namespace, list(contract.categorical_indexes)).fit(
+                fit_frame
+            )
+            predictions = add_prediction_columns(model.transform(validation))
+            metrics = regression_metrics(predictions)
+            result = {
+                **key,
+                "validation_mae_years": metrics["mae_years"],
+                "validation_rmse_years": metrics["rmse_years"],
+                "fit_seconds": time.perf_counter() - started,
+            }
+            results.append(result)
+            write_json(results_path, results)
+    write_json(args.output / "best.json", min(results, key=lambda x: x["validation_mae_years"]))
+    fit_frame.unpersist()
+    return results
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionTuneSparkLightGBM").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        results = run(args, spark)
+        print(json.dumps({"trials": len(results)}, sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
