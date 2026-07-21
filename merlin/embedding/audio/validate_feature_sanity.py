@@ -15,7 +15,13 @@ from pyspark.sql import functions as F
 
 from columns import PREPARED_AUDIO_COLUMNS, TRACK_ID_COLUMN
 from frozen_preprocess import apply_frozen_preprocess
-from l1_stats import bootstrap_hedges_g_ci, distribution, hedges_g, preservation_summary
+from l1_stats import (
+    bootstrap_hedges_g_ci,
+    classify_validation,
+    distribution,
+    hedges_g,
+    preservation_summary,
+)
 from lineage import sha256_path
 from preprocess import add_scalar_availability
 from train_pca import (
@@ -482,13 +488,23 @@ def build_report(
     scored_count: int,
     maximum_difference: float,
 ) -> dict[str, Any]:
-    formal = all(count == args.pair_count for count in pair_counts.values())
+    pair_requirement_met = all(
+        pair_counts.get(pair_type) == args.pair_count for pair_type in PAIR_TYPES
+    )
+    finding = conclusion(effects, pair_requirement_met and not args.allow_partial_pairs)
+    formal, status = classify_validation(
+        pair_counts,
+        PAIR_TYPES,
+        args.pair_count,
+        args.allow_partial_pairs,
+        finding["supported"] is True,
+    )
     return {
         "artifact_type": "c1_l1_feature_sanity_report",
         "validation_version": VALIDATION_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "validation_status": "PASS" if formal else "SMOKE_PASS",
-        "formal_pair_requirement_met": formal,
+        "validation_status": status,
+        "formal_pair_requirement_met": pair_requirement_met,
         "parameters": {
             "target_pairs_per_type": args.pair_count,
             "bootstrap_samples": args.bootstrap_samples,
@@ -521,7 +537,7 @@ def build_report(
             **effects,
         },
         **diagnostics,
-        "conclusion": conclusion(effects, formal),
+        "conclusion": finding,
     }
 
 
@@ -560,6 +576,10 @@ def main() -> None:
         )
         report_path = args.report or args.output / "validation_report.json"
         write_json(report, report_path)
+        require(
+            report["validation_status"] != "FAIL",
+            f"{report['conclusion']['statement']} Report: {report_path}",
+        )
         print(
             "c1_l1_feature_sanity_passed "
             f"status={report['validation_status']}, pairs={pair_counts}, "
