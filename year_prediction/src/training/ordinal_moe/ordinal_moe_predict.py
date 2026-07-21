@@ -68,3 +68,57 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict:
     config.validate()
     with np.load(args.model_root / "model.npz") as payload:
         parameters = np.asarray(payload["parameters"], dtype=np.float64)
+    if parameters.shape != (layout.size,) or not np.all(np.isfinite(parameters)):
+        raise ValueError("saved model parameters are invalid")
+    state_payload = read_json(args.model_root / "preprocessing.json")
+    state = Standardization(
+        tuple(float(value) for value in state_payload["means"]),
+        tuple(float(value) for value in state_payload["scales"]),
+        tuple(int(value) for value in state_payload["finite_counts"]),
+        int(state_payload["row_count"]),
+    )
+    raw = load_feature_frame(
+        spark,
+        args.input,
+        contract,
+        args.max_rows_per_split,
+        (args.split,),
+    )
+    transformed = standardize_frame(spark, raw, state).repartition(args.partitions)
+    predictions = prediction_frame(
+        spark,
+        point_rdd(transformed),
+        parameters,
+        layout,
+        config,
+        args.batch_size,
+    ).cache()
+    write_parquet_parts(predictions, args.output / "predictions.parquet")
+    metrics = evaluate_heads(predictions)
+    write_json(args.output / "metrics.json", metrics)
+    write_json(
+        args.output / "run_metadata.json",
+        {
+            "model_root": str(args.model_root),
+            "split": args.split,
+            "spark_version": spark.version,
+            "spark_master": spark.sparkContext.master,
+            "application_id": spark.sparkContext.applicationId,
+        },
+    )
+    predictions.unpersist()
+    return metrics
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionSparkOrdinalMoEPredict").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        print(json.dumps(run(args, spark), sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
