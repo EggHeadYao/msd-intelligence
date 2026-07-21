@@ -115,6 +115,54 @@ def embedding_matrix(array: pa.Array, dimension: int) -> np.ndarray:
     return np.ascontiguousarray(matrix, dtype=np.float32)
 
 
+def build_index(
+    table: pa.Table,
+    dimension: int,
+    batch_size: int,
+) -> faiss.IndexFlatIP:
+    require(batch_size > 0, "batch size must be positive")
+    index = faiss.IndexFlatIP(dimension)
+    embedding_index = table.schema.get_field_index("embedding")
+    previous_node_id: int | None = None
+
+    for batch in table.to_batches(max_chunksize=batch_size):
+        node_ids = batch.column("node_id").to_numpy(zero_copy_only=False)
+        if previous_node_id is not None:
+            require(
+                int(node_ids[0]) > previous_node_id, "node IDs are not strictly ordered"
+            )
+        require(
+            node_ids.size == 1 or np.all(node_ids[1:] > node_ids[:-1]),
+            "node IDs are not strictly ordered",
+        )
+        previous_node_id = int(node_ids[-1])
+        matrix = embedding_matrix(batch.column(embedding_index), dimension)
+        index.add(matrix)
+
+    require(index.ntotal == table.num_rows, "FAISS row count mismatch")
+    return index
+
+
+def write_mapping(table: pa.Table, path: Path) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    remove_path(temporary)
+    temporary.mkdir(parents=True)
+    mapping = pa.table(
+        {
+            "row_id": pa.array(np.arange(table.num_rows, dtype=np.int64)),
+            "node_id": table["node_id"].combine_chunks(),
+            "track_id": table["track_id"].combine_chunks(),
+        },
+    )
+    pq.write_table(
+        mapping,
+        temporary / "part-00000.parquet",
+        compression="snappy",
+    )
+    (temporary / "_SUCCESS").touch()
+    temporary.replace(path)
+
+
 def main() -> None:
     args = parse_args()
 
