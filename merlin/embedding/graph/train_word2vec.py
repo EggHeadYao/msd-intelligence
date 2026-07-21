@@ -277,6 +277,41 @@ def fit_word2vec(corpus: DataFrame, args: argparse.Namespace) -> Word2VecModel:
     return estimator.fit(corpus)
 
 
+def normalize_track_vectors(
+    model: Word2VecModel,
+    root_mapping: DataFrame,
+) -> DataFrame:
+    raw_vectors = model.getVectors().select(
+        F.col("word").cast("int").alias("node_id"),
+        vector_to_array("vector", "float32").alias("raw_embedding"),
+    )
+    require(
+        raw_vectors.where(F.col("node_id").isNull()).limit(1).count() == 0,
+        "Word2Vec emitted a non-integer token",
+    )
+
+    joined = root_mapping.join(raw_vectors, "node_id", "left")
+    require(
+        joined.where(F.col("raw_embedding").isNull()).limit(1).count() == 0,
+        "Word2Vec is missing one or more root-track vectors",
+    )
+    squared_norm = F.aggregate(
+        F.col("raw_embedding"),
+        F.lit(0.0),
+        lambda total, value: total + value.cast("double") * value.cast("double"),
+    )
+    norm = F.sqrt(squared_norm)
+    return joined.select(
+        "node_id",
+        "track_id",
+        F.transform(
+            "raw_embedding",
+            lambda value: (value.cast("double") / norm).cast("float"),
+        ).alias("embedding"),
+        norm.alias("raw_norm"),
+    )
+
+
 
 
 
