@@ -7,10 +7,14 @@ This module trains and validates the PCA-based audio encoder.
 Run from the repository root:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/train_pca.py \
-  --input parquets/prepared/song_audio_features_raw.parquet \
-  --output parquets/merlin/audio \
-  --target-variance 0.95 \
+JAVA_TOOL_OPTIONS='-XX:UseAVX=0 -XX:UseSSE=2 -XX:-TieredCompilation' \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  merlin/embedding/audio/train_pca.py \
+  --input parquets_new/prepared/song_audio_features_raw.parquet \
+  --parent-manifest parquets_new/prepared/prepared_manifest.json \
+  --output parquets_new/merlin/audio \
   --shuffle-partitions 64
 ```
 
@@ -18,14 +22,20 @@ spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/train_pca.py \
 - `audio_encoder_metadata.json`: Stores feature columns, selected dimension, explained variance, and preprocessing metadata.
 - `scaler_model`: Stores the fitted Spark `StandardScalerModel`.
 - `pca_model`: Stores the fitted Spark `PCAModel`.
+- `c1_manifest.json`: Commit marker binding the C1 run, input schema, and output paths.
+
+Training writes a sibling staging directory and publishes the complete directory only
+after every Spark output and success marker is present. Large artifact content hashes
+are intentionally omitted to avoid an extra full read of the input and outputs.
 
 ## Validate
 
 Validate the full output:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate.py \
-  --output parquets/merlin/audio \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/validate.py \
+  --output parquets_new/merlin/audio \
   --expected-rows 1000000 \
   --shuffle-partitions 64
 ```
@@ -35,15 +45,18 @@ spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate.py \
 - Checks that every embedding has the selected dimension.
 - Checks that embeddings contain no null, NaN, or infinite values.
 - Checks that embeddings are L2-normalized.
+- Loads the saved scaler and PCA models and compares them with encoder metadata.
+- Validates all embedding properties in one aggregate scan.
 
 ## Build FAISS
 
 Build the audio nearest-neighbor index:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/build_faiss.py \
-  --input parquets/merlin/audio/song_embeddings_audio.parquet \
-  --output parquets/merlin/audio \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/build_faiss.py \
+  --input parquets_new/merlin/audio/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio \
   --shuffle-partitions 64
 ```
 
@@ -55,9 +68,10 @@ spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/build_faiss.py \
 Validate the saved audio index:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate_faiss.py \
-  --embeddings parquets/merlin/audio/song_embeddings_audio.parquet \
-  --output parquets/merlin/audio \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/validate_faiss.py \
+  --embeddings parquets_new/merlin/audio/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio \
   --expected-rows 1000000 \
   --shuffle-partitions 64
 ```
@@ -73,10 +87,11 @@ Compare cleaned and scaled pre-PCA cosine with final PCA-128 cosine on the exact
 same same-artist, same-release, and matched-random pairs:
 
 ```bash
-spark-submit --driver-memory 4g p1team02/merlin/embedding/audio/validate_feature_sanity.py \
-  --raw-input parquets/prepared/song_audio_features_raw.parquet \
-  --songs-metadata parquets/prepared/songs_metadata.parquet \
-  --output parquets/merlin/audio \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/validate_feature_sanity.py \
+  --raw-input parquets_new/prepared/song_audio_features_raw.parquet \
+  --songs-metadata parquets_new/prepared/songs_metadata.parquet \
+  --output parquets_new/merlin/audio \
   --pair-count 10000 \
   --bootstrap-samples 2000 \
   --seed 42 \
