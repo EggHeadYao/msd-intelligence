@@ -208,3 +208,73 @@ def _stats_partition(rows: Iterator[Row]) -> Iterator[StatsPartial]:
     if sums is not None and squares is not None and counts is not None:
         yield sums, squares, counts, row_count
 
+
+def _merge_stats(left: StatsPartial, right: StatsPartial) -> StatsPartial:
+    return left[0] + right[0], left[1] + right[1], left[2] + right[2], left[3] + right[3]
+
+
+def fit_standardization(train: DataFrame) -> Standardization:
+    sums, squares, counts, row_count = train.select("features").rdd.mapPartitions(
+        _stats_partition
+    ).treeReduce(_merge_stats)
+    safe_counts = np.maximum(counts, 1)
+    means = sums / safe_counts
+    variances = np.maximum(squares / safe_counts - means * means, 0.0)
+    scales = np.sqrt(variances)
+    means = np.where(counts > 0, means, 0.0)
+    scales = np.where((counts > 1) & (scales > 1.0e-12), scales, 1.0)
+    return Standardization(
+        tuple(float(value) for value in means),
+        tuple(float(value) for value in scales),
+        tuple(int(value) for value in counts),
+        int(row_count),
+    )
+
+
+STANDARDIZED_SCHEMA = StructType(
+    [
+        StructField("track_id", StringType(), False),
+        StructField("artist_id", StringType(), False),
+        StructField("year", IntegerType(), False),
+        StructField("split", StringType(), False),
+        StructField("label", DoubleType(), False),
+        StructField("features", VectorUDT(), False),
+    ]
+)
+
+
+def _standardize_partition(
+    rows: Iterator[Row], means: np.ndarray, scales: np.ndarray, clip: float
+) -> Iterator[tuple[str, str, int, str, float, Any]]:
+    for row in rows:
+        values = np.asarray(row["features"].toArray(), dtype=np.float64)
+        values = np.where(np.isfinite(values), values, means)
+        values = np.clip((values - means) / scales, -clip, clip)
+        yield (
+            str(row["track_id"]),
+            str(row["artist_id"]),
+            int(row["year"]),
+            str(row["split"]),
+            float(row["label"]),
+            Vectors.dense(values),
+        )
+
+
+def standardize_frame(
+    spark: SparkSession,
+    frame: DataFrame,
+    state: Standardization,
+    clip: float = 10.0,
+) -> DataFrame:
+    means = np.asarray(state.means, dtype=np.float64)
+    scales = np.asarray(state.scales, dtype=np.float64)
+    values = frame.rdd.mapPartitions(
+        lambda rows: _standardize_partition(rows, means, scales, clip)
+    )
+    return spark.createDataFrame(values, STANDARDIZED_SCHEMA)
+
+
+def point_rdd(frame: DataFrame) -> RDD[tuple[str, str, int, np.ndarray]]:
+    return frame.select("track_id", "artist_id", "year", "features").rdd.map(
+        lambda row: (
+            str(row["track_id"]),
