@@ -36,3 +36,64 @@ def distribution(values: Sequence[float]) -> dict[str, Any]:
     }
 
 
+def hedges_g(related: Sequence[float], random_sample: Sequence[float]) -> float | None:
+    related_array = finite_array(related, "related sample")
+    random_array = finite_array(random_sample, "random sample")
+    degrees = related_array.size + random_array.size - 2
+    if degrees <= 0:
+        return None
+    related_ss = float(np.sum((related_array - np.mean(related_array)) ** 2))
+    random_ss = float(np.sum((random_array - np.mean(random_array)) ** 2))
+    pooled = math.sqrt((related_ss + random_ss) / degrees)
+    if pooled == 0.0:
+        return None
+    correction = 1.0 - 3.0 / (4.0 * degrees - 1.0) if degrees > 1 else 1.0
+    return float(correction * (np.mean(related_array) - np.mean(random_array)) / pooled)
+
+
+def bootstrap_hedges_g_ci(
+    related: Sequence[float],
+    random_sample: Sequence[float],
+    samples: int,
+    seed: int,
+) -> list[float] | None:
+    if samples <= 0:
+        raise ValueError("bootstrap samples must be positive")
+    # Spark collection order is not stable. Canonical sorting makes a fixed seed
+    # reproduce the same bootstrap draws for the same multiset of scores.
+    related_array = np.sort(finite_array(related, "related sample"))
+    random_array = np.sort(finite_array(random_sample, "random sample"))
+    if related_array.size + random_array.size <= 2:
+        return None
+    rng = np.random.default_rng(seed)
+    effects: list[np.ndarray] = []
+    remaining = samples
+    batch_size = 50
+    degrees = related_array.size + random_array.size - 2
+    correction = 1.0 - 3.0 / (4.0 * degrees - 1.0) if degrees > 1 else 1.0
+    while remaining:
+        batch = min(batch_size, remaining)
+        related_draws = related_array[
+            rng.integers(0, related_array.size, size=(batch, related_array.size))
+        ]
+        random_draws = random_array[
+            rng.integers(0, random_array.size, size=(batch, random_array.size))
+        ]
+        related_means = np.mean(related_draws, axis=1)
+        random_means = np.mean(random_draws, axis=1)
+        related_ss = np.sum((related_draws - related_means[:, None]) ** 2, axis=1)
+        random_ss = np.sum((random_draws - random_means[:, None]) ** 2, axis=1)
+        pooled = np.sqrt((related_ss + random_ss) / degrees)
+        valid = pooled > 0.0
+        if np.any(valid):
+            effects.append(
+                correction * (related_means[valid] - random_means[valid]) / pooled[valid]
+            )
+        remaining -= batch
+    if not effects:
+        return None
+    values = np.concatenate(effects)
+    low, high = np.quantile(values, (0.025, 0.975))
+    return [float(low), float(high)]
+
+
