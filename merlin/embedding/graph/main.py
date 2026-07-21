@@ -2,13 +2,15 @@
 
 Usage:
   spark-submit --driver-memory 8g merlin/embedding/graph/main.py \
-    --input parquets/prepared --output parquets/walks
+    --input parquets_new/prepared --output parquets_new/merlin/graph
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+import sys
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
@@ -67,6 +69,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _make_spark() -> SparkSession:
+    os.environ["PYSPARK_PYTHON"] = sys.executable
     return (
         SparkSession.builder.appName("MerlinC2Walk")
         .config("spark.driver.memory", "8g")
@@ -74,6 +77,7 @@ def _make_spark() -> SparkSession:
         .config("spark.driver.maxResultSize", "2g")
         .config("spark.sql.shuffle.partitions", "500")
         .config("spark.hadoop.fs.defaultFS", "file:///")
+        .config("spark.pyspark.python", sys.executable)
         .getOrCreate()
     )
 
@@ -125,9 +129,24 @@ def main() -> None:
         [
             StructField("track_id", StringType(), False),
             StructField("walk_id", IntegerType(), False),
-            StructField("path_name", StringType(), False),
-            StructField("walk_seq", ArrayType(IntegerType()), False),
+            StructField(
+                "walk_seq",
+                ArrayType(IntegerType(), containsNull=False),
+                False,
+            ),
             StructField("walk_len", IntegerType(), False),
+            StructField("transition_count", IntegerType(), False),
+            StructField(
+                "path_counts",
+                ArrayType(IntegerType(), containsNull=False),
+                False,
+            ),
+            StructField(
+                "path_eligible_counts",
+                ArrayType(IntegerType(), containsNull=False),
+                False,
+            ),
+            StructField("termination_reason", StringType(), False),
         ]
     )
 
@@ -140,8 +159,9 @@ def main() -> None:
     walks.write.mode("overwrite").parquet(out_path)
     vocab_path: str = persist_vocabulary(tmp_dir, output_dir)
 
-    total: int = walks.count()
-    distinct: int = walks.select("track_id").distinct().count()
+    saved_walks = spark.read.parquet(out_path)
+    total: int = saved_walks.count()
+    distinct: int = saved_walks.select("track_id").distinct().count()
     print(
         f"Done: {total} walks for {distinct} songs saved to {out_path}; "
         f"vocabulary saved to {vocab_path}",
