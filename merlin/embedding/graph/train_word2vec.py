@@ -1,15 +1,52 @@
-"""MERLIN C2: Word2Vec training on meta-path walk sequences (RDD-based aggregation)."""
+"""Train the canonical MERLIN C2 Word2Vec track embeddings."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-from pyspark.ml.feature import Word2Vec
+from pyspark import StorageLevel
+from pyspark.ml.feature import Word2Vec, Word2VecModel
+from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import ArrayType, IntegerType, StringType
+
+from merlin.embedding.graph.config import (
+    NUM_WALKS,
+    SEED,
+    WORD2VEC_MAX_ITER,
+    WORD2VEC_MAX_SENTENCE_LENGTH,
+    WORD2VEC_MIN_COUNT,
+    WORD2VEC_NUM_PARTITIONS,
+    WORD2VEC_STEP_SIZE,
+    WORD2VEC_VECTOR_SIZE,
+    WORD2VEC_WINDOW_SIZE,
+)
+
+
+EMBEDDINGS_NAME = "song_embeddings_graph.parquet"
+MODEL_NAME = "word2vec_model"
+METADATA_NAME = "graph_encoder_metadata.json"
+REQUIRED_WALK_COLUMNS = {
+    "track_id",
+    "walk_id",
+    "walk_seq",
+    "walk_len",
+    "transition_count",
+    "path_counts",
+    "path_eligible_counts",
+    "termination_reason",
+}
+NORM_EPSILON = 1e-12
+NORM_TOLERANCE = 1e-4
 
 
 def parse_args() -> argparse.Namespace:
