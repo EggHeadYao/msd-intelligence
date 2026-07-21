@@ -418,3 +418,13 @@ def prediction_partition(
                 float(output["direct_year"][index]),
                 float(output["blend_year"][index]),
             )
+            for index, row in enumerate(buffer)
+        ]
+        buffer.clear()
+        return result
+
+    for row in rows:
+        buffer.append(row)
+        if len(buffer) >= batch_size:
+            yield from predict_buffer()
+    yield from predict_buffer()
