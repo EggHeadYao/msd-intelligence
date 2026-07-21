@@ -523,3 +523,51 @@ def build_report(
         "conclusion": conclusion(effects, formal),
     }
 
+
+def main() -> None:
+    args = parse_args()
+    require(args.pair_count > 0, "pair_count must be positive")
+    require(args.bootstrap_samples > 0, "bootstrap_samples must be positive")
+    require(args.reproduction_tolerance > 0.0, "reproduction_tolerance must be positive")
+    validate_layout(args.output)
+    encoder_metadata_path = args.output / "audio_encoder_metadata.json"
+    encoder_metadata = read_metadata(encoder_metadata_path)
+    selected_k = validate_metadata(encoder_metadata)
+    feature_columns = tuple(encoder_metadata["feature_columns"])
+
+    spark = create_spark(args.shuffle_partitions)
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        raw, saved, base, output_rows, base_rows = load_inputs(
+            spark, args, encoder_metadata, feature_columns
+        )
+        pairs, pair_counts, total_pairs = prepare_pairs(base, args)
+        compared, selected_count = recompute_embeddings(
+            args, raw, saved, pairs, encoder_metadata, feature_columns, selected_k
+        )
+        vectors, maximum_difference = validate_reproduction(
+            compared, selected_count, args.reproduction_tolerance
+        )
+        score_rows, scored_count = collect_scores(pairs, vectors, total_pairs)
+        distributions, effects, diagnostics = summarize_scores(
+            score_rows, args.bootstrap_samples, args.seed
+        )
+        report = build_report(
+            args, encoder_metadata_path, encoder_metadata, pair_counts,
+            distributions, effects, diagnostics, output_rows, base_rows,
+            selected_count, scored_count, maximum_difference,
+        )
+        report_path = args.report or args.output / "validation_report.json"
+        write_json(report, report_path)
+        print(
+            "c1_l1_feature_sanity_passed "
+            f"status={report['validation_status']}, pairs={pair_counts}, "
+            f"selected_tracks={selected_count}, reproduction_error={maximum_difference:.3g}, "
+            f"report={report_path}"
+        )
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
