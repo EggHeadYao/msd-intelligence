@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from pyspark.ml.feature import PCAModel, StandardScalerModel
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, FloatType
@@ -174,6 +175,31 @@ def validate_input_lineage(metadata: dict[str, Any]) -> None:
     require(sha256_path(input_path) == metadata["input_data_sha256"], "C1 input data hash mismatch")
 
 
+def validate_models(output: Path, metadata: dict[str, Any]) -> None:
+    scaler = StandardScalerModel.load(spark_path(output / "scaler_model"))
+    pca = PCAModel.load(spark_path(output / "pca_model"))
+    comparisons = (
+        (list(scaler.mean), metadata["scaler_mean"], "scaler mean"),
+        (list(scaler.std), metadata["scaler_std"], "scaler std"),
+        (list(pca.explainedVariance), metadata["explained_variance"], "PCA variance"),
+    )
+    for actual, expected, name in comparisons:
+        require(len(actual) == len(expected), f"{name} length mismatch")
+        difference = max(
+            (abs(float(left) - float(right)) for left, right in zip(actual, expected)),
+            default=0.0,
+        )
+        require(difference <= 1e-12, f"{name} does not match metadata")
+    require(scaler.getWithMean() and scaler.getWithStd(), "wrong scaler configuration")
+    require(scaler.getInputCol() == "features", "wrong scaler input column")
+    require(scaler.getOutputCol() == "scaled_features", "wrong scaler output column")
+    require(pca.getK() == 128, "wrong PCA component count")
+    require(pca.getInputCol() == "scaled_features", "wrong PCA input column")
+    require(pca.getOutputCol() == "pca_features", "wrong PCA output column")
+    require(pca.pc.numRows == int(metadata["feature_count"]), "PCA row count mismatch")
+    require(pca.pc.numCols == int(metadata["selected_k"]), "PCA column count mismatch")
+
+
 def validate_embeddings(
     embeddings: DataFrame,
     expected_rows: int,
@@ -188,10 +214,7 @@ def validate_embeddings(
         "embedding column must be array<float32>",
     )
 
-    row_count = embeddings.count()
-    distinct_tracks = embeddings.select("track_id").distinct().count()
-    null_rows = embeddings.where(F.col("track_id").isNull() | F.col(EMBEDDING_COLUMN).isNull()).count()
-    bad_size = embeddings.where(F.size(F.col(EMBEDDING_COLUMN)) != selected_k).count()
+    null_row = F.col("track_id").isNull() | F.col(EMBEDDING_COLUMN).isNull()
     has_bad_value = F.exists(
         F.col(EMBEDDING_COLUMN),
         lambda x: x.isNull() | F.isnan(x) | (x == float("inf")) | (x == float("-inf")),
@@ -203,7 +226,20 @@ def validate_embeddings(
             lambda acc, x: acc + x * x,
         ),
     )
-    bad_values = embeddings.where(has_bad_value | (F.abs(norm - F.lit(1.0)) > norm_tolerance)).count()
+    stats = embeddings.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct("track_id").alias("distinct_tracks"),
+        F.sum(F.when(null_row, 1).otherwise(0)).alias("null_rows"),
+        F.sum(F.when(F.size(F.col(EMBEDDING_COLUMN)) != selected_k, 1).otherwise(0)).alias("bad_size"),
+        F.sum(
+            F.when(has_bad_value | (F.abs(norm - F.lit(1.0)) > norm_tolerance), 1).otherwise(0)
+        ).alias("bad_values"),
+    ).first()
+    row_count = int(stats["rows"])
+    distinct_tracks = int(stats["distinct_tracks"])
+    null_rows = int(stats["null_rows"])
+    bad_size = int(stats["bad_size"])
+    bad_values = int(stats["bad_values"])
 
     print(
         "audio_embeddings "
@@ -230,6 +266,7 @@ def main() -> None:
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     try:
+        validate_models(args.output, metadata)
         embeddings = spark.read.parquet(spark_path(args.output / "song_embeddings_audio.parquet"))
         validate_embeddings(embeddings, args.expected_rows, selected_k, args.norm_tolerance)
         print("MERLIN audio PCA validation passed.")
