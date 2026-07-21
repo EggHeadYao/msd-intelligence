@@ -208,3 +208,73 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
             "artist_id", "fold"
         )
         raw = raw.join(folds, "artist_id", "inner").withColumn(
+            "split", F.when(F.col("fold") == args.validation_fold, "validation")
+            .otherwise("train")
+        ).drop("fold")
+    raw = raw.repartition(args.partitions)
+    assert_artist_isolation(raw)
+    counts = split_counts(raw)
+    if counts.get("train", 0) <= 0 or counts.get("validation", 0) <= 0:
+        raise ValueError("training and validation splits must both be non-empty")
+    raw_train = raw.where(F.col("split") == "train").cache()
+    standardization = fit_standardization(raw_train)
+    standardized = standardize_frame(spark, raw, standardization).repartition(
+        args.partitions
+    )
+    train_frame = standardized.where(F.col("split") == "train").cache()
+    validation_frame = standardized.where(F.col("split") == "validation").cache()
+    train_points = point_rdd(train_frame).persist(StorageLevel.MEMORY_AND_DISK)
+    validation_points = point_rdd(validation_frame).persist(StorageLevel.MEMORY_AND_DISK)
+    train_points.count()
+    validation_points.count()
+    layout = ParameterLayout(contract.dimension)
+    parameters = initialize_parameters(layout, year_histogram(raw_train), args.seed)
+    first_moment = np.zeros_like(parameters)
+    second_moment = np.zeros_like(parameters)
+    best_parameters = parameters.copy()
+    best_mae = float("inf")
+    stale_epochs = 0
+    history: list[dict[str, Any]] = []
+    for epoch in range(1, args.epochs + 1):
+        epoch_started = time.perf_counter()
+        batch = train_points
+        if args.sample_fraction < 1.0:
+            batch = train_points.sample(
+                withReplacement=False,
+                fraction=args.sample_fraction,
+                seed=args.seed + epoch,
+            )
+        gradient, losses, batch_count = distributed_gradient(
+            batch,
+            parameters,
+            layout,
+            config,
+            args.l2,
+            args.batch_size,
+        )
+        rate = args.learning_rate * 0.5 * (
+            1.0 + math.cos(math.pi * (epoch - 1) / max(1, args.epochs))
+        )
+        parameters, first_moment, second_moment, gradient_norm = adam_step(
+            parameters,
+            gradient,
+            first_moment,
+            second_moment,
+            epoch,
+            rate,
+            args.gradient_clip,
+        )
+        mae = validation_mae(
+            validation_points, parameters, layout, config, args.batch_size
+        )
+        improved = mae < best_mae - 1.0e-6
+        if improved:
+            best_mae = mae
+            best_parameters = parameters.copy()
+            stale_epochs = 0
+        else:
+            stale_epochs += 1
+        record = {
+            "epoch": epoch,
+            "learning_rate": rate,
+            "batch_count": batch_count,
