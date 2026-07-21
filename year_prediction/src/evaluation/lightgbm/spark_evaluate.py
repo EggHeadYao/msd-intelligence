@@ -68,3 +68,43 @@ def evaluate(args: argparse.Namespace, spark: SparkSession) -> dict:
         "artist_id",
         "year",
         "split",
+        "raw_prediction_year",
+        "clipped_prediction_year",
+        "absolute_error_years",
+    ).cache()
+    metrics = regression_metrics(predictions)
+    metrics["by_decade"] = decade_metrics(predictions)
+    written = write_parquet_parts(
+        predictions, args.output / "test_predictions.parquet"
+    )
+    if written != counts["test"]:
+        raise ValueError("prediction count differs from test input")
+    write_json(args.output / "metrics.json", metrics)
+    write_json(
+        args.output / "run_metadata.json",
+        {
+            "model_type": "synapseml_lightgbm_huber",
+            "split": "test",
+            "rows": written,
+            "spark_version": spark.version,
+            "spark_master": spark.sparkContext.master,
+            "application_id": spark.sparkContext.applicationId,
+            "total_seconds": time.perf_counter() - started,
+        },
+    )
+    predictions.unpersist()
+    return metrics
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionEvaluateLightGBM").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        print(json.dumps(evaluate(args, spark), sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
