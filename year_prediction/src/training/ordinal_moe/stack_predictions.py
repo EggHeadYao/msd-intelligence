@@ -68,3 +68,13 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict:
 
 
 def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionOOFStack").getOrCreate()
+    try:
+        print(json.dumps(run(args, spark), sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
