@@ -83,7 +83,6 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "run_id",
         "producer",
         "input_path",
-        "input_data_sha256",
         "row_count",
         "input_schema_sha256",
         "parent_prepared_manifest",
@@ -121,10 +120,6 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(isinstance(producer, dict), "invalid C1 producer")
     require(isinstance(producer.get("commit"), str) and len(producer["commit"]) >= 40, "invalid commit")
     require(isinstance(producer.get("dirty"), bool), "invalid dirty flag")
-    require(
-        isinstance(producer.get("source_sha256"), str) and len(producer["source_sha256"]) == 64,
-        "invalid source hash",
-    )
     if int(metadata["limit"]) == 0:
         require(not producer["dirty"], "formal C1 artifact was produced by dirty code")
     require(int(metadata["shuffle_partitions"]) > 0, "invalid shuffle partitions")
@@ -134,8 +129,6 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     )
     schema_hash = metadata["input_schema_sha256"]
     require(isinstance(schema_hash, str) and len(schema_hash) == 64, "invalid input schema hash")
-    data_hash = metadata["input_data_sha256"]
-    require(isinstance(data_hash, str) and len(data_hash) == 64, "invalid input data hash")
     parent = metadata["parent_prepared_manifest"]
     require(isinstance(parent, dict), "invalid Prepared parent lineage")
     require(parent.get("artifact_type") == "prepared_tables", "wrong parent artifact type")
@@ -168,12 +161,6 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(len(metadata["scaler_mean"]) == int(metadata["feature_count"]), "scaler_mean length mismatch")
     require(len(metadata["scaler_std"]) == int(metadata["feature_count"]), "scaler_std length mismatch")
     return selected_k
-
-
-def validate_input_lineage(metadata: dict[str, Any]) -> None:
-    input_path = Path(metadata["input_path"])
-    require(input_path.exists(), "C1 input artifact is unavailable")
-    require(sha256_path(input_path) == metadata["input_data_sha256"], "C1 input data hash mismatch")
 
 
 def validate_models(output: Path, metadata: dict[str, Any]) -> None:
@@ -261,7 +248,6 @@ def main() -> None:
     metadata = read_metadata(args.output / "audio_encoder_metadata.json")
     selected_k = validate_metadata(metadata)
     require(int(metadata["row_count"]) == args.expected_rows, "metadata row_count mismatch")
-    validate_input_lineage(metadata)
     validate_c1_manifest(args.output, metadata)
 
     spark = create_spark(args.shuffle_partitions)

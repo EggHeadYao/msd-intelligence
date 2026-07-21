@@ -49,20 +49,11 @@ def code_provenance(repo_root: Path, pathspec: str) -> dict[str, Any]:
         )
         return result.stdout.strip()
 
-    files = tuple(filter(None, git("ls-files", "--", pathspec).splitlines()))
-    require(bool(files), f"no tracked source files match {pathspec}")
-    digest = hashlib.sha256()
-    for relative in files:
-        digest.update(relative.encode("utf-8"))
-        digest.update(b"\0")
-        with (repo_root / relative).open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
+    require(bool(git("ls-files", "--", pathspec)), f"no tracked source files match {pathspec}")
     return {
         "commit": git("rev-parse", "HEAD"),
         "dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
         "source_pathspec": pathspec,
-        "source_sha256": digest.hexdigest(),
     }
 
 

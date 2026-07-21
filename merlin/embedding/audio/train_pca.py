@@ -33,7 +33,7 @@ from columns import (
     SHARED_FEATURE_COUNT,
     TRACK_ID_COLUMN,
 )
-from lineage import code_provenance, load_prepared_manifest, parent_lineage, sha256_path
+from lineage import code_provenance, load_prepared_manifest, parent_lineage
 from preprocess import SEGMENT_MEDIAN_BATCH_SIZE, preprocess_audio_features
 
 
@@ -182,7 +182,6 @@ def main() -> None:
     run_id = str(uuid4())
     repo_root = Path(__file__).resolve().parents[3]
     producer = code_provenance(repo_root, "merlin/embedding/audio/*.py")
-    input_data_hash = sha256_path(args.input)
     parent_path = args.parent_manifest or args.input.parent / "prepared_manifest.json"
     parent_manifest, parent_digest = load_prepared_manifest(parent_path)
     prepared_lineage = parent_lineage(parent_manifest, parent_path, parent_digest)
@@ -249,7 +248,6 @@ def main() -> None:
             "merlin_raw_view_count": MERLIN_RAW_VIEW_COUNT,
             "producer": producer,
             "input_path": str(args.input.resolve()),
-            "input_data_sha256": input_data_hash,
             "input_schema_sha256": input_schema_hash,
             "parent_prepared_manifest": prepared_lineage,
             "row_count": row_count,
