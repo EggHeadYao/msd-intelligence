@@ -6,6 +6,14 @@ NUM_WALKS: int = 10
 WALK_LENGTH: int = 40
 SEED: int = 42
 
+WORD2VEC_VECTOR_SIZE: int = 128
+WORD2VEC_WINDOW_SIZE: int = 5
+WORD2VEC_MIN_COUNT: int = 1
+WORD2VEC_MAX_ITER: int = 5
+WORD2VEC_STEP_SIZE: float = 0.025
+WORD2VEC_NUM_PARTITIONS: int = 20
+WORD2VEC_MAX_SENTENCE_LENGTH: int = WALK_LENGTH
+
 EDGE_SCHEMA: dict[str, tuple[str, str]] = {
     "track_artist": ("track", "artist"),
     "track_release": ("track", "release"),
