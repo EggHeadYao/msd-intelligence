@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -35,6 +36,34 @@ def sha256_path(path: str | Path) -> str:
 def feature_order_sha256(columns: Sequence[str]) -> str:
     payload = json.dumps(list(columns), separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def code_provenance(repo_root: Path, pathspec: str) -> dict[str, Any]:
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ("git", *args),
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    files = tuple(filter(None, git("ls-files", "--", pathspec).splitlines()))
+    require(bool(files), f"no tracked source files match {pathspec}")
+    digest = hashlib.sha256()
+    for relative in files:
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        with (repo_root / relative).open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return {
+        "commit": git("rev-parse", "HEAD"),
+        "dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
+        "source_pathspec": pathspec,
+        "source_sha256": digest.hexdigest(),
+    }
 
 
 def load_prepared_manifest(path: Path) -> tuple[dict[str, Any], str]:
