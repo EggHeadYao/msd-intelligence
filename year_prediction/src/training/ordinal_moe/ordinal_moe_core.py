@@ -138,3 +138,73 @@ def unpack(parameters: np.ndarray, layout: ParameterLayout) -> dict[str, np.ndar
         "direct_b": float(parameters[slices["direct_b"]][0]),
     }
 
+
+def sigmoid(values: np.ndarray) -> np.ndarray:
+    clipped = np.clip(values, -35.0, 35.0)
+    return 1.0 / (1.0 + np.exp(-clipped))
+
+
+def softmax(values: np.ndarray) -> np.ndarray:
+    shifted = values - np.max(values, axis=1, keepdims=True)
+    exponential = np.exp(np.clip(shifted, -35.0, 0.0))
+    return exponential / np.sum(exponential, axis=1, keepdims=True)
+
+
+def huber(error: np.ndarray, delta: float) -> tuple[np.ndarray, np.ndarray]:
+    absolute = np.abs(error)
+    quadratic = absolute <= delta
+    loss = np.where(quadratic, 0.5 * error * error, delta * (absolute - 0.5 * delta))
+    gradient = np.where(quadratic, error, delta * np.sign(error))
+    return loss, gradient
+
+
+def forward(
+    features: np.ndarray,
+    parameters: np.ndarray,
+    layout: ParameterLayout,
+    config: LossConfig,
+) -> dict[str, np.ndarray]:
+    values = unpack(parameters, layout)
+    ordinal_score = features @ values["ordinal_w"] + values["ordinal_b"]
+    ordinal_probability = sigmoid(
+        ordinal_score[:, None] - values["thresholds"][None, :]
+    )
+    ordinal_year = MIN_YEAR + np.sum(ordinal_probability, axis=1)
+    gate_logits = features @ values["gate_w"].T + values["gate_b"][None, :]
+    gate_probability = softmax(gate_logits)
+    expert_raw = features @ values["expert_w"].T + values["expert_b"][None, :]
+    expert_tanh = np.tanh(expert_raw)
+    expert_years = DECADE_CENTERS[None, :] + config.expert_span * expert_tanh
+    moe_year = np.sum(gate_probability * expert_years, axis=1)
+    direct_raw = features @ values["direct_w"] + values["direct_b"]
+    direct_tanh = np.tanh(direct_raw)
+    direct_year = (MIN_YEAR + MAX_YEAR) / 2.0 + (YEAR_SPAN / 2.0) * direct_tanh
+    blend_year = (
+        config.blend_ordinal * ordinal_year
+        + config.blend_moe * moe_year
+        + config.blend_direct * direct_year
+    )
+    return {
+        "ordinal_probability": ordinal_probability,
+        "ordinal_year": ordinal_year,
+        "gate_probability": gate_probability,
+        "expert_tanh": expert_tanh,
+        "expert_years": expert_years,
+        "moe_year": moe_year,
+        "direct_tanh": direct_tanh,
+        "direct_year": direct_year,
+        "blend_year": blend_year,
+    }
+
+
+def batch_gradient(
+    features: np.ndarray,
+    years: np.ndarray,
+    parameters: np.ndarray,
+    layout: ParameterLayout,
+    config: LossConfig,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    output = forward(features, parameters, layout, config)
+    count = years.size
+    thresholds = MIN_YEAR + np.arange(THRESHOLD_COUNT, dtype=np.float64)
+    ordinal_target = (years[:, None] > thresholds[None, :]).astype(np.float64)
