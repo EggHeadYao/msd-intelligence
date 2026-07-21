@@ -348,3 +348,14 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
 
 
 def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionSparkOrdinalMoE").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        print(json.dumps(run(args, spark), sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
