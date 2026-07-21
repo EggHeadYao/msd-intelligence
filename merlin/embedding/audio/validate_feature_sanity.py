@@ -65,3 +65,52 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
+def create_spark(shuffle_partitions: int) -> SparkSession:
+    return (
+        SparkSession.builder.appName("MerlinValidateC1FeatureSanity")
+        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+        .getOrCreate()
+    )
+
+
+def spark_path(path: Path) -> str:
+    return path.resolve().as_uri()
+
+
+def write_json(data: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    temporary.replace(path)
+
+
+def require_columns(df: DataFrame, columns: Sequence[str], name: str) -> None:
+    missing = sorted(set(columns) - set(df.columns))
+    require(not missing, f"{name} is missing columns: {missing}")
+
+
+def array_dot(left: F.Column, right: F.Column) -> F.Column:
+    products = F.zip_with(left, right, lambda x, y: x.cast("double") * y.cast("double"))
+    return F.aggregate(products, F.lit(0.0), lambda total, value: total + value)
+
+
+def cosine(left: F.Column, right: F.Column) -> F.Column:
+    denominator = F.sqrt(array_dot(left, left) * array_dot(right, right))
+    return array_dot(left, right) / denominator
+
+
+def add_coverage(raw: DataFrame, feature_columns: Sequence[str]) -> DataFrame:
+    availability = add_scalar_availability(raw)
+    coverage_columns = tuple(
+        column for column in feature_columns
+        if column.startswith("has_") and column in availability.columns
+    )
+    require(bool(coverage_columns), "C1 feature coverage columns are unavailable")
+    score = F.lit(0)
+    for column in coverage_columns:
+        score = score + F.when(F.col(column).cast("double") == 1.0, F.lit(1)).otherwise(F.lit(0))
+    return availability.select(TRACK_ID_COLUMN, score.cast("int").alias("feature_coverage"))
+
