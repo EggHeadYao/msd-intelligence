@@ -208,3 +208,73 @@ def batch_gradient(
     count = years.size
     thresholds = MIN_YEAR + np.arange(THRESHOLD_COUNT, dtype=np.float64)
     ordinal_target = (years[:, None] > thresholds[None, :]).astype(np.float64)
+    probability = np.clip(output["ordinal_probability"], 1.0e-8, 1.0 - 1.0e-8)
+    ordinal_loss = -np.sum(
+        ordinal_target * np.log(probability)
+        + (1.0 - ordinal_target) * np.log(1.0 - probability)
+    ) / THRESHOLD_COUNT
+    moe_loss, moe_gradient = huber(output["moe_year"] - years, config.huber_delta)
+    direct_loss, direct_gradient = huber(
+        output["direct_year"] - years, config.huber_delta
+    )
+    true_decade = decade_index(years)
+    gate_probability = np.clip(output["gate_probability"], 1.0e-8, 1.0)
+    decade_loss = -np.sum(np.log(gate_probability[np.arange(count), true_decade]))
+    scale = YEAR_SPAN * YEAR_SPAN
+    ordinal_difference = output["ordinal_year"] - output["moe_year"]
+    direct_difference = output["ordinal_year"] - output["direct_year"]
+    consistency_loss = 0.5 * np.sum(
+        ordinal_difference * ordinal_difference + direct_difference * direct_difference
+    ) / scale
+    loss_parts = np.asarray(
+        [
+            ordinal_loss,
+            float(np.sum(moe_loss)),
+            float(np.sum(direct_loss)),
+            decade_loss,
+            consistency_loss,
+        ],
+        dtype=np.float64,
+    )
+    d_ordinal_year = config.consistency * (
+        ordinal_difference + direct_difference
+    ) / scale
+    d_moe_year = config.moe * moe_gradient - config.consistency * ordinal_difference / scale
+    d_direct_year = (
+        config.direct * direct_gradient - config.consistency * direct_difference / scale
+    )
+    d_ordinal_logits = (
+        config.ordinal * (probability - ordinal_target) / THRESHOLD_COUNT
+        + d_ordinal_year[:, None] * probability * (1.0 - probability)
+    )
+    d_ordinal_score = np.sum(d_ordinal_logits, axis=1)
+    d_gate = d_moe_year[:, None] * gate_probability * (
+        output["expert_years"] - output["moe_year"][:, None]
+    )
+    decade_target = np.zeros_like(gate_probability)
+    decade_target[np.arange(count), true_decade] = 1.0
+    d_gate += config.decade * (gate_probability - decade_target)
+    d_expert_raw = (
+        d_moe_year[:, None]
+        * gate_probability
+        * config.expert_span
+        * (1.0 - output["expert_tanh"] ** 2)
+    )
+    d_direct_raw = (
+        d_direct_year * (YEAR_SPAN / 2.0) * (1.0 - output["direct_tanh"] ** 2)
+    )
+    gradient = np.zeros(layout.size, dtype=np.float64)
+    slices = layout.slices()
+    gradient[slices["ordinal_w"]] = features.T @ d_ordinal_score
+    gradient[slices["ordinal_b"]] = np.sum(d_ordinal_score)
+    gradient[slices["thresholds"]] = -np.sum(d_ordinal_logits, axis=0)
+    gradient[slices["gate_w"]] = (d_gate.T @ features).ravel()
+    gradient[slices["gate_b"]] = np.sum(d_gate, axis=0)
+    gradient[slices["expert_w"]] = (d_expert_raw.T @ features).ravel()
+    gradient[slices["expert_b"]] = np.sum(d_expert_raw, axis=0)
+    gradient[slices["direct_w"]] = features.T @ d_direct_raw
+    gradient[slices["direct_b"]] = np.sum(d_direct_raw)
+    return gradient, loss_parts, count
+
+
+GradientPartial = tuple[np.ndarray, np.ndarray, int]
