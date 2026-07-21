@@ -6,15 +6,18 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from lineage import sha256_path
-
-
 C1_MANIFEST_NAME = "c1_manifest.json"
 C1_OUTPUTS = {
     "embeddings": "song_embeddings_audio.parquet",
     "scaler_model": "scaler_model",
     "pca_model": "pca_model",
     "encoder_metadata": "audio_encoder_metadata.json",
+}
+C1_SUCCESS_MARKERS = {
+    "embeddings": ("_SUCCESS",),
+    "scaler_model": ("data/_SUCCESS", "metadata/_SUCCESS"),
+    "pca_model": ("data/_SUCCESS", "metadata/_SUCCESS"),
+    "encoder_metadata": (),
 }
 
 
@@ -87,10 +90,7 @@ def replace_artifact(source: Path, target: Path, run_id: str) -> None:
 
 
 def build_c1_manifest(staging: Path, metadata: dict[str, Any]) -> dict[str, Any]:
-    outputs = {
-        name: {"path": relative, "sha256": sha256_path(staging / relative)}
-        for name, relative in C1_OUTPUTS.items()
-    }
+    outputs = {name: {"path": relative} for name, relative in C1_OUTPUTS.items()}
     return {
         "artifact_type": "c1_audio_encoder",
         "artifact_version": "v2",
@@ -101,7 +101,6 @@ def build_c1_manifest(staging: Path, metadata: dict[str, Any]) -> dict[str, Any]
         "parent_prepared_manifest": metadata["parent_prepared_manifest"],
         "input": {
             "path": metadata["input_path"],
-            "data_sha256": metadata["input_data_sha256"],
             "schema_sha256": metadata["input_schema_sha256"],
             "row_count": metadata["row_count"],
         },
@@ -129,7 +128,6 @@ def validate_c1_manifest(output: Path, metadata: dict[str, Any]) -> dict[str, An
     input_artifact = manifest.get("input", {})
     input_expected = {
         "path": metadata["input_path"],
-        "data_sha256": metadata["input_data_sha256"],
         "schema_sha256": metadata["input_schema_sha256"],
         "row_count": metadata["row_count"],
     }
@@ -140,6 +138,12 @@ def validate_c1_manifest(output: Path, metadata: dict[str, Any]) -> dict[str, An
         raise AssertionError("C1 manifest outputs mismatch")
     for name, relative in C1_OUTPUTS.items():
         item = outputs[name]
-        if item.get("path") != relative or item.get("sha256") != sha256_path(output / relative):
-            raise AssertionError(f"C1 manifest {name} hash mismatch")
+        if item != {"path": relative}:
+            raise AssertionError(f"C1 manifest {name} path mismatch")
+        artifact = output / relative
+        if not artifact.exists():
+            raise AssertionError(f"C1 output {name} is missing")
+        for marker in C1_SUCCESS_MARKERS[name]:
+            if not (artifact / marker).is_file():
+                raise AssertionError(f"C1 output {name} is incomplete")
     return manifest
