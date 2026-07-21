@@ -68,3 +68,73 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("num_tasks cannot be negative")
     if not 0.0 < args.learning_rate <= 1.0:
         raise ValueError("learning_rate must be in (0, 1]")
+    for name in ("feature_fraction", "bagging_fraction", "huber_alpha"):
+        if not 0.0 < float(getattr(args, name)) <= 1.0:
+            raise ValueError(f"{name} must be in (0, 1]")
+
+
+def build_estimator(args: argparse.Namespace, categorical: list[int]) -> LightGBMRegressor:
+    return LightGBMRegressor(
+        featuresCol="features",
+        labelCol="label",
+        predictionCol="prediction",
+        validationIndicatorCol="is_validation",
+        objective="huber",
+        metric="l1",
+        alpha=args.huber_alpha,
+        learningRate=args.learning_rate,
+        numIterations=args.num_iterations,
+        earlyStoppingRound=args.early_stopping_rounds,
+        numLeaves=args.num_leaves,
+        maxDepth=args.max_depth,
+        minDataInLeaf=args.min_data_in_leaf,
+        featureFraction=args.feature_fraction,
+        baggingFraction=args.bagging_fraction,
+        baggingFreq=1,
+        lambdaL2=args.lambda_l2,
+        maxBin=args.max_bin,
+        categoricalSlotIndexes=categorical,
+        useMissing=True,
+        zeroAsMissing=False,
+        dataTransferMode="streaming",
+        useSingleDatasetMode=True,
+        numTasks=args.num_tasks,
+        seed=args.seed,
+        deterministic=True,
+        verbosity=1,
+    )
+
+
+def prediction_artifact(model: Any, frame: DataFrame) -> DataFrame:
+    transformed = model.transform(frame)
+    return add_prediction_columns(transformed).select(
+        "track_id",
+        "artist_id",
+        "year",
+        "split",
+        "raw_prediction_year",
+        "clipped_prediction_year",
+        "absolute_error_years",
+    )
+
+
+def evaluate_split(model: Any, frame: DataFrame, output: Path, split: str) -> dict[str, Any]:
+    predictions = prediction_artifact(model, frame.where(F.col("split") == split)).cache()
+    metrics = regression_metrics(predictions)
+    metrics["by_decade"] = decade_metrics(predictions)
+    write_parquet_parts(
+        predictions,
+        output / f"{split}_predictions.parquet",
+        (
+            "track_id",
+            "artist_id",
+            "year",
+            "split",
+            "raw_prediction_year",
+            "clipped_prediction_year",
+            "absolute_error_years",
+        ),
+    )
+    predictions.unpersist()
+    return metrics
+
