@@ -312,6 +312,63 @@ def normalize_track_vectors(
     )
 
 
+def validate_embeddings(
+    embeddings: DataFrame,
+    expected_tracks: int,
+    vector_size: int,
+) -> dict[str, float | int]:
+    normalized_norm = F.sqrt(
+        F.aggregate(
+            F.col("embedding"),
+            F.lit(0.0),
+            lambda total, value: total + value.cast("double") * value.cast("double"),
+        ),
+    )
+    invalid_value = F.exists(
+        "embedding",
+        lambda value: (
+            value.isNull()
+            | F.isnan(value.cast("double"))
+            | (F.abs(value.cast("double")) == F.lit(float("inf")))
+        ),
+    )
+    invalid = embeddings.where(
+        F.col("node_id").isNull()
+        | F.col("track_id").isNull()
+        | F.col("embedding").isNull()
+        | (F.size("embedding") != vector_size)
+        | (F.col("raw_norm") <= NORM_EPSILON)
+        | invalid_value
+        | (F.abs(normalized_norm - 1.0) > NORM_TOLERANCE),
+    )
+    require(invalid.limit(1).count() == 0, "graph embeddings failed numeric validation")
+
+    summary = embeddings.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct("node_id").alias("nodes"),
+        F.countDistinct("track_id").alias("tracks"),
+        F.min("raw_norm").alias("min_raw_norm"),
+        F.max("raw_norm").alias("max_raw_norm"),
+        F.min(normalized_norm).alias("min_norm"),
+        F.max(normalized_norm).alias("max_norm"),
+    ).first()
+    require(summary is not None, "graph embedding output is empty")
+    require(int(summary["rows"]) == expected_tracks, "embedding row count mismatch")
+    require(
+        int(summary["nodes"]) == expected_tracks, "embedding node IDs are not unique"
+    )
+    require(
+        int(summary["tracks"]) == expected_tracks, "embedding track IDs are not unique"
+    )
+    return {
+        "rows": int(summary["rows"]),
+        "distinct_node_ids": int(summary["nodes"]),
+        "distinct_track_ids": int(summary["tracks"]),
+        "min_raw_norm": float(summary["min_raw_norm"]),
+        "max_raw_norm": float(summary["max_raw_norm"]),
+        "min_norm": float(summary["min_norm"]),
+        "max_norm": float(summary["max_norm"]),
+    }
 
 
 
