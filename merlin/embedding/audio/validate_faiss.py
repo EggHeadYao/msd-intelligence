@@ -10,6 +10,7 @@ import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from faiss_checks import validate_source_mapping
 from shared_contract import CONTRACT_VERSION
 
 
@@ -51,6 +52,14 @@ def spark_path(path: Path) -> str:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def validate_index_runtime(index: faiss.Index) -> None:
+    require(type(index).__name__ == "IndexFlatIP", "FAISS runtime index is not IndexFlatIP")
+    require(
+        index.metric_type == faiss.METRIC_INNER_PRODUCT,
+        "FAISS runtime metric is not inner product",
+    )
 
 
 def validate_manifest(
@@ -132,10 +141,8 @@ def validate_queries(
     index: faiss.Index,
     queries: list[tuple[int, str, list[float]]],
     top_k: int,
-) -> None:
-    require(queries, "no query embeddings found")
-    matrix = np.vstack([np.asarray(row[2], dtype=np.float32).reshape(1, -1) for row in queries])
-    require(matrix.shape[1] == index.d, "query embedding dimension does not match FAISS index")
+) -> float:
+    matrix, reconstruction_error = validate_source_mapping(index, queries)
     distances, indices = index.search(matrix, min(top_k + 1, index.ntotal))
     compared_pairs = 0
     max_score_error = 0.0
@@ -164,10 +171,13 @@ def validate_queries(
             compared_pairs += 1
     require(compared_pairs >= 100, "FAISS validation requires at least 100 score comparisons")
     require(max_score_error <= 1e-5, "FAISS scores disagree with NumPy inner products")
+    return reconstruction_error
 
 
 def main() -> None:
     args = parse_args()
+    require(args.queries > 0, "query count must be positive")
+    require(args.top_k > 0, "top-k must be positive")
     index_path = args.output / args.index_name
     mapping_path = args.output / args.track_ids_name
     require(index_path.exists(), f"missing FAISS index: {index_path}")
@@ -175,6 +185,7 @@ def main() -> None:
     validate_manifest(args.output, index_path, mapping_path, args.expected_rows)
 
     index = faiss.read_index(str(index_path))
+    validate_index_runtime(index)
     selected_k = read_selected_k(args.output)
     require(index.d == selected_k, "FAISS index dimension does not match selected_k")
     require(index.ntotal == args.expected_rows, "FAISS index size mismatch")
@@ -186,10 +197,11 @@ def main() -> None:
         embeddings = spark.read.parquet(spark_path(args.embeddings))
         validate_mapping(mapping, args.expected_rows)
         queries = sample_queries(mapping, embeddings, args.queries)
-        validate_queries(index, queries, args.top_k)
+        reconstruction_error = validate_queries(index, queries, args.top_k)
         print(
             "audio_faiss_validation_passed "
-            f"rows={index.ntotal}, dimension={index.d}, queries={len(queries)}, top_k={args.top_k}",
+            f"rows={index.ntotal}, dimension={index.d}, queries={len(queries)}, "
+            f"top_k={args.top_k}, reconstruction_error={reconstruction_error:.3g}",
         )
     finally:
         try:
