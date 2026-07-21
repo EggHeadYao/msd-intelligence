@@ -166,6 +166,75 @@ def follow_meta_path(
     path_template: list[str],
     song_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
     node_adj: dict[int, dict[str, tuple[np.ndarray, np.ndarray]]],
+def _load_adjacency_table(
+    dataset_path: Path,
+    name: str,
+    type_codes: np.ndarray,
+) -> AdjacencyTable:
+    import pyarrow.parquet as pq
+
+    arrow_table = pq.read_table(dataset_path)
+    expected_columns = ("node_id", "neighbor_ids", "weights")
+    if tuple(arrow_table.column_names) != expected_columns:
+        raise ValueError(
+            f"Invalid {name} columns: expected={expected_columns}, "
+            f"actual={tuple(arrow_table.column_names)}",
+        )
+
+    node_ids = (
+        arrow_table["node_id"]
+        .to_numpy(zero_copy_only=False)
+        .astype(
+            np.int32,
+            copy=False,
+        )
+    )
+    if np.unique(node_ids).size != node_ids.size:
+        raise ValueError(f"Duplicate {name} source node")
+
+    source_type, neighbor_type = _ADJACENCY_TYPES[name]
+    source_code = _NODE_TYPE_CODE[source_type]
+    neighbor_code = _NODE_TYPE_CODE[neighbor_type]
+    invalid_source = (node_ids < 0) | (node_ids >= len(type_codes))
+    if invalid_source.any() or not (type_codes[node_ids] == source_code).all():
+        raise ValueError(f"Invalid {name} source node")
+
+    neighbor_blobs = arrow_table["neighbor_ids"].to_pylist()
+    weight_blobs = arrow_table["weights"].to_pylist()
+    neighbor_lengths = np.asarray(
+        [len(value) // 4 if value is not None else -1 for value in neighbor_blobs],
+        dtype=np.int64,
+    )
+    weight_lengths = np.asarray(
+        [len(value) // 4 if value is not None else -1 for value in weight_blobs],
+        dtype=np.int64,
+    )
+    malformed_binary = any(
+        value is None or len(value) % 4 != 0 for value in neighbor_blobs
+    ) or any(value is None or len(value) % 4 != 0 for value in weight_blobs)
+    if (
+        malformed_binary
+        or (neighbor_lengths <= 0).any()
+        or not np.array_equal(neighbor_lengths, weight_lengths)
+    ):
+        raise ValueError(f"Misaligned {name} paired binary arrays")
+
+    offsets = np.empty(node_ids.size + 1, dtype=np.int64)
+    offsets[0] = 0
+    np.cumsum(neighbor_lengths, out=offsets[1:])
+    neighbor_ids = np.frombuffer(b"".join(neighbor_blobs), dtype="<i4")
+    weights = np.frombuffer(b"".join(weight_blobs), dtype="<f4")
+    if not np.isfinite(weights).all() or (weights < 0.0).any():
+        raise ValueError(f"Invalid {name} weights")
+    invalid_neighbor = (neighbor_ids < 0) | (neighbor_ids >= len(type_codes))
+    if invalid_neighbor.any() or not (type_codes[neighbor_ids] == neighbor_code).all():
+        raise ValueError(f"Invalid {name} neighbor")
+
+    row_by_node = np.full(len(type_codes), -1, dtype=np.int32)
+    row_by_node[node_ids] = np.arange(node_ids.size, dtype=np.int32)
+    return AdjacencyTable(row_by_node, offsets, neighbor_ids, weights)
+
+
     rng: np.random.Generator,
     target_len: int = 40,
 ) -> list[int]:
