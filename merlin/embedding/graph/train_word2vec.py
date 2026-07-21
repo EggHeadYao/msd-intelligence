@@ -196,7 +196,55 @@ def validate_walks(
         "walk input violates the canonical schema or value contract",
     )
 
+    root_node = F.element_at("walk_seq", 1)
+    summary = walks.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct("track_id").alias("tracks"),
+        F.countDistinct(root_node).alias("root_nodes"),
+        F.countDistinct(F.struct("track_id", "walk_id")).alias("walk_keys"),
+        F.min("walk_len").alias("min_walk_len"),
+        F.max("walk_len").alias("max_walk_len"),
+    ).first()
+    require(summary is not None, "walk input is empty")
+    rows = int(summary["rows"])
+    tracks = int(summary["tracks"])
+    root_nodes = int(summary["root_nodes"])
+    walk_keys = int(summary["walk_keys"])
+    require(tracks == expected_tracks, "walk track count does not match expectation")
+    require(
+        root_nodes == expected_tracks, "walk root IDs are not one-to-one with tracks"
+    )
+    require(
+        rows == expected_tracks * walks_per_track,
+        "walk row count does not match tracks times walks-per-track",
+    )
+    require(walk_keys == rows, "track_id and walk_id pairs are not unique")
+
+    per_track = (
+        walks.groupBy("track_id")
+        .count()
+        .agg(
+            F.min("count").alias("minimum"),
+            F.max("count").alias("maximum"),
         )
+        .first()
+    )
+    require(per_track is not None, "walk input has no track groups")
+    require(
+        int(per_track["minimum"]) == walks_per_track
+        and int(per_track["maximum"]) == walks_per_track,
+        "each track must have exactly walks-per-track rows",
+    )
+    return {
+        "rows": rows,
+        "tracks": tracks,
+        "root_nodes": root_nodes,
+        "walk_keys": walk_keys,
+        "min_walk_len": int(summary["min_walk_len"]),
+        "max_walk_len": int(summary["max_walk_len"]),
+    }
+
+
 
 
 
