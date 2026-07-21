@@ -131,6 +131,8 @@ def build_index(
         if len(batch) >= batch_size:
             flush_batch(index, batch)
             batch.clear()
+        if rows % 100_000 == 0:
+            print(f"audio_faiss_index_progress rows={rows}", flush=True)
 
     require(index is not None, "no embeddings found")
     flush_batch(index, batch)
@@ -151,17 +153,28 @@ def main() -> None:
     try:
         staging = args.output / f".faiss-staging-{run_id}"
         staging.mkdir()
+        print(f"audio_faiss_build_started input={args.input}, output={args.output}", flush=True)
         embeddings = read_embeddings(spark, args.input, args.limit)
-        row_count = embeddings.count()
-        null_rows = embeddings.where(
-            F.col(TRACK_ID_COLUMN).isNull() | F.col(EMBEDDING_COLUMN).isNull(),
-        ).count()
+        stats = embeddings.agg(
+            F.count("*").alias("rows"),
+            F.sum(
+                F.when(
+                    F.col(TRACK_ID_COLUMN).isNull() | F.col(EMBEDDING_COLUMN).isNull(),
+                    1,
+                ).otherwise(0),
+            ).alias("null_rows"),
+        ).first()
+        row_count = int(stats["rows"])
+        null_rows = int(stats["null_rows"] or 0)
         require(row_count > 0, "input embedding table is empty")
         require(null_rows == 0, "input embedding table contains null rows")
+        print(f"audio_faiss_input_ready rows={row_count}", flush=True)
 
         staged_mapping = staging / args.track_ids_name
         write_track_id_mapping(embeddings, staged_mapping)
+        print(f"audio_faiss_mapping_ready path={staged_mapping}", flush=True)
         index = build_index(embeddings, args.batch_size, expected_dim)
+        print(f"audio_faiss_index_ready rows={index.ntotal}, dimension={index.d}", flush=True)
         staged_index = staging / args.index_name
         faiss.write_index(index, str(staged_index))
         manifest = {
