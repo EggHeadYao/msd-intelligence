@@ -10,8 +10,16 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, FloatType
 
+from artifacts import C1_MANIFEST_NAME, validate_c1_manifest
+from columns import (
+    TIME_SIGNATURE_UNKNOWN_COLUMN,
+    TIME_SIGNATURE_VALUES,
+    build_feature_columns,
+    time_signature_one_hot_column,
+)
 from shared_contract import CONTRACT_VERSION
 from lineage import sha256_path
+from preprocess import SEGMENT_MEDIAN_BATCH_SIZE
 
 
 EXPECTED_SONGS = 1_000_000
@@ -54,6 +62,7 @@ def validate_layout(output_dir: Path) -> None:
         "song_embeddings_audio.parquet",
         "audio_encoder_metadata.json",
         "pca_model",
+        C1_MANIFEST_NAME,
         "scaler_model",
     )
     missing = [name for name in required if not (output_dir / name).exists()]
@@ -69,6 +78,10 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "shared_audio_feature_count",
         "merlin_array_feature_count",
         "merlin_raw_view_count",
+        "run_id",
+        "producer",
+        "input_path",
+        "input_data_sha256",
         "row_count",
         "input_schema_sha256",
         "parent_prepared_manifest",
@@ -84,6 +97,9 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "preprocess",
         "scaler_mean",
         "scaler_std",
+        "limit",
+        "shuffle_partitions",
+        "segment_median_batch_size",
     )
     missing = [key for key in required if key not in metadata]
     require(not missing, f"metadata missing keys: {missing}")
@@ -99,8 +115,25 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
     require(selected_k == 128, "C1 embedding dimension must be 128")
     require(len(metadata["feature_columns"]) == int(metadata["feature_count"]), "feature_count mismatch")
+    producer = metadata["producer"]
+    require(isinstance(producer, dict), "invalid C1 producer")
+    require(isinstance(producer.get("commit"), str) and len(producer["commit"]) >= 40, "invalid commit")
+    require(isinstance(producer.get("dirty"), bool), "invalid dirty flag")
+    require(
+        isinstance(producer.get("source_sha256"), str) and len(producer["source_sha256"]) == 64,
+        "invalid source hash",
+    )
+    if int(metadata["limit"]) == 0:
+        require(not producer["dirty"], "formal C1 artifact was produced by dirty code")
+    require(int(metadata["shuffle_partitions"]) > 0, "invalid shuffle partitions")
+    require(
+        int(metadata["segment_median_batch_size"]) == SEGMENT_MEDIAN_BATCH_SIZE,
+        "segment median batch size mismatch",
+    )
     schema_hash = metadata["input_schema_sha256"]
     require(isinstance(schema_hash, str) and len(schema_hash) == 64, "invalid input schema hash")
+    data_hash = metadata["input_data_sha256"]
+    require(isinstance(data_hash, str) and len(data_hash) == 64, "invalid input data hash")
     parent = metadata["parent_prepared_manifest"]
     require(isinstance(parent, dict), "invalid Prepared parent lineage")
     require(parent.get("artifact_type") == "prepared_tables", "wrong parent artifact type")
@@ -112,6 +145,18 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     feature_text = "\n".join(metadata["feature_columns"])
     expected_hash = hashlib.sha256(feature_text.encode("utf-8")).hexdigest()
     require(metadata["feature_order_sha256"] == expected_hash, "feature order hash mismatch")
+    preprocess = metadata["preprocess"]
+    time_values = tuple(preprocess.get("time_signature_values", ()))
+    require(time_values == TIME_SIGNATURE_VALUES, "time signature values mismatch")
+    time_columns = tuple(time_signature_one_hot_column(value) for value in time_values)
+    time_columns = (*time_columns, TIME_SIGNATURE_UNKNOWN_COLUMN)
+    require(tuple(preprocess.get("time_signature_columns", ())) == time_columns, "time columns mismatch")
+    candidates = build_feature_columns(time_columns)
+    dropped = tuple(preprocess.get("dropped_features", ()))
+    require(len(dropped) == len(set(dropped)), "duplicate dropped features")
+    require(set(dropped).issubset(candidates), "unknown dropped features")
+    expected_features = tuple(column for column in candidates if column not in set(dropped))
+    require(tuple(metadata["feature_columns"]) == expected_features, "feature schema is not canonical")
     require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
     cumulative_128 = float(metadata["cumulative_explained_variance"][selected_k - 1])
     require(
@@ -121,6 +166,12 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(len(metadata["scaler_mean"]) == int(metadata["feature_count"]), "scaler_mean length mismatch")
     require(len(metadata["scaler_std"]) == int(metadata["feature_count"]), "scaler_std length mismatch")
     return selected_k
+
+
+def validate_input_lineage(metadata: dict[str, Any]) -> None:
+    input_path = Path(metadata["input_path"])
+    require(input_path.exists(), "C1 input artifact is unavailable")
+    require(sha256_path(input_path) == metadata["input_data_sha256"], "C1 input data hash mismatch")
 
 
 def validate_embeddings(
@@ -173,6 +224,8 @@ def main() -> None:
     metadata = read_metadata(args.output / "audio_encoder_metadata.json")
     selected_k = validate_metadata(metadata)
     require(int(metadata["row_count"]) == args.expected_rows, "metadata row_count mismatch")
+    validate_input_lineage(metadata)
+    validate_c1_manifest(args.output, metadata)
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
