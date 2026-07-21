@@ -138,3 +138,73 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def year_histogram(train: DataFrame) -> list[int]:
     result = [0] * (int(MAX_YEAR - MIN_YEAR) + 1)
+    for row in train.groupBy("year").count().collect():
+        result[int(row["year"] - MIN_YEAR)] = int(row["count"])
+    return result
+
+
+def prediction_rdd(points, parameters, layout, config, batch_size):
+    broadcast = points.context.broadcast(parameters)
+    try:
+        return points.mapPartitions(
+            lambda rows: prediction_partition(
+                rows, broadcast.value, layout, config, batch_size
+            )
+        ).collect()
+    finally:
+        broadcast.destroy()
+
+
+def validation_mae(points, parameters, layout, config, batch_size) -> float:
+    broadcast = points.context.broadcast(parameters)
+    try:
+        absolute, count = points.mapPartitions(
+            lambda rows: prediction_partition(
+                rows, broadcast.value, layout, config, batch_size
+            )
+        ).map(lambda row: (abs(row[6] - row[2]), 1)).treeReduce(
+            lambda left, right: (left[0] + right[0], left[1] + right[1])
+        )
+    finally:
+        broadcast.destroy()
+    return float(absolute / count)
+
+
+def prediction_frame(
+    spark: SparkSession, points, parameters, layout, config, batch_size
+) -> DataFrame:
+    values = points.mapPartitions(
+        lambda rows: prediction_partition(
+            rows, parameters, layout, config, batch_size
+        )
+    )
+    return spark.createDataFrame(values, PREDICTION_SCHEMA)
+
+
+def evaluate_heads(frame: DataFrame) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for head in ("ordinal", "moe", "direct", "blend"):
+        predictions = add_prediction_columns(frame, f"{head}_year")
+        metrics = regression_metrics(predictions)
+        metrics["by_decade"] = decade_metrics(predictions)
+        result[head] = metrics
+    return result
+
+
+def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
+    validate_args(args)
+    config = loss_config(args)
+    prepare_output(args.output, args.overwrite)
+    started = time.perf_counter()
+    contract = load_feature_contract(args.manifest)
+    requested_splits = (("train",) if args.fold_assignments is not None else
+                        (("train", "validation", "test") if args.evaluate_test
+                         else ("train", "validation")))
+    raw = load_feature_frame(
+        spark, args.input, contract, args.max_rows_per_split, requested_splits
+    )
+    if args.fold_assignments is not None:
+        folds = spark.read.parquet(*parquet_inputs(args.fold_assignments)).select(
+            "artist_id", "fold"
+        )
+        raw = raw.join(folds, "artist_id", "inner").withColumn(
