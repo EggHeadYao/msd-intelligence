@@ -25,6 +25,58 @@ _ADJACENCY_TYPES: dict[str, tuple[str, str]] = {
     "term_to_artists": ("term", "artist"),
     "artist_to_similar_artists": ("artist", "artist"),
 }
+_NODE_TYPE_CODE = {"track": 0, "artist": 1, "release": 2, "term": 3}
+
+
+@dataclass(frozen=True)
+class AdjacencyTable:
+    """Compact row lookup plus CSR-style paired neighbor arrays."""
+
+    row_by_node: np.ndarray
+    offsets: np.ndarray
+    neighbor_ids: np.ndarray
+    weights: np.ndarray
+
+    @classmethod
+    def from_entries(cls, entries: dict[int, AdjacencyEntry]) -> AdjacencyTable:
+        if not entries:
+            return cls(
+                row_by_node=np.empty(0, dtype=np.int32),
+                offsets=np.zeros(1, dtype=np.int64),
+                neighbor_ids=np.empty(0, dtype=np.int32),
+                weights=np.empty(0, dtype=np.float32),
+            )
+        node_ids = np.asarray(sorted(entries), dtype=np.int32)
+        row_by_node = np.full(int(node_ids[-1]) + 1, -1, dtype=np.int32)
+        row_by_node[node_ids] = np.arange(node_ids.size, dtype=np.int32)
+        neighbor_parts = [entries[int(node_id)][0] for node_id in node_ids]
+        weight_parts = [entries[int(node_id)][1] for node_id in node_ids]
+        lengths = np.asarray([part.size for part in neighbor_parts], dtype=np.int64)
+        offsets = np.empty(node_ids.size + 1, dtype=np.int64)
+        offsets[0] = 0
+        np.cumsum(lengths, out=offsets[1:])
+        return cls(
+            row_by_node=row_by_node,
+            offsets=offsets,
+            neighbor_ids=np.concatenate(neighbor_parts),
+            weights=np.concatenate(weight_parts),
+        )
+
+    def get(self, node_id: int) -> AdjacencyEntry | None:
+        if not 0 <= node_id < self.row_by_node.size:
+            return None
+        row = int(self.row_by_node[node_id])
+        if row < 0:
+            return None
+        start = int(self.offsets[row])
+        end = int(self.offsets[row + 1])
+        return self.neighbor_ids[start:end], self.weights[start:end]
+
+
+AdjacencyIndex = dict[str, AdjacencyTable]
+_ADJACENCY_CACHE: dict[tuple[str, int], AdjacencyIndex] = {}
+
+
 
 
 def load_adjacency(
