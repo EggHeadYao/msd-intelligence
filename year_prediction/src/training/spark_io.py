@@ -68,3 +68,22 @@ def write_parquet_parts(
 ) -> int:
     if output.exists():
         raise FileExistsError(f"Parquet output already exists: {output}")
+    output.mkdir(parents=True)
+    selected = tuple(columns or frame.columns)
+    counts = frame.select(*selected).rdd.mapPartitionsWithIndex(
+        lambda index, rows: _write_partition(
+            index, rows, str(output), selected, batch_size
+        )
+    ).collect()
+    total = int(sum(counts))
+    if total <= 0:
+        shutil.rmtree(output)
+        raise ValueError("cannot write an empty Parquet dataset")
+    (output / "_SUCCESS").write_text("", encoding="ascii")
+    return total
+
+
+def write_native_model(path: Path, model_text: str) -> None:
+    if path.exists():
+        raise FileExistsError(f"model output already exists: {path}")
+    path.write_text(model_text, encoding="ascii", newline="\n")
