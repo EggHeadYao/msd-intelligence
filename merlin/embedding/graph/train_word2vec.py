@@ -98,38 +98,61 @@ def create_spark(shuffle_partitions: int) -> SparkSession:
     )
 
 
+def validate_parameters(args: argparse.Namespace) -> None:
+    require(args.vector_size > 0, "vector size must be positive")
+    require(args.window_size > 0, "window size must be positive")
+    require(args.min_count >= 0, "min count must be non-negative")
+    require(args.max_iter > 0, "max iterations must be positive")
+    require(args.step_size > 0.0, "step size must be positive")
+    require(args.num_partitions > 0, "Word2Vec partitions must be positive")
+    require(args.max_sentence_length > 0, "maximum sentence length must be positive")
+    require(args.expected_tracks > 0, "expected track count must be positive")
+    require(args.walks_per_track > 0, "walks per track must be positive")
+    require(args.limit_tracks >= 0, "track limit must be non-negative")
+    require(args.shuffle_partitions > 0, "shuffle partitions must be positive")
+    require(args.output_partitions > 0, "output partitions must be positive")
 
-    try:
-        # Read walk sequences
-        print(f"Reading walk sequences from {args.input}/walk_sequences.parquet")
-        walks_df: DataFrame = spark.read.parquet(
-            f"{args.input}/walk_sequences.parquet"
+
+def prepare_output(output: Path, overwrite: bool) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    targets = (output / EMBEDDINGS_NAME, output / MODEL_NAME, output / METADATA_NAME)
+    existing = [path for path in targets if path.exists()]
+    if existing and not overwrite:
+        names = ", ".join(str(path) for path in existing)
+        raise FileExistsError(f"C2 Word2Vec output already exists: {names}")
+    for path in existing:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+
+
+def read_walks(
+    spark: SparkSession,
+    path: Path,
+    limit_tracks: int,
+) -> DataFrame:
+    walks = spark.read.parquet(spark_path(path))
+    missing = REQUIRED_WALK_COLUMNS - set(walks.columns)
+    require(not missing, f"walk input is missing columns: {sorted(missing)}")
+
+    track_field = walks.schema["track_id"]
+    walk_field = walks.schema["walk_seq"]
+    require(isinstance(track_field.dataType, StringType), "track_id must be string")
+    require(
+        isinstance(walk_field.dataType, ArrayType)
+        and isinstance(walk_field.dataType.elementType, IntegerType),
+        "walk_seq must be array<int>",
+    )
+
+    if limit_tracks > 0:
+        selected_tracks = (
+            walks.select("track_id").distinct().orderBy("track_id").limit(limit_tracks)
         )
+        walks = walks.join(F.broadcast(selected_tracks), "track_id", "inner")
+    return walks
 
-        # Convert walk_seq (Array[Int]) to walk_strings (Array[String])
-        def cast_to_string_array(arr):
-            if arr is None:
-                return None
-            return [f"node_{i}" for i in arr]
-        
-        cast_to_string_udf = F.udf(cast_to_string_array, F.ArrayType(F.StringType()))
-        walks_df = walks_df.withColumn(
-            "walk_strings",
-            cast_to_string_udf(F.col("walk_seq")),
-        ).select("track_id", "walk_strings")
 
-        print(f"Training Word2Vec with vector_size={args.vector_size}, "
-              f"window_size={args.window_size}, num_iterations={args.num_iterations}")
-
-        # Train Word2Vec
-        word2vec = Word2Vec(
-            vectorSize=args.vector_size,
-            windowSize=args.window_size,
-            minCount=1,
-            maxIter=args.num_iterations,
-            seed=args.seed,
-            inputCol="walk_strings",
-            outputCol="w2v_vector",
         )
         w2v_model = word2vec.fit(walks_df)
 
