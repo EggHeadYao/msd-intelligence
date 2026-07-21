@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from uuid import uuid4
 
 from pyspark import StorageLevel
 from pyspark.ml.feature import PCA, StandardScaler, VectorAssembler
@@ -16,6 +15,15 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import NumericType, StringType
 
+from artifacts import (
+    C1_MANIFEST_NAME,
+    build_c1_manifest,
+    publish_directory,
+    remove_path,
+    staging_directory,
+    validate_c1_manifest,
+    write_json_atomic,
+)
 from columns import (
     CONTRACT_VERSION,
     MERLIN_ARRAY_FEATURE_COUNT,
@@ -26,7 +34,7 @@ from columns import (
     TRACK_ID_COLUMN,
 )
 from lineage import code_provenance, load_prepared_manifest, parent_lineage, sha256_path
-from preprocess import preprocess_audio_features
+from preprocess import SEGMENT_MEDIAN_BATCH_SIZE, preprocess_audio_features
 
 
 FEATURES_COLUMN = "features"
@@ -169,15 +177,9 @@ def vector_to_list(vector: Vector) -> list[float]:
     return [float(value) for value in vector.toArray()]
 
 
-def write_json(data: dict[str, Any], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-
-
 def main() -> None:
     args = parse_args()
+    run_id = str(uuid4())
     repo_root = Path(__file__).resolve().parents[3]
     producer = code_provenance(repo_root, "merlin/embedding/audio/*.py")
     input_data_hash = sha256_path(args.input)
@@ -187,7 +189,9 @@ def main() -> None:
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     persisted_frames: list[DataFrame] = []
+    staging: Path | None = None
     try:
+        staging = staging_directory(args.output, run_id)
         raw = spark.read.parquet(spark_path(args.input))
         input_schema_hash = sha256_text(raw.schema.json())
         if args.limit > 0:
@@ -229,12 +233,12 @@ def main() -> None:
         persisted_frames.append(embeddings)
         require_valid_embeddings(embeddings)
 
-        args.output.mkdir(parents=True, exist_ok=True)
-        embeddings.write.mode("overwrite").parquet(spark_path(args.output / "song_embeddings_audio.parquet"))
-        scaler_model.write().overwrite().save(spark_path(args.output / "scaler_model"))
-        pca_model.write().overwrite().save(spark_path(args.output / "pca_model"))
+        embeddings.write.mode("errorifexists").parquet(spark_path(staging / "song_embeddings_audio.parquet"))
+        scaler_model.write().save(spark_path(staging / "scaler_model"))
+        pca_model.write().save(spark_path(staging / "pca_model"))
 
         metadata = {
+            "run_id": run_id,
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
             "merlin_schema_version": "3.0",
             "shared_audio_contract_version": CONTRACT_VERSION,
@@ -259,6 +263,8 @@ def main() -> None:
             "fixed_k": args.fixed_k,
             "limit": args.limit,
             "max_components": max_components,
+            "shuffle_partitions": args.shuffle_partitions,
+            "segment_median_batch_size": SEGMENT_MEDIAN_BATCH_SIZE,
             "selected_k": selected_k,
             "explained_variance": explained,
             "cumulative_explained_variance": cumulative_explained,
@@ -267,7 +273,11 @@ def main() -> None:
             "scaler_mean": vector_to_list(scaler_model.mean),
             "scaler_std": vector_to_list(scaler_model.std),
         }
-        write_json(metadata, args.output / "audio_encoder_metadata.json")
+        write_json_atomic(metadata, staging / "audio_encoder_metadata.json")
+        manifest = build_c1_manifest(staging, metadata)
+        write_json_atomic(manifest, staging / C1_MANIFEST_NAME)
+        validate_c1_manifest(staging, metadata)
+        publish_directory(staging, args.output, run_id)
         print(
             "audio_pca_training_done "
             f"rows={row_count}, features={len(feature_columns)}, "
@@ -285,6 +295,11 @@ def main() -> None:
             spark.stop()
         except Exception as error:
             warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
+        if staging is not None and staging.exists():
+            try:
+                remove_path(staging)
+            except OSError as error:
+                warnings.warn(f"failed to remove C1 staging {staging}: {error}", RuntimeWarning)
 
 
 if __name__ == "__main__":
