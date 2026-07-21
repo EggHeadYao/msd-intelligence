@@ -68,3 +68,73 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Tune distributed Spark LightGBM")
     parser.add_argument(
         "--input",
+        type=Path,
+        default=Path("parquets/year_prediction/features/full_tabular.parquet"),
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path("parquets/year_prediction/features/manifest.json"),
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("parquets/year_prediction/models/lightgbm-spark-tuning"),
+    )
+    parser.add_argument("--stage", choices=(*STAGES, "all"), default="all")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--max-rows-per-split", type=int)
+    parser.add_argument("--num-tasks", type=int, default=0)
+    parser.add_argument("--num-iterations-limit", type=int)
+    return parser.parse_args()
+
+
+def load_results(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="ascii") as handle:
+        return list(json.load(handle))
+
+
+def selected_parameters(results: list[dict[str, Any]]) -> dict[str, Any]:
+    parameters = dict(DEFAULTS)
+    if results:
+        best = min(results, key=lambda item: float(item["validation_mae_years"]))
+        parameters.update(best["parameters"])
+    return parameters
+
+
+def run(args: argparse.Namespace, spark: SparkSession) -> list[dict[str, Any]]:
+    results_path = args.output / "trials.json"
+    if args.resume:
+        if not args.output.exists():
+            raise FileNotFoundError("cannot resume a missing tuning directory")
+        results = load_results(results_path)
+    else:
+        prepare_output(args.output, args.overwrite)
+        results = []
+    contract = load_feature_contract(args.manifest)
+    frame = load_feature_frame(
+        spark,
+        args.input,
+        contract,
+        args.max_rows_per_split,
+        ("train", "validation"),
+    ).repartition(max(1, args.num_tasks or spark.sparkContext.defaultParallelism))
+    training = frame.where(F.col("split") == "train").withColumn(
+        "is_validation", F.lit(False)
+    )
+    validation = frame.where(F.col("split") == "validation").withColumn(
+        "is_validation", F.lit(True)
+    )
+    fit_frame = training.unionByName(validation).cache()
+    stages = STAGES if args.stage == "all" else (args.stage,)
+    for stage in stages:
+        base = selected_parameters(results)
+        for index, override in enumerate(GRIDS[stage]):
+            parameters = {**base, **override}
+            if args.num_iterations_limit is not None:
+                parameters["num_iterations"] = min(
+                    int(parameters["num_iterations"]), args.num_iterations_limit
+                )
