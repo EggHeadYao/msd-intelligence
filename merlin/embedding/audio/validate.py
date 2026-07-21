@@ -11,6 +11,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, FloatType
 
 from shared_contract import CONTRACT_VERSION
+from lineage import sha256_path
 
 
 EXPECTED_SONGS = 1_000_000
@@ -70,6 +71,7 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "merlin_raw_view_count",
         "row_count",
         "input_schema_sha256",
+        "parent_prepared_manifest",
         "feature_columns",
         "feature_count",
         "permanent_dropped_fields",
@@ -99,6 +101,14 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(len(metadata["feature_columns"]) == int(metadata["feature_count"]), "feature_count mismatch")
     schema_hash = metadata["input_schema_sha256"]
     require(isinstance(schema_hash, str) and len(schema_hash) == 64, "invalid input schema hash")
+    parent = metadata["parent_prepared_manifest"]
+    require(isinstance(parent, dict), "invalid Prepared parent lineage")
+    require(parent.get("artifact_type") == "prepared_tables", "wrong parent artifact type")
+    require(parent.get("artifact_version") == "v2", "wrong parent artifact version")
+    require(parent.get("shared_audio_contract_version") == CONTRACT_VERSION, "wrong parent contract")
+    parent_path = Path(parent.get("path", ""))
+    require(parent_path.is_file(), "Prepared parent manifest is unavailable")
+    require(parent.get("sha256") == sha256_path(parent_path), "Prepared parent manifest hash mismatch")
     feature_text = "\n".join(metadata["feature_columns"])
     expected_hash = hashlib.sha256(feature_text.encode("utf-8")).hexdigest()
     require(metadata["feature_order_sha256"] == expected_hash, "feature order hash mismatch")

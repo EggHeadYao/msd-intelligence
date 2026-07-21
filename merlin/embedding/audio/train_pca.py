@@ -18,10 +18,12 @@ from columns import (
     CONTRACT_VERSION,
     MERLIN_ARRAY_FEATURE_COUNT,
     MERLIN_RAW_VIEW_COUNT,
+    PREPARED_AUDIO_COLUMNS,
     RAW_AUDIO_COLUMNS,
     SHARED_FEATURE_COUNT,
     TRACK_ID_COLUMN,
 )
+from lineage import load_prepared_manifest, parent_lineage
 from preprocess import preprocess_audio_features
 
 
@@ -36,6 +38,7 @@ MODEL_READY_SCHEMA_VERSION = "c1_model_ready_v2"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the MERLIN C1 PCA audio encoder.")
     parser.add_argument("--input", type=Path, default=Path("parquets_new/prepared/song_audio_features_raw.parquet"))
+    parser.add_argument("--parent-manifest", type=Path)
     parser.add_argument("--output", type=Path, default=Path("parquets_new/merlin/audio"))
     parser.add_argument("--target-variance", type=float, default=0.95)
     parser.add_argument("--fixed-k", type=int, choices=(PCA_DIMENSION,), default=PCA_DIMENSION)
@@ -58,6 +61,8 @@ def spark_path(path: Path) -> str:
 
 
 def validate_raw_input(df: DataFrame) -> int:
+    if tuple(df.columns) != PREPARED_AUDIO_COLUMNS:
+        raise ValueError("C1 raw input column order does not match the frozen Prepared contract")
     missing = sorted(set(RAW_AUDIO_COLUMNS) - set(df.columns))
     if missing:
         preview = ", ".join(missing[:10])
@@ -167,6 +172,9 @@ def write_json(data: dict[str, Any], path: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    parent_path = args.parent_manifest or args.input.parent / "prepared_manifest.json"
+    parent_manifest, parent_digest = load_prepared_manifest(parent_path)
+    prepared_lineage = parent_lineage(parent_manifest, parent_path, parent_digest)
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     try:
@@ -218,6 +226,7 @@ def main() -> None:
             "merlin_raw_view_count": MERLIN_RAW_VIEW_COUNT,
             "input_path": str(args.input),
             "input_schema_sha256": input_schema_hash,
+            "parent_prepared_manifest": prepared_lineage,
             "row_count": row_count,
             "feature_columns": list(feature_columns),
             "feature_order_sha256": sha256_text("\n".join(feature_columns)),
