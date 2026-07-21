@@ -154,96 +154,16 @@ def read_walks(
 
 
         )
-        w2v_model = word2vec.fit(walks_df)
 
-        # Get Word2Vec vectors as dict (node_id -> vector)
-        vec_dict = {}
-        for row in w2v_model.getVectors().collect():
-            vec_dict[row.word] = [float(x) for x in row.vector.toArray()]
-
-        # Broadcast the vector dictionary
-        bc_vec_dict = spark.sparkContext.broadcast(vec_dict)
-
-        # For each song, average the node vectors from all walks
-        def avg_embeddings(track_id, walk_strings_list):
-            """Average embeddings for all nodes in all walks for a given track."""
-            vec_dict = bc_vec_dict.value
-            all_vecs = []
-            
-            for walk_strings in walk_strings_list:
-                for node_id in walk_strings:
-                    if node_id in vec_dict:
-                        all_vecs.append(vec_dict[node_id])
-            
-            if not all_vecs:
-                # If no vectors found, return zeros
-                return [0.0] * len(next(iter(vec_dict.values())))
-            
-            # Compute average
-            dim = len(all_vecs[0])
-            avg_vec = [sum(v[i] for v in all_vecs) / len(all_vecs) for i in range(dim)]
-            
-            # Normalize to unit length
-            norm_sq = sum(x * x for x in avg_vec)
-            if norm_sq == 0:
-                return [0.0] * dim
-            norm = norm_sq ** 0.5
-            return [x / norm for x in avg_vec]
-
-        # Group walks by track_id and compute average embeddings
-        song_vecs_rdd = (
-            walks_df.select("track_id", "walk_strings")
-            .rdd.map(lambda row: (row.track_id, row.walk_strings))
-            .groupByKey()
-            .map(lambda x: (x[0], avg_embeddings(x[0], list(x[1]))))
         )
 
-        # Convert back to DataFrame
-        embeddings = spark.createDataFrame(
-            song_vecs_rdd,
-            schema="track_id string, embedding array<double>"
-        )
 
-        # Write outputs
-        output_path = Path(args.output)
-        output_path.mkdir(parents=True, exist_ok=True)
 
-        embeddings_path = str(output_path / "song_embeddings_graph.parquet")
-        embeddings.write.mode("overwrite").parquet(embeddings_path)
-        print(f"[OK] Saved embeddings to {embeddings_path}")
 
-        # Save Word2Vec model
-        model_path = str(output_path / "word2vec_model")
-        w2v_model.write().overwrite().save(model_path)
-        print(f"[OK] Saved Word2Vec model to {model_path}")
 
-        # Count results
-        song_count = embeddings.count()
-        vocab_size = len(vec_dict)
 
-        # Write metadata
-        metadata = {
-            "created_at_utc": datetime.now(timezone.utc).isoformat(),
-            "input_path": args.input,
-            "model": "Word2Vec (Skip-gram, normalized)",
-            "vector_size": args.vector_size,
-            "window_size": args.window_size,
-            "num_iterations": args.num_iterations,
-            "seed": args.seed,
-            "songs_with_embeddings": song_count,
-            "vocabulary_size": vocab_size,
-            "embedding_format": "array<double> (normalized to unit length)",
-        }
-
-        metadata_path = output_path / "graph_encoder_metadata.json"
-        with metadata_path.open("w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, sort_keys=True)
-            f.write("\n")
-        print(f"[OK] Saved metadata to {metadata_path}")
 
         print(
-            f"\n[OK] Word2Vec training complete: {song_count} songs, "
-            f"{vocab_size} vocabulary size, embedding_dim={args.vector_size}"
         )
 
     finally:
