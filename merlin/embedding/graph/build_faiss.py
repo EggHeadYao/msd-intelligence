@@ -163,6 +163,47 @@ def write_mapping(table: pa.Table, path: Path) -> None:
     temporary.replace(path)
 
 
+def validate_index(
+    index: faiss.IndexFlatIP, rows: int, dimension: int
+) -> dict[str, Any]:
+    require(index.ntotal == rows, "FAISS index size mismatch")
+    require(index.d == dimension, "FAISS index dimension mismatch")
+    require(index.metric_type == faiss.METRIC_INNER_PRODUCT, "FAISS metric mismatch")
+
+    sample_ids = sorted({0, rows // 4, rows // 2, (3 * rows) // 4, rows - 1})
+    queries = np.vstack([index.reconstruct(row_id) for row_id in sample_ids]).astype(
+        np.float32,
+        copy=False,
+    )
+    scores, neighbors = index.search(queries, min(10, rows))
+    for position, row_id in enumerate(sample_ids):
+        require(row_id in neighbors[position], "FAISS sample did not retrieve itself")
+        require(scores[position][0] <= 1.0001, "FAISS inner-product score exceeds one")
+        require(scores[position][0] >= 0.9999, "FAISS self score is below one")
+    return {
+        "sample_row_ids": sample_ids,
+        "sample_top_scores": [
+            float(scores[index_value][0]) for index_value in range(len(sample_ids))
+        ],
+    }
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(8 * 1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_metadata(path: Path, metadata: dict[str, Any]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    temporary.replace(path)
+
+
 def main() -> None:
     args = parse_args()
 
