@@ -138,3 +138,73 @@ def load_feature_frame(
     source = spark.read.parquet(*parquet_inputs(input_path))
     expected = (*AUDIT_COLUMNS, *contract.predictors)
     missing = [name for name in expected if name not in source.columns]
+    if missing:
+        raise ValueError(f"feature table is missing columns: {missing[:5]}")
+    selected = source.select(
+        F.col("track_id").cast("string"),
+        F.col("artist_id").cast("string"),
+        F.col("year").cast("int"),
+        F.col("split").cast("string"),
+        *(_clean_predictor(name) for name in contract.predictors),
+    ).where(F.col("split").isin(*splits))
+    if max_rows_per_split is not None:
+        if max_rows_per_split <= 0:
+            raise ValueError("max_rows_per_split must be positive")
+        parts = [
+            selected.where(F.col("split") == split).limit(max_rows_per_split)
+            for split in splits
+        ]
+        selected = parts[0]
+        for part in parts[1:]:
+            selected = selected.unionByName(part)
+    assembler = VectorAssembler(
+        inputCols=list(contract.predictors),
+        outputCol="features",
+        handleInvalid="keep",
+    )
+    return assembler.transform(selected).select(
+        "track_id",
+        "artist_id",
+        "year",
+        "split",
+        F.col("year").cast("double").alias("label"),
+        "features",
+    )
+
+
+def assert_artist_isolation(frame: DataFrame) -> None:
+    artists = {
+        name: frame.where(F.col("split") == name).select("artist_id").distinct()
+        for name in ("train", "validation", "test")
+    }
+    for left, right in (("train", "validation"), ("train", "test"), ("validation", "test")):
+        if artists[left].intersect(artists[right]).limit(1).count():
+            raise ValueError(f"artist overlap between {left} and {right}")
+
+
+def split_counts(frame: DataFrame) -> dict[str, int]:
+    rows = frame.groupBy("split").count().collect()
+    return {str(row["split"]): int(row["count"]) for row in rows}
+
+
+StatsPartial = tuple[np.ndarray, np.ndarray, np.ndarray, int]
+
+
+def _stats_partition(rows: Iterator[Row]) -> Iterator[StatsPartial]:
+    sums = squares = counts = None
+    row_count = 0
+    for row in rows:
+        values = np.asarray(row["features"].toArray(), dtype=np.float64)
+        if sums is None:
+            sums = np.zeros(values.size, dtype=np.float64)
+            squares = np.zeros(values.size, dtype=np.float64)
+            counts = np.zeros(values.size, dtype=np.int64)
+        finite = np.isfinite(values)
+        clean = np.where(finite, values, 0.0)
+        sums += clean
+        squares += clean * clean
+        counts += finite
+        row_count += 1
+    if sums is not None and squares is not None and counts is not None:
+        yield sums, squares, counts, row_count
+
