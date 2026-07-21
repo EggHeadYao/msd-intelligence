@@ -348,6 +348,57 @@ def eligible_transition_options(
     )
 
 
+def _pick_uniform(values: np.ndarray, rng: np.random.Generator) -> int:
+    return int(values[int(rng.integers(0, values.size))])
+
+
+def _pick_excluding(
+    values: np.ndarray,
+    excluded: int,
+    rng: np.random.Generator,
+) -> int:
+    position = int(np.searchsorted(values, excluded))
+    present = position < values.size and int(values[position]) == excluded
+    if not present:
+        return _pick_uniform(values, rng)
+    choice = int(rng.integers(0, values.size - 1))
+    return int(values[choice + (choice >= position)])
+
+
+def _pick_weighted_index(weights: np.ndarray, rng: np.random.Generator) -> int:
+    total = float(weights.sum(dtype=np.float64))
+    if not np.isfinite(total) or total <= 0.0:
+        return int(rng.integers(0, weights.size))
+    return int(rng.choice(weights.size, p=weights.astype(np.float64) / total))
+
+
+def sample_transition(
+    path_name: str,
+    options: TransitionOptions,
+    adjacency: AdjacencyIndex,
+    rng: np.random.Generator,
+) -> int:
+    """Sample one endpoint using the path-specific hierarchical policy."""
+    if path_name == "P1":
+        return _pick_excluding(options.p1_tracks, options.current_track, rng)
+    if path_name == "P2":
+        artist = _pick_uniform(options.p2_artists, rng)
+        tracks, _ = _neighbor_entry(adjacency, "artist_to_tracks", artist)
+        return _pick_uniform(tracks, rng)
+    if path_name == "P3":
+        term_index = _pick_weighted_index(options.p3_weights, rng)
+        term = int(options.p3_terms[term_index])
+        artists, _ = _neighbor_entry(adjacency, "term_to_artists", term)
+        artist = _pick_excluding(artists, options.source_artist, rng)
+        tracks, _ = _neighbor_entry(adjacency, "artist_to_tracks", artist)
+        return _pick_uniform(tracks, rng)
+    if path_name == "P4":
+        release = _pick_uniform(options.p4_releases, rng)
+        tracks, _ = _neighbor_entry(adjacency, "release_to_tracks", release)
+        return _pick_excluding(tracks, options.current_track, rng)
+    raise ValueError(f"Unknown C2 path: {path_name}")
+
+
     rng: np.random.Generator,
     target_len: int = 40,
 ) -> list[int]:
