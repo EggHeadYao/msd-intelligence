@@ -278,3 +278,73 @@ def batch_gradient(
 
 
 GradientPartial = tuple[np.ndarray, np.ndarray, int]
+
+
+def _partition_gradient(
+    rows: Iterator[tuple[str, str, int, np.ndarray]],
+    parameters: np.ndarray,
+    layout: ParameterLayout,
+    config: LossConfig,
+    batch_size: int,
+) -> Iterator[GradientPartial]:
+    gradient = np.zeros(layout.size, dtype=np.float64)
+    losses = np.zeros(5, dtype=np.float64)
+    count = 0
+    feature_batch: list[np.ndarray] = []
+    year_batch: list[float] = []
+
+    def consume() -> None:
+        nonlocal gradient, losses, count
+        if not feature_batch:
+            return
+        partial = batch_gradient(
+            np.stack(feature_batch),
+            np.asarray(year_batch, dtype=np.float64),
+            parameters,
+            layout,
+            config,
+        )
+        gradient += partial[0]
+        losses += partial[1]
+        count += partial[2]
+        feature_batch.clear()
+        year_batch.clear()
+
+    for _, _, year, features in rows:
+        feature_batch.append(features)
+        year_batch.append(float(year))
+        if len(feature_batch) >= batch_size:
+            consume()
+    consume()
+    if count:
+        yield gradient, losses, count
+
+
+def _merge_gradient(left: GradientPartial, right: GradientPartial) -> GradientPartial:
+    return left[0] + right[0], left[1] + right[1], left[2] + right[2]
+
+
+def distributed_gradient(
+    points: RDD[tuple[str, str, int, np.ndarray]],
+    parameters: np.ndarray,
+    layout: ParameterLayout,
+    config: LossConfig,
+    l2: float,
+    batch_size: int,
+) -> tuple[np.ndarray, dict[str, float], int]:
+    broadcast = points.context.broadcast(parameters)
+    try:
+        gradient, losses, count = points.mapPartitions(
+            lambda rows: _partition_gradient(
+                rows, broadcast.value, layout, config, batch_size
+            )
+        ).treeReduce(_merge_gradient)
+    finally:
+        broadcast.destroy()
+    if count <= 0:
+        raise ValueError("gradient batch is empty")
+    gradient /= count
+    losses /= count
+    mask = layout.weight_mask()
+    gradient[mask] += l2 * parameters[mask]
+    total = (
