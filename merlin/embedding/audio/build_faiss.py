@@ -11,6 +11,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
+from artifacts import C1_MANIFEST_NAME, validate_c1_manifest
 from shared_contract import CONTRACT_VERSION
 from lineage import sha256_path
 
@@ -66,6 +67,7 @@ def expected_dimension(output_dir: Path) -> int:
     require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
     require(int(metadata["selected_k"]) == 128, "C1 FAISS dimension must be 128")
     require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
+    validate_c1_manifest(output_dir, metadata)
     return 128
 
 
@@ -162,7 +164,9 @@ def main() -> None:
             "track_ids_path": args.track_ids_name,
             "index_sha256": sha256_path(index_path),
             "mapping_sha256": sha256_path(mapping_path),
+            "embeddings_sha256": sha256_path(args.input),
             "encoder_metadata_sha256": sha256_path(metadata_path),
+            "c1_manifest_sha256": sha256_path(args.output / C1_MANIFEST_NAME),
         }
         with (args.output / FAISS_MANIFEST_NAME).open("w", encoding="utf-8") as handle:
             json.dump(manifest, handle, indent=2, sort_keys=True)

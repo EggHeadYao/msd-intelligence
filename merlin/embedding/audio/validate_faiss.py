@@ -9,6 +9,7 @@ import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from artifacts import C1_MANIFEST_NAME
 from shared_contract import CONTRACT_VERSION
 from lineage import sha256_path
 
@@ -57,6 +58,7 @@ def validate_manifest(
     output_dir: Path,
     index_path: Path,
     mapping_path: Path,
+    embeddings_path: Path,
     expected_rows: int,
 ) -> None:
     manifest_path = output_dir / FAISS_MANIFEST_NAME
@@ -72,8 +74,16 @@ def validate_manifest(
     require(manifest.get("index_sha256") == sha256_path(index_path), "FAISS index hash mismatch")
     require(manifest.get("mapping_sha256") == sha256_path(mapping_path), "FAISS mapping hash mismatch")
     require(
+        manifest.get("embeddings_sha256") == sha256_path(embeddings_path),
+        "FAISS embeddings hash mismatch",
+    )
+    require(
         manifest.get("encoder_metadata_sha256") == sha256_path(metadata_path),
         "encoder metadata hash mismatch",
+    )
+    require(
+        manifest.get("c1_manifest_sha256") == sha256_path(output_dir / C1_MANIFEST_NAME),
+        "C1 manifest hash mismatch",
     )
 
 
@@ -173,7 +183,9 @@ def main() -> None:
     mapping_path = args.output / args.track_ids_name
     require(index_path.exists(), f"missing FAISS index: {index_path}")
     require(mapping_path.exists(), f"missing track-id mapping: {mapping_path}")
-    validate_manifest(args.output, index_path, mapping_path, args.expected_rows)
+    validate_manifest(
+        args.output, index_path, mapping_path, args.embeddings, args.expected_rows
+    )
 
     index = faiss.read_index(str(index_path))
     selected_k = read_selected_k(args.output)
