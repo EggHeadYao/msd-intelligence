@@ -26,6 +26,11 @@ RAW_BINARY_COLUMNS = (MODE_COLUMN, HAS_SEGMENTS_COLUMN)  # Raw binary scalars.
 RAW_SCALAR_COLUMNS = (
     TRACK_ID_COLUMN, *RAW_CONTINUOUS_COLUMNS, *RAW_CATEGORICAL_COLUMNS, MODE_COLUMN,
 )  # Raw non-segment columns in song_audio_features_raw.parquet.
+PREPARED_SCALAR_COLUMNS = (
+    TRACK_ID_COLUMN, "loudness", "tempo", "duration", KEY_COLUMN, "key_confidence",
+    MODE_COLUMN, "mode_confidence", TIME_SIGNATURE_COLUMN, "time_signature_confidence",
+    "end_of_fade_in", "start_of_fade_out",
+)
 
 KEY_CIRCULAR_COLUMNS = ("key_sin", "key_cos")  # Derived circular key columns.
 LOG_CONTINUOUS_COLUMNS = ("tempo_log", "duration_log")  # Derived clipped-log columns.
@@ -73,6 +78,7 @@ TIMBRE_FEATURE_COLUMNS = timbre_feature_columns()  # Expanded 48 timbre aggregat
 LOUDNESS_FEATURE_COLUMNS = loudness_feature_columns()  # Expanded 4 loudness columns.
 SEGMENT_FEATURE_COLUMNS = MERLIN_ARRAY_FEATURE_COLUMNS
 RAW_AUDIO_COLUMNS = (*RAW_SCALAR_COLUMNS, *SEGMENT_FEATURE_COLUMNS)
+PREPARED_AUDIO_COLUMNS = (*PREPARED_SCALAR_COLUMNS, *SEGMENT_FEATURE_COLUMNS)
 SEGMENT_FEATURE_COLUMN_SET = frozenset(SEGMENT_FEATURE_COLUMNS)  # Fast segment lookup set.
 
 
