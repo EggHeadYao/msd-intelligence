@@ -299,6 +299,55 @@ def artist_transition_options(
     )
 
 
+def eligible_transition_options(
+    current_track: int,
+    adjacency: AdjacencyIndex,
+    artist_options_getter: Callable[[int], ArtistOptions] | None = None,
+) -> TransitionOptions:
+    """Compute every fully reachable path before selecting a path."""
+    source_artists, _ = _neighbor_entry(adjacency, "track_to_artist", current_track)
+    if source_artists.size > 1:
+        raise ValueError(f"Track {current_track} has multiple artist neighbors")
+
+    source_artist = int(source_artists[0]) if source_artists.size else -1
+    if source_artist >= 0:
+        artist_options = (
+            artist_options_getter(source_artist)
+            if artist_options_getter is not None
+            else artist_transition_options(source_artist, adjacency)
+        )
+        p1_tracks = artist_options.tracks
+        p2_artists = artist_options.similar_artists
+        p3_terms = artist_options.terms
+        p3_weights = artist_options.term_weights
+    else:
+        p1_tracks = np.empty(0, dtype=np.int32)
+        p2_artists = np.empty(0, dtype=np.int32)
+        p3_terms = np.empty(0, dtype=np.int32)
+        p3_weights = np.empty(0, dtype=np.float32)
+
+    releases, _ = _neighbor_entry(adjacency, "track_to_release", current_track)
+    p4_releases: list[int] = []
+    for release_value in releases:
+        release_tracks, _ = _neighbor_entry(
+            adjacency,
+            "release_to_tracks",
+            int(release_value),
+        )
+        if np.any(release_tracks != current_track):
+            p4_releases.append(int(release_value))
+
+    return TransitionOptions(
+        current_track=current_track,
+        source_artist=source_artist,
+        p1_tracks=p1_tracks,
+        p2_artists=p2_artists,
+        p3_terms=p3_terms,
+        p3_weights=p3_weights,
+        p4_releases=np.asarray(p4_releases, dtype=np.int32),
+    )
+
+
     rng: np.random.Generator,
     target_len: int = 40,
 ) -> list[int]:
