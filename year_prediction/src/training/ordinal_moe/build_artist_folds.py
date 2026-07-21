@@ -68,3 +68,7 @@ def main() -> None:
         print(json.dumps(run(args, spark), sort_keys=True))
     finally:
         spark.stop()
+
+
+if __name__ == "__main__":
+    main()
