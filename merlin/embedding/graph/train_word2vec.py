@@ -419,10 +419,71 @@ def main() -> None:
         )
         model = fit_word2vec(corpus, args)
 
+        embeddings = normalize_track_vectors(model, root_mapping).persist(
+            StorageLevel.DISK_ONLY,
+        )
+        embedding_stats = validate_embeddings(
+            embeddings,
+            effective_tracks,
+            args.vector_size,
+        )
         print(
+            "embedding_validation_passed "
+            f"rows={embedding_stats['rows']}, norm={embedding_stats['min_norm']:.6f}"
+            f"..{embedding_stats['max_norm']:.6f}",
         )
 
+        embeddings_path = args.output / EMBEDDINGS_NAME
+        (
+            embeddings.select("node_id", "track_id", "embedding")
+            .repartition(args.output_partitions, "node_id")
+            .sortWithinPartitions("node_id")
+            .write.mode("overwrite" if args.overwrite else "error")
+            .parquet(spark_path(embeddings_path))
+        )
+        model.write().overwrite().save(spark_path(args.output / MODEL_NAME))
+
+        elapsed = time.monotonic() - started
+        metadata = {
+            "artifact": "merlin_c2_graph_embeddings",
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "embedding_source": "direct_word2vec_track_token",
+            "input": {
+                "walks": str(args.walks.resolve()),
+                **walk_stats,
+            },
+            "output": {
+                "embeddings": EMBEDDINGS_NAME,
+                "model": MODEL_NAME,
+                "dtype": "float32",
+                "dimension": args.vector_size,
+                "l2_normalized": True,
+                **embedding_stats,
+            },
+            "training": {
+                "vector_size": args.vector_size,
+                "window_size": args.window_size,
+                "min_count": args.min_count,
+                "max_iter": args.max_iter,
+                "step_size": args.step_size,
+                "num_partitions": args.num_partitions,
+                "max_sentence_length": args.max_sentence_length,
+                "seed": args.seed,
+            },
+            "spark_version": spark.version,
+            "elapsed_seconds": elapsed,
+        }
+        write_metadata(args.output / METADATA_NAME, metadata)
+        print(
+            "word2vec_training_done "
+            f"rows={embedding_stats['rows']}, dimension={args.vector_size}, "
+            f"elapsed_seconds={elapsed:.1f}, output={args.output}",
+        )
     finally:
+        if embeddings is not None:
+            embeddings.unpersist()
+        if root_mapping is not None:
+            root_mapping.unpersist()
         spark.stop()
 
 
