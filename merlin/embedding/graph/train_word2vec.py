@@ -51,61 +51,53 @@ NORM_TOLERANCE = 1e-4
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--walks", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--vector-size", type=int, default=WORD2VEC_VECTOR_SIZE)
+    parser.add_argument("--window-size", type=int, default=WORD2VEC_WINDOW_SIZE)
+    parser.add_argument("--min-count", type=int, default=WORD2VEC_MIN_COUNT)
+    parser.add_argument("--max-iter", type=int, default=WORD2VEC_MAX_ITER)
+    parser.add_argument("--step-size", type=float, default=WORD2VEC_STEP_SIZE)
     parser.add_argument(
-        "--input",
-        type=str,
-        required=True,
-        help="Path to walk_sequences.parquet from walk generation",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="Output directory for song_embeddings_graph.parquet and metadata",
-    )
-    parser.add_argument(
-        "--vector-size",
+        "--num-partitions",
         type=int,
-        default=128,
-        help="Word2Vec embedding dimension (default: 128)",
+        default=WORD2VEC_NUM_PARTITIONS,
     )
     parser.add_argument(
-        "--window-size",
+        "--max-sentence-length",
         type=int,
-        default=5,
-        help="Word2Vec context window size (default: 5)",
+        default=WORD2VEC_MAX_SENTENCE_LENGTH,
     )
-    parser.add_argument(
-        "--num-iterations",
-        type=int,
-        default=10,
-        help="Training iterations (default: 10)",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducibility",
-    )
+    parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--expected-tracks", type=int, default=1_000_000)
+    parser.add_argument("--walks-per-track", type=int, default=NUM_WALKS)
+    parser.add_argument("--limit-tracks", type=int, default=0)
+    parser.add_argument("--shuffle-partitions", type=int, default=64)
+    parser.add_argument("--output-partitions", type=int, default=32)
+    parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
 
-def _make_spark() -> SparkSession:
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def spark_path(path: Path) -> str:
+    return path.resolve().as_uri()
+
+
+def create_spark(shuffle_partitions: int) -> SparkSession:
+    os.environ["PYSPARK_PYTHON"] = sys.executable
     return (
         SparkSession.builder.appName("MerlinC2Word2Vec")
-        .config("spark.driver.memory", "8g")
-        .config("spark.executor.memory", "4g")
-        .config("spark.driver.maxResultSize", "2g")
-        .config("spark.sql.shuffle.partitions", "500")
+        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
         .config("spark.hadoop.fs.defaultFS", "file:///")
+        .config("spark.pyspark.python", sys.executable)
         .getOrCreate()
     )
 
 
-def main() -> None:
-    args = parse_args()
-    spark: SparkSession = _make_spark()
-    spark.sparkContext.setLogLevel("WARN")
 
     try:
         # Read walk sequences
