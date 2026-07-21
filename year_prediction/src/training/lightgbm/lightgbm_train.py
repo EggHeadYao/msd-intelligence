@@ -138,3 +138,73 @@ def evaluate_split(model: Any, frame: DataFrame, output: Path, split: str) -> di
     predictions.unpersist()
     return metrics
 
+
+def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
+    validate_args(args)
+    prepare_output(args.output, args.overwrite)
+    started = time.perf_counter()
+    contract = load_feature_contract(args.manifest)
+    frame = load_feature_frame(
+        spark,
+        args.input,
+        contract,
+        args.max_rows_per_split,
+        ("train", "validation", "test") if args.evaluate_test else ("train", "validation"),
+    ).repartition(max(1, args.num_tasks or spark.sparkContext.defaultParallelism))
+    assert_artist_isolation(frame)
+    counts = split_counts(frame)
+    train = frame.where(F.col("split") == "train").cache()
+    validation = frame.where(F.col("split") == "validation").cache()
+    fit_frame = train.withColumn("is_validation", F.lit(False)).unionByName(
+        validation.withColumn("is_validation", F.lit(True))
+    )
+    estimator = build_estimator(args, list(contract.categorical_indexes))
+    fit_started = time.perf_counter()
+    model = estimator.fit(fit_frame)
+    fit_seconds = time.perf_counter() - fit_started
+    write_native_model(args.output / "model.txt", model.getNativeModel())
+    metrics: dict[str, Any] = {
+        "validation": evaluate_split(model, frame, args.output, "validation")
+    }
+    if args.evaluate_test:
+        metrics["test"] = evaluate_split(model, frame, args.output, "test")
+    write_json(args.output / "metrics.json", metrics)
+    write_json(args.output / "baselines.json", constant_baselines(train, validation))
+    write_json(
+        args.output / "feature_contract.json",
+        {
+            "contract_version": "year_prediction_features_v1",
+            "predictor_count": contract.dimension,
+            "predictor_order_sha256": contract.order_sha256,
+            "predictor_columns": list(contract.predictors),
+            "categorical_indexes": list(contract.categorical_indexes),
+        },
+    )
+    parameters = {
+        name: value
+        for name, value in vars(args).items()
+        if not isinstance(value, Path)
+    }
+    write_json(args.output / "arguments.json", parameters)
+    metadata = {
+        "model_type": "synapseml_lightgbm_huber",
+        "spark_version": spark.version,
+        "spark_master": spark.sparkContext.master,
+        "application_id": spark.sparkContext.applicationId,
+        "split_counts": counts,
+        "fit_seconds": fit_seconds,
+        "total_seconds": time.perf_counter() - started,
+        "test_read": args.evaluate_test,
+    }
+    write_json(args.output / "run_metadata.json", metadata)
+    train.unpersist()
+    validation.unpersist()
+    return {"metrics": metrics, "metadata": metadata}
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionSparkLightGBM").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        result = run(args, spark)
