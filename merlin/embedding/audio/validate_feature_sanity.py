@@ -364,3 +364,72 @@ def load_inputs(
     require(base_rows == output_rows, "songs metadata/raw coverage does not cover C1 output")
     return raw, saved_embeddings, base, output_rows, base_rows
 
+
+def prepare_pairs(base: DataFrame, args: argparse.Namespace) -> tuple[DataFrame, dict[str, int], int]:
+    pair_frames = {
+        name: frame.cache()
+        for name, frame in build_pairs(base, args.pair_count, args.seed).items()
+    }
+    pair_counts = {name: frame.count() for name, frame in pair_frames.items()}
+    for name, count in pair_counts.items():
+        require(count > 0, f"no eligible {name} pairs")
+        if not args.allow_partial_pairs:
+            require(count == args.pair_count, f"{name} has {count}, expected {args.pair_count} pairs")
+    pairs = pair_frames[PAIR_TYPES[0]]
+    for pair_type in PAIR_TYPES[1:]:
+        pairs = pairs.unionByName(pair_frames[pair_type])
+    pairs = pairs.cache()
+    total_pairs = pairs.count()
+    require(total_pairs == sum(pair_counts.values()), "pair union count mismatch")
+    return pairs, pair_counts, total_pairs
+
+
+def recompute_embeddings(
+    args: argparse.Namespace,
+    raw: DataFrame,
+    saved_embeddings: DataFrame,
+    pairs: DataFrame,
+    encoder_metadata: dict[str, Any],
+    feature_columns: Sequence[str],
+    selected_k: int,
+) -> tuple[DataFrame, int]:
+    selected_ids = pairs.select(F.col("query_track_id").alias(TRACK_ID_COLUMN)).union(
+        pairs.select(F.col("candidate_track_id").alias(TRACK_ID_COLUMN))
+    ).distinct()
+    selected_raw = raw.join(F.broadcast(selected_ids), TRACK_ID_COLUMN, "inner")
+    processed = apply_frozen_preprocess(
+        selected_raw, feature_columns, encoder_metadata["preprocess"]
+    )
+    assembled = VectorAssembler(
+        inputCols=list(feature_columns), outputCol=FEATURES_COLUMN
+    ).transform(processed).select(TRACK_ID_COLUMN, FEATURES_COLUMN)
+    scaler_model = StandardScalerModel.load(spark_path(args.output / "scaler_model"))
+    pca_model = PCAModel.load(spark_path(args.output / "pca_model"))
+    verify_model_metadata(encoder_metadata, scaler_model, pca_model)
+    scaled = scaler_model.transform(assembled).select(TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN)
+    projected = pca_model.transform(scaled).select(
+        TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN, PCA_FEATURES_COLUMN
+    )
+    recomputed = add_normalized_embedding(projected, selected_k).select(
+        TRACK_ID_COLUMN,
+        vector_to_array(F.col(SCALED_FEATURES_COLUMN)).alias("pre_pca_vector"),
+        F.col(EMBEDDING_COLUMN).alias("recomputed_embedding"),
+    )
+    compared = recomputed.join(
+        saved_embeddings.select(
+            TRACK_ID_COLUMN, F.col(EMBEDDING_COLUMN).alias("final_embedding")
+        ),
+        TRACK_ID_COLUMN,
+        "inner",
+    ).withColumn(
+        "maximum_difference",
+        F.array_max(
+            F.zip_with(
+                "recomputed_embedding",
+                "final_embedding",
+                lambda left, right: F.abs(left.cast("double") - right.cast("double")),
+            )
+        ),
+    )
+    return compared, selected_ids.count()
+
