@@ -297,3 +297,70 @@ def summarize_scores(
     }
     return distributions, effects, {"pairwise_preservation": preservation, "matching_rates": matching_rates}
 
+
+def conclusion(effects: dict[str, Any], formal: bool) -> dict[str, Any]:
+    criterion = (
+        "For same_artist and same_release, the pre-PCA and PCA-128 Hedges' g "
+        "bootstrap 95% CI lower bounds must all be greater than zero."
+    )
+    if not formal:
+        return {
+            "eligible": False,
+            "supported": None,
+            "criterion": criterion,
+            "statement": "Smoke data validates execution logic only; it is not formal L1-1 evidence.",
+        }
+    intervals = [
+        effects[representation][relation]["bootstrap_95_ci"]
+        for representation in ("pre_pca", "pca_128")
+        for relation in ("same_artist", "same_release")
+    ]
+    supported = all(interval is not None and interval[0] > 0.0 for interval in intervals)
+    statement = (
+        "C1 preserves metadata-correlated acoustic structure after deterministic "
+        "preprocessing and PCA."
+        if supported
+        else "The formal L1-1 measurements do not support the permitted C1 conclusion."
+    )
+    return {
+        "eligible": True,
+        "supported": supported,
+        "criterion": criterion,
+        "statement": statement,
+    }
+
+
+def load_inputs(
+    spark: SparkSession,
+    args: argparse.Namespace,
+    encoder_metadata: dict[str, Any],
+    feature_columns: Sequence[str],
+) -> tuple[DataFrame, DataFrame, DataFrame, int, int]:
+    raw = spark.read.parquet(spark_path(args.raw_input))
+    require(tuple(raw.columns) == PREPARED_AUDIO_COLUMNS, "raw input contract mismatch")
+    songs_metadata = spark.read.parquet(spark_path(args.songs_metadata))
+    require_columns(songs_metadata, METADATA_COLUMNS, "songs metadata")
+    saved_embeddings = spark.read.parquet(
+        spark_path(args.output / "song_embeddings_audio.parquet")
+    ).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+    output_rows = saved_embeddings.count()
+    require(output_rows == int(encoder_metadata["row_count"]), "embedding row count mismatch")
+
+    output_ids = saved_embeddings.select(TRACK_ID_COLUMN)
+    id_lookup = F.broadcast(output_ids) if output_rows <= 100_000 else output_ids
+    coverage = add_coverage(raw.join(id_lookup, TRACK_ID_COLUMN, "inner"), feature_columns)
+    base = (
+        songs_metadata.select(*METADATA_COLUMNS)
+        .join(id_lookup, TRACK_ID_COLUMN, "inner")
+        .join(coverage, TRACK_ID_COLUMN, "inner")
+        .withColumn(
+            "year_key",
+            F.when(
+                (F.col("has_year") == 1) & F.col("year").isNotNull(), F.col("year")
+            ).otherwise(F.lit(0)),
+        )
+    ).cache()
+    base_rows = base.count()
+    require(base_rows == output_rows, "songs metadata/raw coverage does not cover C1 output")
+    return raw, saved_embeddings, base, output_rows, base_rows
+
