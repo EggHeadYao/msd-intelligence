@@ -348,3 +348,73 @@ def distributed_gradient(
     mask = layout.weight_mask()
     gradient[mask] += l2 * parameters[mask]
     total = (
+        config.ordinal * losses[0]
+        + config.moe * losses[1]
+        + config.direct * losses[2]
+        + config.decade * losses[3]
+        + config.consistency * losses[4]
+        + 0.5 * l2 * float(parameters[mask] @ parameters[mask])
+    )
+    names = ("ordinal", "moe", "direct", "decade", "consistency")
+    metrics = {name: float(value) for name, value in zip(names, losses)}
+    metrics["total"] = float(total)
+    return gradient, metrics, count
+
+
+def adam_step(
+    parameters: np.ndarray,
+    gradient: np.ndarray,
+    first_moment: np.ndarray,
+    second_moment: np.ndarray,
+    step: int,
+    learning_rate: float,
+    gradient_clip: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    norm = float(np.linalg.norm(gradient))
+    if gradient_clip > 0.0 and norm > gradient_clip:
+        gradient = gradient * (gradient_clip / norm)
+    beta1, beta2 = 0.9, 0.999
+    first_moment = beta1 * first_moment + (1.0 - beta1) * gradient
+    second_moment = beta2 * second_moment + (1.0 - beta2) * gradient * gradient
+    corrected_first = first_moment / (1.0 - beta1**step)
+    corrected_second = second_moment / (1.0 - beta2**step)
+    parameters = parameters - learning_rate * corrected_first / (
+        np.sqrt(corrected_second) + 1.0e-8
+    )
+    slices = ParameterLayout(
+        (parameters.size - THRESHOLD_COUNT - 2 * DECADE_COUNT - 2)
+        // (2 * DECADE_COUNT + 2)
+    ).slices()
+    thresholds = parameters[slices["thresholds"]]
+    thresholds = np.maximum.accumulate(np.clip(thresholds, -12.0, 12.0))
+    thresholds += np.arange(THRESHOLD_COUNT) * 1.0e-7
+    parameters[slices["thresholds"]] = thresholds
+    if not np.all(np.isfinite(parameters)):
+        raise FloatingPointError("optimizer produced non-finite parameters")
+    return parameters, first_moment, second_moment, norm
+
+
+def prediction_partition(
+    rows: Iterator[tuple[str, str, int, np.ndarray]],
+    parameters: np.ndarray,
+    layout: ParameterLayout,
+    config: LossConfig,
+    batch_size: int,
+) -> Iterator[tuple[str, str, int, float, float, float, float]]:
+    buffer: list[tuple[str, str, int, np.ndarray]] = []
+
+    def predict_buffer():
+        if not buffer:
+            return []
+        features = np.stack([row[3] for row in buffer])
+        output = forward(features, parameters, layout, config)
+        result = [
+            (
+                row[0],
+                row[1],
+                row[2],
+                float(output["ordinal_year"][index]),
+                float(output["moe_year"][index]),
+                float(output["direct_year"][index]),
+                float(output["blend_year"][index]),
+            )
