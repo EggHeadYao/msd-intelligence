@@ -14,14 +14,12 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from artifacts import (
-    C1_MANIFEST_NAME,
     remove_path,
     replace_artifact,
     validate_c1_manifest,
     write_json_atomic,
 )
 from shared_contract import CONTRACT_VERSION
-from lineage import sha256_path
 
 
 TRACK_ID_COLUMN = "track_id"
@@ -63,7 +61,7 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def expected_dimension(output_dir: Path) -> int:
+def encoder_contract(output_dir: Path) -> tuple[int, str]:
     metadata_path = output_dir / "audio_encoder_metadata.json"
     require(metadata_path.exists(), f"missing C1 encoder metadata: {metadata_path}")
     with metadata_path.open("r", encoding="utf-8") as handle:
@@ -76,7 +74,7 @@ def expected_dimension(output_dir: Path) -> int:
     require(int(metadata["selected_k"]) == 128, "C1 FAISS dimension must be 128")
     require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
     validate_c1_manifest(output_dir, metadata)
-    return 128
+    return 128, str(metadata["run_id"])
 
 
 def read_embeddings(spark: SparkSession, path: Path, limit: int) -> DataFrame:
@@ -144,7 +142,7 @@ def main() -> None:
     args = parse_args()
     run_id = str(uuid4())
     args.output.mkdir(parents=True, exist_ok=True)
-    expected_dim = expected_dimension(args.output)
+    expected_dim, encoder_run_id = encoder_contract(args.output)
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
@@ -166,7 +164,6 @@ def main() -> None:
         index = build_index(embeddings, args.batch_size, expected_dim)
         staged_index = staging / args.index_name
         faiss.write_index(index, str(staged_index))
-        metadata_path = args.output / "audio_encoder_metadata.json"
         manifest = {
             "shared_audio_contract_version": CONTRACT_VERSION,
             "c1_feature_version": 2,
@@ -175,11 +172,7 @@ def main() -> None:
             "row_count": index.ntotal,
             "index_file": args.index_name,
             "track_ids_path": args.track_ids_name,
-            "index_sha256": sha256_path(staged_index),
-            "mapping_sha256": sha256_path(staged_mapping),
-            "embeddings_sha256": sha256_path(args.input),
-            "encoder_metadata_sha256": sha256_path(metadata_path),
-            "c1_manifest_sha256": sha256_path(args.output / C1_MANIFEST_NAME),
+            "encoder_run_id": encoder_run_id,
         }
         staged_manifest = staging / FAISS_MANIFEST_NAME
         write_json_atomic(manifest, staged_manifest)
