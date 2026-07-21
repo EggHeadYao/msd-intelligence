@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
 
 QUANTILES = (0.05, 0.25, 0.50, 0.75, 0.95)
+
+
+def classify_validation(
+    pair_counts: Mapping[str, int],
+    pair_types: Sequence[str],
+    target_count: int,
+    allow_partial_pairs: bool,
+    supported: bool,
+) -> tuple[bool, str]:
+    formal = not allow_partial_pairs and all(
+        pair_counts.get(pair_type) == target_count for pair_type in pair_types
+    )
+    if not formal:
+        return False, "SMOKE_PASS"
+    return True, "PASS" if supported else "FAIL"
 
 
 def finite_array(values: Sequence[float], name: str) -> np.ndarray:
