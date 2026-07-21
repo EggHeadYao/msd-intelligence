@@ -15,15 +15,12 @@ EDGE_SCHEMA: dict[str, tuple[str, str]] = {
 
 DIRECTED_EDGES: frozenset[str] = frozenset({"artist_similarity"})
 
-# A7 will replace fixed-template traversal with eligibility-aware mixed walks.
-# Equal weights keep the transitional API honest: no path is privileged.
 META_PATHS: dict[str, list[str]] = {
     "P1": ["track_artist", "rev:track_artist"],
     "P2": ["track_artist", "artist_similarity", "rev:track_artist"],
     "P3": ["track_artist", "artist_term", "rev:artist_term", "rev:track_artist"],
     "P4": ["track_release", "rev:track_release"],
 }
-META_PATH_WEIGHTS: dict[str, float] = {name: 1.0 for name in META_PATHS}
 
 ADJACENCY_NAMES: tuple[str, ...] = (
     "track_to_artist",

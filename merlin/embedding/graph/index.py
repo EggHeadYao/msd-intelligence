@@ -74,7 +74,7 @@ def persist_vocabulary(index_dir: str, output_dir: str) -> str:
 
 
 def validate_graph_edges(edges: DataFrame) -> None:
-    """Fail early when the prepared graph is not the canonical A3 graph."""
+    """Fail early when the prepared graph is not the canonical C2 graph."""
     actual_columns = tuple(edges.columns)
     if actual_columns != GRAPH_COLUMNS:
         raise ValueError(
