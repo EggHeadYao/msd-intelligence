@@ -1,3 +1,78 @@
+            ).persist(StorageLevel.MEMORY_AND_DISK)
+        )
+        cached.append(audio_pairs)
+
+        q_meta = q_tracks.drop("q_vector")
+        c_meta = c_tracks.drop("c_vector")
+        same_artist = q_meta.join(c_meta, F.col("q_artist_id") == F.col("c_artist_id"), "inner").select(
+            "query_track_id", "candidate_track_id", F.lit("same_artist").alias("relation_source")
+        )
+        same_release = q_meta.where(F.col("q_release_id").isNotNull() & (F.col("q_release_id") > 0)).join(
+            c_meta.where(F.col("c_release_id").isNotNull() & (F.col("c_release_id") > 0)),
+            F.col("q_release_id") == F.col("c_release_id"),
+            "inner",
+        ).select("query_track_id", "candidate_track_id", F.lit("same_release").alias("relation_source"))
+        directed_edges = spark.read.parquet(
+            _uri(args.graph_edges / "edge_type=artist_similarity")
+        ).select(
+            F.col("src_id").cast("string").alias("q_artist_id"),
+            F.col("dst_id").cast("string").alias("c_artist_id"),
+        ).distinct()
+        directed = q_meta.join(directed_edges, "q_artist_id", "inner").join(
+            c_meta, "c_artist_id", "inner"
+        ).select("query_track_id", "candidate_track_id", F.lit("directed_artist_similarity").alias("relation_source"))
+        high_tag = tag_scores.where(
+            F.col("tag_tfidf_cosine") >= F.lit(tag_positive_threshold)
+        ).join(q_meta, "q_artist_id", "inner").join(c_meta, "c_artist_id", "inner").select(
+            "query_track_id", "candidate_track_id", F.lit("high_artist_term").alias("relation_source")
+        )
+        relation_candidates = (
+            same_artist.unionByName(same_release).unionByName(directed).unionByName(high_tag)
+            .where(F.col("query_track_id") != F.col("candidate_track_id"))
+            .groupBy("query_track_id", "candidate_track_id")
+            .agg(F.sort_array(F.collect_set("relation_source")).alias("positive_sources"))
+            .localCheckpoint(eager=True)
+        )
+        cached.append(relation_candidates)
+        relation_pairs = (
+            relation_candidates.join(q_tracks, "query_track_id", "inner")
+            .join(c_tracks, "candidate_track_id", "inner")
+            .where(not_same_song("q", "c"))
+            .where((F.col("q_norm") > 0.0) & (F.col("c_norm") > 0.0))
+            .withColumn(
+                "pre_pca_cosine",
+                cosine(F.col("q_vector"), F.col("c_vector"), F.col("q_norm"), F.col("c_norm")),
+            )
+            .where(F.col("pre_pca_cosine") < F.lit(acoustic_p50))
+            .select(
+                "query_track_id",
+                "candidate_track_id",
+                F.lit("relation_dominant").alias("query_group"),
+                "positive_sources",
+            ).persist(StorageLevel.MEMORY_AND_DISK)
+        )
+        cached.append(relation_pairs)
+        audio_pairs.count()
+        relation_pairs.count()
+
+        counts = audio_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "audio_count").join(
+            relation_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "relation_count"),
+            "query_track_id",
+            "inner",
+        ).withColumn("balanced_count", F.least("audio_count", "relation_count")).persist(
+            StorageLevel.MEMORY_AND_DISK
+        )
+        cached.append(counts)
+        audio_window = Window.partitionBy("query_track_id").orderBy(
+            F.xxhash64("query_track_id", "candidate_track_id", F.lit("audio"), F.lit(VALIDATION_GROUP_SEED)),
+            "candidate_track_id",
+        )
+        relation_window = Window.partitionBy("query_track_id").orderBy(
+            F.xxhash64("query_track_id", "candidate_track_id", F.lit("relation"), F.lit(VALIDATION_GROUP_SEED)),
+            "candidate_track_id",
+        )
+        mixed_audio = audio_pairs.withColumn("side_rank", F.row_number().over(audio_window)).join(
+            counts.select("query_track_id", "balanced_count"), "query_track_id"
         ).where(F.col("side_rank") <= F.col("balanced_count")).select(
             "query_track_id",
             "candidate_track_id",
