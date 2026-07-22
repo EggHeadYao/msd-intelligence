@@ -1,3 +1,8 @@
+"""Train the frozen Spark LR-L2 Ranker and publish Python inference artifacts."""
+
+from __future__ import annotations
+
+import argparse
 import math
 from pathlib import Path
 from typing import Any
