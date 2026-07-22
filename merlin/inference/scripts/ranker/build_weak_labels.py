@@ -11,6 +11,7 @@ from ...artifact_paths import InferenceArtifactPaths
 from ...catalog_data import load_catalog_context
 from ...loaders import load_audio_index
 from ...retrieval import TagRetriever
+from ...scratch import prepare_scratch_root
 from ...split import load_split_assignments, load_split_manifest
 from ...tag_data import load_tag_idf
 from ...weak_labels import (
@@ -36,6 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-threshold-pairs", type=int, default=1_000_000)
     parser.add_argument("--positive-neighbor-limit", type=int, default=1_001)
     parser.add_argument("--limit-queries", type=int, default=0)
+    parser.add_argument("--min-free-gb", type=float)
     return parser.parse_args()
 
 
@@ -159,6 +161,13 @@ def main() -> None:
                 )
 
     scope = "smoke" if args.limit_queries or split_manifest["scope"] == "smoke" else "formal"
+    projected_gb = len(queries) * MAX_POSITIVES_PER_QUERY * 64 / (1024 ** 3)
+    prepare_scratch_root(
+        args.positives.parent,
+        scope=scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_gb,
+    )
     manifest = write_weak_positive_artifacts(
         records(),
         args.positives,
