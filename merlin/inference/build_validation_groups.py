@@ -1,3 +1,58 @@
+"""Build frozen Set-B Audio/Relation/Mixed validation groups with Spark."""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import math
+from pathlib import Path
+import sys
+from tempfile import TemporaryDirectory
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from merlin.inference.artifact_paths import InferenceArtifactPaths
+from merlin.inference.candidate_pool import load_candidate_pool_manifest
+from merlin.inference.jsonl_artifact import write_json_atomic
+from merlin.inference.split import load_split_manifest
+from merlin.inference.tag_data import load_tag_idf
+from merlin.inference.validation_groups import (
+    VALIDATION_GROUP_SEED,
+    VALIDATION_QUERY_GROUPS,
+    write_audio_threshold_pairs_numpy,
+    write_validation_group_manifest,
+)
+
+
+MAX_THRESHOLD_PAIRS = 1_000_000
+
+
+def parse_args() -> argparse.Namespace:
+    defaults = InferenceArtifactPaths()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--raw-audio", type=Path, default=defaults.raw_audio_features)
+    parser.add_argument("--prepared-manifest", type=Path, default=defaults.prepared_manifest)
+    parser.add_argument("--songs-metadata", type=Path, default=defaults.songs_metadata)
+    parser.add_argument("--audio-root", type=Path, default=defaults.audio_encoder_metadata.parent)
+    parser.add_argument("--graph-edges", type=Path, default=defaults.graph_edges)
+    parser.add_argument("--tag-idf", type=Path, default=defaults.tag_idf)
+    parser.add_argument("--weak-thresholds", type=Path, default=defaults.weak_label_thresholds)
+    parser.add_argument("--split-assignments", type=Path, default=defaults.split_assignments)
+    parser.add_argument("--split-manifest", type=Path, default=defaults.split_manifest)
+    parser.add_argument("--candidate-pool", type=Path, default=defaults.set_b_candidate_pool)
+    parser.add_argument(
+        "--candidate-pool-manifest",
+        type=Path,
+        default=defaults.set_b_candidate_pool_manifest,
+    )
+    parser.add_argument("--thresholds", type=Path, default=defaults.validation_group_thresholds)
+    parser.add_argument("--positives", type=Path, default=defaults.validation_group_positives)
+    parser.add_argument("--validation-pairs", type=Path, default=defaults.validation_pairs)
+    parser.add_argument("--manifest", type=Path, default=defaults.validation_groups_manifest)
+    parser.add_argument("--max-threshold-pairs", type=int, default=MAX_THRESHOLD_PAIRS)
+    parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     parser.add_argument("--audio-pair-engine", choices=("numpy", "spark"), default="numpy")
     parser.add_argument("--audio-block-size", type=int, default=256)
