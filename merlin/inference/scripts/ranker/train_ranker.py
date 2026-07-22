@@ -163,10 +163,12 @@ def main() -> None:
             withMean=True,
             withStd=True,
         ).fit(assembled_train)
-        scaled_train = scaler.transform(assembled_train).persist(
-            StorageLevel.MEMORY_AND_DISK
-        )
+        scaled_train = scaler.transform(assembled_train).select(
+            F.col("label").cast("double").alias("label"), "features"
+        ).persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(scaled_train)
+        scaled_train.count()
+        release(train)
         means = tuple(float(value) for value in scaler.mean)
         stds = tuple(float(value) for value in scaler.std)
 
@@ -187,8 +189,22 @@ def main() -> None:
 
         selection: dict[str, object]
         if args.stage == "tuning":
-            validation = read_rows(args.validation_features).persist(
-                StorageLevel.MEMORY_AND_DISK
+            models = {reg_param: fit(reg_param) for reg_param in REG_PARAMS}
+            release(scaled_train)
+            validation = (
+                read_rows(args.validation_features)
+                .withColumn("validation_group", F.explode("validation_groups"))
+                .select(
+                    "query_track_id",
+                    "candidate_track_id",
+                    F.col("validation_group.label").alias("label"),
+                    F.col("validation_group.query_group").alias("query_group"),
+                    F.col("validation_group.eligible_positive_count").alias(
+                        "eligible_positive_count"
+                    ),
+                    *RAW_BASE_FEATURES,
+                )
+                .persist(StorageLevel.MEMORY_AND_DISK)
             )
             cached.append(validation)
             invalid_groups = validation.where(
@@ -200,12 +216,19 @@ def main() -> None:
                 raise ValueError("Set-B validation contains an invalid group or denominator")
             scaled_validation = scaler.transform(
                 assembler.transform(materialize(validation))
+            ).select(
+                "query_track_id",
+                "candidate_track_id",
+                F.col("label").cast("int").alias("label"),
+                "query_group",
+                F.col("eligible_positive_count").cast("long").alias(
+                    "eligible_positive_count"
+                ),
+                "features",
             ).persist(StorageLevel.MEMORY_AND_DISK)
             cached.append(scaled_validation)
-            models = {}
-            for reg_param in REG_PARAMS:
-                model = fit(reg_param)
-                models[reg_param] = model
+            scaled_validation.count()
+            release(validation)
             feature_array = vector_to_array("features")
             score_structs = []
             for reg_param in REG_PARAMS:
@@ -272,7 +295,9 @@ def main() -> None:
                 .withColumn("ndcg20", F.col("dcg") / F.col("idcg20"))
             )
             collected_by_reg = {reg_param: [] for reg_param in REG_PARAMS}
-            for row in per_query.collect():
+            collected_rows = per_query.collect()
+            release(scaled_validation)
+            for row in collected_rows:
                 collected_by_reg[float(row["reg_param"])].append(row)
             query_scores = {}
             for reg_param in REG_PARAMS:
@@ -298,6 +323,7 @@ def main() -> None:
         else:
             selected_reg = float(args.fixed_reg_param)
             model = fit(selected_reg)
+            release(scaled_train)
             selection = {
                 "selected_reg_param": selected_reg,
                 "selection_source": "frozen_from_set_b",
