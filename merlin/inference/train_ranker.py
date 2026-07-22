@@ -1,3 +1,78 @@
+    spark = SparkSession.builder.appName("MerlinRankerTraining").getOrCreate()
+    cached = []
+    try:
+        def read_rows(path: Path):
+            return (
+                spark.read.parquet(str(path))
+                if path.suffix == ".parquet"
+                else spark.read.json(str(path))
+            )
+
+        train = read_rows(args.train_features).persist(
+            StorageLevel.MEMORY_AND_DISK
+        )
+        cached.append(train)
+        statistics = train.agg(
+            F.count("*").alias("row_count"),
+            *(
+                F.percentile_approx(name, 0.5, 1_000_000).alias(f"median_{name}")
+                for name in FILL_FEATURES
+            ),
+        ).first()
+        if int(statistics["row_count"]) == 0:
+            raise ValueError("Ranker training features are empty")
+        fill_values = {}
+        for name in FILL_FEATURES:
+            value = statistics[f"median_{name}"]
+            if value is None or not math.isfinite(float(value)):
+                raise ValueError(f"Set-A fill statistic is invalid: {name}")
+            fill_values[name] = float(value)
+
+        def materialize(frame: Any) -> Any:
+            result = frame
+            for name, value in fill_values.items():
+                result = result.withColumn(name, F.coalesce(F.col(name), F.lit(value)))
+            result = result.withColumn(
+                "audio_tag_interaction",
+                F.col("cos_audio") * F.col("tag_tfidf_cosine"),
+            ).withColumn(
+                "graph_bfs_interaction",
+                F.col("cos_graph") * F.col("bfs_score"),
+            )
+            return result
+
+        assembler = VectorAssembler(
+            inputCols=list(RANKER_V2_FEATURES),
+            outputCol="unscaled_features",
+            handleInvalid="error",
+        )
+        assembled_train = assembler.transform(materialize(train))
+        scaler = StandardScaler(
+            inputCol="unscaled_features",
+            outputCol="features",
+            withMean=True,
+            withStd=True,
+        ).fit(assembled_train)
+        scaled_train = scaler.transform(assembled_train).persist(
+            StorageLevel.MEMORY_AND_DISK
+        )
+        cached.append(scaled_train)
+        means = tuple(float(value) for value in scaler.mean)
+        stds = tuple(float(value) for value in scaler.std)
+
+        def fit(reg_param: float) -> Any:
+            model = LogisticRegression(
+                featuresCol="features",
+                labelCol="label",
+                elasticNetParam=0.0,
+                regParam=reg_param,
+                maxIter=100,
+                tol=1e-6,
+                fitIntercept=True,
+                standardization=True,
+            ).fit(scaled_train)
+            if int(model.summary.totalIterations) >= 100:
+                raise ValueError(f"LR did not converge for regParam={reg_param}")
             return model
 
         selection: dict[str, object]
