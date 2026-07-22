@@ -257,3 +257,37 @@ def select_queries(
     )
     one_per_artist.unpersist()
     return queries, available, quotas
+
+
+def build_positives(metadata: DataFrame, queries: DataFrame) -> DataFrame:
+    candidates = metadata.select(
+        "track_id",
+        "artist_id",
+        F.when(
+            _valid_string("song_id"),
+            F.concat(F.lit("song:"), F.col("song_id")),
+        )
+        .otherwise(F.concat(F.lit("track:"), F.col("track_id")))
+        .alias("song_key"),
+    ).alias("candidate")
+    query_labels = queries.select(
+        "query_track_id",
+        "artist_id",
+        F.col("song_key").alias("query_song_key"),
+    ).alias("query")
+    return (
+        F.broadcast(query_labels)
+        .join(
+            candidates,
+            F.col("query.artist_id") == F.col("candidate.artist_id"),
+            "inner",
+        )
+        .where(
+            (F.col("candidate.track_id") != F.col("query.query_track_id"))
+            & (F.col("candidate.song_key") != F.col("query.query_song_key"))
+        )
+        .select(
+            F.col("query.query_track_id").alias("query_track_id"),
+            F.col("candidate.track_id").alias("positive_track_id"),
+        )
+    )
