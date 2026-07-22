@@ -290,3 +290,49 @@ def release_only_rankings(
             key=lambda track_id: (stable_rank_key(seed, query_id, track_id), track_id),
         )[:max_cutoff]
     return rankings
+
+
+def make_query_rows(
+    queries: list[dict[str, Any]],
+    positives: dict[str, set[str]],
+    c2_rankings: dict[str, list[str]],
+    release_rankings: dict[str, list[str]],
+    random_candidate_counts: dict[str, int],
+    cutoffs: tuple[int, ...],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for query in queries:
+        query_id = str(query["query_track_id"])
+        positive_set = positives[query_id]
+        require(positive_set, f"query has no eligible positives: {query_id}")
+        c2_metrics = score_ranking(c2_rankings[query_id], positive_set, cutoffs)
+        release_metrics = score_ranking(
+            release_rankings[query_id],
+            positive_set,
+            cutoffs,
+        )
+        random_metrics = random_expectation(
+            random_candidate_counts[query_id],
+            len(positive_set),
+            cutoffs,
+        )
+        row: dict[str, Any] = {
+            "query_track_id": query_id,
+            "connectable": bool(query["connectable"]),
+            "artist_size_slice": artist_size_slice(int(query["artist_track_count"])),
+            "release_degree_slice": release_degree_slice(int(query["release_degree"])),
+            "popularity_slice": popularity_slice(query["song_hotttnesss"]),
+            "positive_count": len(positive_set),
+            "random_candidate_count": random_candidate_counts[query_id],
+            "c2_candidate_count": len(c2_rankings[query_id]),
+            "release_candidate_count": len(release_rankings[query_id]),
+        }
+        for model, metrics in (
+            ("c2", c2_metrics),
+            ("release_only", release_metrics),
+            ("random", random_metrics),
+        ):
+            for metric, value in metrics.items():
+                row[f"{model}_{metric.replace('@', '_at_')}"] = value
+        rows.append(row)
+    return rows
