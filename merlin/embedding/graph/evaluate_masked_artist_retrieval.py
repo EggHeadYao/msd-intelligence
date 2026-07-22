@@ -65,3 +65,64 @@ def valid_song_key(track_id: str, song_id: str | None) -> str:
 def stable_rank_key(seed: int, query_id: str, candidate_id: str) -> bytes:
     value = f"{seed}\x00{query_id}\x00{candidate_id}".encode("ascii")
     return hashlib.sha256(value).digest()
+
+
+def artist_size_slice(count: int) -> str:
+    if count == 2:
+        return "2"
+    if count <= 5:
+        return "3_5"
+    if count <= 20:
+        return "6_20"
+    return "21_plus"
+
+
+def release_degree_slice(count: int) -> str:
+    if count <= 0:
+        return "missing"
+    if count == 1:
+        return "singleton"
+    if count <= 5:
+        return "2_5"
+    if count <= 20:
+        return "6_20"
+    return "21_plus"
+
+
+def popularity_slice(value: float | None) -> str:
+    if value is None or not math.isfinite(value):
+        return "missing"
+    if value < 0.25:
+        return "0_0.25"
+    if value < 0.5:
+        return "0.25_0.5"
+    if value < 0.75:
+        return "0.5_0.75"
+    return "0.75_plus"
+
+
+def load_queries(experiment: Path) -> list[dict[str, Any]]:
+    table = pq.read_table(experiment / "queries.parquet")
+    required = {
+        "query_track_id",
+        "artist_id",
+        "song_id",
+        "release_7digitalid",
+        "song_hotttnesss",
+        "artist_track_count",
+        "positive_count",
+        "release_degree",
+        "candidate_catalog_size",
+        "connectable",
+        "stratum",
+    }
+    require(required <= set(table.column_names), "query manifest schema mismatch")
+    require(table["query_track_id"].null_count == 0, "query track ID contains null")
+    rows = table.to_pylist()
+    query_ids = [str(row["query_track_id"]) for row in rows]
+    require(len(query_ids) == len(set(query_ids)), "query track IDs are not unique")
+    require(
+        len({str(row["artist_id"]) for row in rows}) == len(rows),
+        "query artists are not unique",
+    )
+    return rows
