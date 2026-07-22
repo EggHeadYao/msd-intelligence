@@ -154,3 +154,47 @@ def enrich_metadata(metadata: DataFrame) -> tuple[DataFrame, int]:
             F.countDistinct("song_key").cast("int").alias("artist_song_count"),
         )
     )
+    artist_song_stats = (
+        base.where(_valid_string("artist_id"))
+        .groupBy("artist_id", "song_key")
+        .agg(F.count("*").cast("int").alias("artist_same_song_count"))
+    )
+    catalog_song_stats = base.groupBy("song_key").agg(
+        F.count("*").cast("int").alias("catalog_same_song_count"),
+    )
+    release_stats = (
+        base.where(
+            F.col("release_7digitalid").isNotNull() & (F.col("release_7digitalid") > 0)
+        )
+        .groupBy("release_7digitalid")
+        .agg(F.countDistinct("track_id").cast("int").alias("release_degree"))
+    )
+
+    enriched = (
+        base.join(artist_stats, "artist_id", "inner")
+        .join(artist_song_stats, ["artist_id", "song_key"], "inner")
+        .join(catalog_song_stats, "song_key", "inner")
+        .join(release_stats, "release_7digitalid", "left")
+        .fillna({"release_degree": 0})
+        .withColumn(
+            "positive_count",
+            F.col("artist_track_count") - F.col("artist_same_song_count"),
+        )
+        .withColumn(
+            "candidate_catalog_size",
+            F.lit(total_tracks) - F.col("catalog_same_song_count"),
+        )
+        .withColumn(
+            "connectable",
+            (F.col("release_degree") > 1).cast("boolean"),
+        )
+        .withColumn(
+            "stratum",
+            F.when(F.col("artist_track_count") == 2, F.lit("2"))
+            .when(F.col("artist_track_count") <= 5, F.lit("3_5"))
+            .when(F.col("artist_track_count") <= 20, F.lit("6_20"))
+            .otherwise(F.lit("21_plus")),
+        )
+        .where(F.col("positive_count") > 0)
+    )
+    return enriched, total_tracks
