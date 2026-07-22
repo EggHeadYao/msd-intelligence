@@ -1,3 +1,77 @@
+"""Frozen Set-B Audio/Relation/Mixed validation-group contracts."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+import math
+from pathlib import Path
+from typing import Mapping, Sequence
+
+from .artifact_lineage import sha256_path
+from .jsonl_artifact import write_json_atomic
+
+
+VALIDATION_GROUP_VERSION = "merlin_validation_groups_v1"
+VALIDATION_GROUP_SEED = 42
+VALIDATION_QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
+
+
+def write_audio_threshold_pairs_numpy(
+    query_rows: Sequence[Mapping[str, object]],
+    candidate_rows: Sequence[Mapping[str, object]],
+    output_path: str | Path,
+    *,
+    threshold: float,
+    block_size: int = 256,
+) -> int:
+    """Write blocked exact cosine-threshold pairs without a Spark cross product."""
+    if block_size <= 0 or not math.isfinite(threshold):
+        raise ValueError("audio threshold and block size must be valid")
+    try:
+        import numpy as np
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError as error:
+        raise RuntimeError("NumPy audio threshold search requires numpy and pyarrow") from error
+
+    queries = sorted(query_rows, key=lambda row: str(row["query_track_id"]))
+    candidates = sorted(candidate_rows, key=lambda row: str(row["candidate_track_id"]))
+    if not queries or not candidates:
+        raise ValueError("audio threshold search requires query and candidate vectors")
+
+    def normalized_matrix(rows, vector_key: str, norm_key: str):
+        matrix = np.asarray([row[vector_key] for row in rows], dtype=np.float64)
+        norms = np.asarray([row[norm_key] for row in rows], dtype=np.float64)
+        if matrix.ndim != 2 or not np.all(np.isfinite(matrix)):
+            raise ValueError("audio threshold vectors are invalid")
+        if np.any(~np.isfinite(norms)) or np.any(norms <= 0.0):
+            raise ValueError("audio threshold vector norms are invalid")
+        return matrix / norms[:, None]
+
+    candidate_matrix = normalized_matrix(candidates, "c_vector", "c_norm")
+    candidate_tracks = np.asarray(
+        [str(row["candidate_track_id"]) for row in candidates], dtype=object
+    )
+    candidate_songs = np.asarray([row.get("c_song_id") for row in candidates], dtype=object)
+    candidate_artists = np.asarray(
+        [str(row["c_artist_id"]) for row in candidates], dtype=object
+    )
+    candidate_releases = np.asarray([row["c_release_id"] for row in candidates], dtype=object)
+
+    schema = pa.schema((
+        pa.field("query_track_id", pa.string(), nullable=False),
+        pa.field("candidate_track_id", pa.string(), nullable=False),
+        pa.field("q_artist_id", pa.string(), nullable=False),
+        pa.field("c_artist_id", pa.string(), nullable=False),
+    ))
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    writer = pq.ParquetWriter(temporary, schema, compression="zstd", use_dictionary=True)
+    count = 0
+    try:
+        for start in range(0, len(queries), block_size):
             block = queries[start : start + block_size]
             query_matrix = normalized_matrix(block, "q_vector", "q_norm")
             mask = query_matrix @ candidate_matrix.T >= threshold
