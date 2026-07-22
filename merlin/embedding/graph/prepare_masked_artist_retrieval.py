@@ -411,5 +411,25 @@ def main() -> None:
             ("\n".join(query_ids) + "\n").encode("ascii"),
         ).hexdigest()
         connectable = queries.where(F.col("connectable")).count()
+
+        prepared = staging / "prepared"
+        prepared.mkdir()
+        query_rows.coalesce(1).write.mode("error").parquet(
+            spark_path(staging / "queries.parquet"),
+        )
+        positives.repartition(
+            min(args.output_partitions, args.shuffle_partitions),
+            "query_track_id",
+        ).write.mode("error").parquet(spark_path(staging / "positives.parquet"))
+        masked_edges.repartition(
+            args.output_partitions,
+            "edge_type",
+        ).write.mode("error").parquet(
+            spark_path(prepared / "graph_edges.parquet"),
+        )
+        shutil.copytree(
+            args.metadata.resolve(),
+            prepared / "songs_metadata.parquet",
+        )
     finally:
         spark.stop()
