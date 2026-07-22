@@ -543,3 +543,7 @@ def main() -> None:
         encoding="ascii",
     )
     print(f"Masked-artist evaluation written to {args.output.resolve()}")
+
+
+if __name__ == "__main__":
+    main()
