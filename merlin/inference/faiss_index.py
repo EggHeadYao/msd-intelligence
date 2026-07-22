@@ -57,6 +57,10 @@ class FaissTrackIndex:
             raise ValueError("reconstructed FAISS vector is invalid")
         if abs(float(np.linalg.norm(vector)) - 1.0) > 1e-5:
             raise ValueError("reconstructed FAISS vector is not unit normalized")
+        vector.setflags(write=False)
+        self._vector_cache[row_id] = vector
+        if len(self._vector_cache) > self._VECTOR_CACHE_SIZE:
+            self._vector_cache.popitem(last=False)
         return vector
 
     @classmethod
@@ -65,7 +69,9 @@ class FaissTrackIndex:
         index_path: str | Path,
         mapping_path: str | Path,
         manifest_path: str | Path,
+        encoder_metadata_path: str | Path,
         *,
+        expected_space: str,
         expected_contract_key: str,
         expected_contract: str,
     ) -> "FaissTrackIndex":
@@ -81,6 +87,8 @@ class FaissTrackIndex:
             manifest_path,
             index_path=index_file,
             mapping_path=mapping_path,
+            encoder_metadata_path=encoder_metadata_path,
+            expected_space=expected_space,
             expected_contract_key=expected_contract_key,
             expected_contract=expected_contract,
         )
@@ -118,7 +126,14 @@ class FaissTrackIndex:
         if not np.isfinite(norm) or norm <= 1e-12:
             raise ValueError("query embedding must have a finite non-zero norm")
         query = (query / norm).astype(np.float32, copy=False).reshape(1, -1)
-        scores, row_ids = self.index.search(query, min(limit, int(self.index.ntotal)))
+        result_limit = min(limit, int(self.index.ntotal))
+        search_engine = os.environ.get("MERLIN_FAISS_SEARCH_ENGINE", "faiss")
+        if search_engine == "faiss":
+            scores, row_ids = self.index.search(query, result_limit)
+        elif search_engine == "numpy":
+            scores, row_ids = self._numpy_exact_search(query[0], result_limit)
+        else:
+            raise ValueError("MERLIN_FAISS_SEARCH_ENGINE must be faiss or numpy")
         results = [
             (self.row_to_track[int(result_row)], float(score))
             for result_row, score in zip(row_ids[0], scores[0], strict=True)
@@ -126,19 +141,55 @@ class FaissTrackIndex:
         ]
         return sorted(results, key=lambda item: (-item[1], item[0]))
 
+    def _numpy_exact_search(
+        self,
+        query: np.ndarray,
+        limit: int,
+        *,
+        block_size: int = 50_000,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compatibility exact-IP search for FAISS wheels with unsupported SIMD."""
+        candidates: list[tuple[float, int]] = []
+        total = int(self.index.ntotal)
+        for start in range(0, total, block_size):
+            count = min(block_size, total - start)
+            matrix = np.asarray(
+                self.index.reconstruct_n(start, count),
+                dtype=np.float32,
+            )
+            block_scores = matrix @ query
+            if not np.all(np.isfinite(block_scores)):
+                raise ValueError("FAISS reconstructed block contains non-finite scores")
+            local_limit = min(limit, count)
+            local_rows = np.argpartition(block_scores, -local_limit)[-local_limit:]
+            candidates.extend(
+                (float(block_scores[row]), start + int(row)) for row in local_rows
+            )
+        best = sorted(
+            candidates,
+            key=lambda item: (-item[0], self.row_to_track[item[1]]),
+        )[:limit]
+        return (
+            np.asarray([[score for score, _row in best]], dtype=np.float32),
+            np.asarray([[row for _score, row in best]], dtype=np.int64),
+        )
+
 
 def _load_track_mapping(mapping_path: str | Path) -> tuple[str, ...]:
-    try:
-        import pyarrow.parquet as parquet
-    except ImportError as error:
-        raise RuntimeError("loading a track mapping requires the pyarrow package") from error
     path = Path(mapping_path)
     if not path.exists():
         raise FileNotFoundError(f"FAISS track mapping does not exist: {path}")
-    table = parquet.read_table(path, columns=["row_id", "track_id"])
-    pairs = sorted(zip(table["row_id"].to_pylist(), table["track_id"].to_pylist()))
-    if any(row_id is None or track_id is None for row_id, track_id in pairs):
-        raise ValueError("FAISS track mapping contains null values")
-    if [int(row_id) for row_id, _ in pairs] != list(range(len(pairs))):
-        raise ValueError("FAISS mapping row_id must be contiguous from zero")
-    return tuple(str(track_id) for _, track_id in pairs)
+    tracks: list[str] = []
+    for expected_row, (row_id, track_id) in enumerate(
+        parquet_rows(
+            path,
+            ("row_id", "track_id"),
+            order_by=("row_id",),
+        )
+    ):
+        if row_id is None or track_id is None:
+            raise ValueError("FAISS track mapping contains null values")
+        if int(row_id) != expected_row:
+            raise ValueError("FAISS mapping row_id must be contiguous from zero")
+        tracks.append(str(track_id))
+    return tuple(tracks)
