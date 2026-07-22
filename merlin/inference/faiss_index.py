@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
 from .artifact_lineage import load_faiss_manifest
+from .parquet_io import parquet_rows
 
 
 @dataclass(slots=True)
@@ -18,6 +21,12 @@ class FaissTrackIndex:
     index: Any
     row_to_track: tuple[str, ...]
     _track_to_row: dict[str, int] = field(init=False, repr=False)
+    _vector_cache: OrderedDict[int, np.ndarray] = field(
+        init=False,
+        repr=False,
+        default_factory=OrderedDict,
+    )
+    _VECTOR_CACHE_SIZE: ClassVar[int] = 16_384
 
     def __post_init__(self) -> None:
         if int(self.index.ntotal) != len(self.row_to_track):

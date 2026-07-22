@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
+from .parquet_io import parquet_rows
+
 
 @dataclass(frozen=True, slots=True)
 class BfsData:
@@ -59,31 +61,18 @@ def load_bfs_data(
     return build_bfs_data(songs, edges)
 
 
+def load_artist_neighbors(graph_edges_path: str | Path) -> Mapping[str, Sequence[str]]:
+    """Load only the directed artist-similarity adjacency for shared assembly."""
+    edges = _graph_edge_rows(graph_edges_path, "artist_similarity")
+    return build_bfs_data((), edges).artist_neighbors
+
+
 def _graph_edge_rows(path: str | Path, edge_type: str) -> Iterable[tuple[str, str]]:
-    try:
-        import pyarrow.dataset as ds
-    except ImportError as error:
-        raise RuntimeError("loading BFS graph edges requires pyarrow") from error
-    dataset = ds.dataset(str(path), format="parquet", partitioning="hive")
-    scanner = dataset.scanner(
-        columns=["src_id", "dst_id"],
-        filter=ds.field("edge_type") == edge_type,
-    )
-    for batch in scanner.to_batches():
-        yield from zip(batch.column(0).to_pylist(), batch.column(1).to_pylist())
+    yield from parquet_rows(path, ("src_id", "dst_id"), edge_type=edge_type)
 
 
 def _parquet_rows(
     path: str | Path,
     columns: tuple[str, str],
 ) -> Iterable[tuple[str, str]]:
-    try:
-        import pyarrow.dataset as ds
-    except ImportError as error:
-        raise RuntimeError("loading BFS Parquet data requires pyarrow") from error
-
-    dataset = ds.dataset(str(path), format="parquet")
-    for batch in dataset.to_batches(columns=list(columns)):
-        left = batch.column(0).to_pylist()
-        right = batch.column(1).to_pylist()
-        yield from zip(left, right)
+    yield from parquet_rows(path, columns)

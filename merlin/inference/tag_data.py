@@ -177,11 +177,27 @@ def load_tag_idf(path: str | Path) -> dict[str, float]:
     """Load and validate Person A's frozen artist-term IDF artifact."""
     with Path(path).open("r", encoding="utf-8") as stream:
         artifact = json.load(stream)
-    if artifact.get("artifact_type") != "artist_term_idf":
+    if artifact.get("artifact_type") != TAG_IDF_ARTIFACT_TYPE:
         raise ValueError("unsupported tag IDF artifact type")
+    if artifact.get("manifest_version") != TAG_IDF_MANIFEST_VERSION:
+        raise ValueError("unsupported tag IDF manifest version")
+    if artifact.get("formula") != TAG_IDF_FORMULA:
+        raise ValueError("tag IDF formula mismatch")
     values = {str(term): float(value) for term, value in artifact["values"].items()}
     if not values:
         raise ValueError("tag IDF artifact must not be empty")
+    if int(artifact.get("term_count", -1)) != len(values):
+        raise ValueError("tag IDF term count mismatch")
+    if int(artifact.get("artist_count", -1)) <= 0:
+        raise ValueError("tag IDF artist count must be positive")
     if any(not math.isfinite(value) or value <= 0.0 for value in values.values()):
         raise ValueError("tag IDF values must be finite and positive")
+    if expected_graph_edges_path is not None:
+        artist_term_path = Path(expected_graph_edges_path) / "edge_type=artist_term"
+        source = artifact.get("source")
+        if not isinstance(source, dict):
+            raise ValueError("tag IDF source lineage is missing")
+        expected_hash = source.get("artist_term_sha256")
+        if expected_hash != sha256_path(artist_term_path):
+            raise ValueError("tag IDF artist-term lineage mismatch")
     return values
