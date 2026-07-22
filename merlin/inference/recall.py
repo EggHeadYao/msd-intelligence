@@ -1,3 +1,78 @@
+        raise ValueError("query_track_id must not be empty")
+    groups: dict[str, list[Candidate]] = {}
+    availability: dict[str, bool] = {}
+    for retriever in retrievers:
+        available = getattr(retriever, "is_available", lambda _query: True)
+        availability[retriever.name] = bool(available(query_track_id))
+        groups[retriever.name] = (
+            list(retriever.retrieve(query_track_id, retriever_limits[retriever.name]))
+            if availability[retriever.name]
+            else []
+        )
+
+    return audit_recall_groups(
+        groups,
+        retriever_limits,
+        candidate_limit,
+        query_track_id,
+        availability,
+    )
+
+
+def audit_recall_groups(
+    groups: Mapping[str, Sequence[Candidate]],
+    retriever_limits: Mapping[str, int],
+    candidate_limit: int,
+    query_track_id: str,
+    availability: Mapping[str, bool],
+) -> tuple[list[Candidate], RecallAudit]:
+    """Merge independently generated source groups into one canonical audit."""
+    if set(groups) != set(retriever_limits) or set(availability) != set(groups):
+        raise ValueError("recall groups, limits, and availability must match")
+    candidates = merge_candidates(list(groups.values()), query_track_id)
+    if len(candidates) > candidate_limit:
+        raise ValueError("candidate union exceeds configured cap")
+    counts = {name: len(group) for name, group in groups.items()}
+    shortages = {
+        name: int(retriever_limits[name]) - count
+        for name, count in counts.items()
+    }
+    raw_count = sum(counts.values())
+    unique_count = len(candidates)
+    duplicates = raw_count - unique_count
+    exclusive = {
+        name: sum(candidate.sources == frozenset({name}) for candidate in candidates)
+        for name in counts
+    }
+    return candidates, RecallAudit(
+        source_counts=counts,
+        source_shortages=shortages,
+        unique_candidates=unique_count,
+        raw_candidates=raw_count,
+        duplicate_candidates=duplicates,
+        deduplication_rate=duplicates / raw_count if raw_count else 0.0,
+        exclusive_candidates=exclusive,
+        source_available=availability,
+    )
+
+
+@dataclass(slots=True)
+class RecallPipeline:
+    """The canonical four-source candidate generator without a Ranker."""
+
+    retrievers: Sequence[CandidateRetriever]
+    retriever_limits: Mapping[str, int]
+    candidate_limit: int = 1_000
+    canonical: bool = False
+
+    def __post_init__(self) -> None:
+        validate_recall_configuration(
+            self.retrievers,
+            self.retriever_limits,
+            self.candidate_limit,
+            canonical=self.canonical,
+        )
+
     def recall(self, query_track_id: str) -> tuple[list[Candidate], RecallAudit]:
         return recall_candidates(
             self.retrievers,
