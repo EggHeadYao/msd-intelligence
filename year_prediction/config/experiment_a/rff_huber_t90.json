@@ -1,0 +1,18 @@
+{
+  "algorithm": "rff_huber",
+  "model_id": "rff-huber-sgd",
+  "input": "parquets/year_prediction/training/t90/vectors.parquet",
+  "output_root": "parquets/year_prediction/models",
+  "rff_dimension": 512,
+  "gamma": 0.008668804692941833,
+  "seed": 472,
+  "huber_delta_years": 5.0,
+  "max_iterations": 300,
+  "learning_rate": 1.0,
+  "l2": 0.001,
+  "gradient_tolerance": 1e-08,
+  "validation_interval": 10,
+  "early_stopping_patience": 6,
+  "early_stopping_min_delta": 0.002,
+  "restore_best_weights": true
+}

@@ -1,0 +1,15 @@
+{
+  "algorithm": "pca_ridge",
+  "model_id": "pca-ridge-t90",
+  "input": "parquets/year_prediction/training/t90/vectors.parquet",
+  "output_root": "parquets/year_prediction/models",
+  "pca_variance_threshold": 0.95,
+  "max_iterations": 100,
+  "learning_rate": 0.08,
+  "l2": 0.001,
+  "gradient_tolerance": 1e-08,
+  "validation_interval": 10,
+  "early_stopping_patience": 0,
+  "early_stopping_min_delta": 0.002,
+  "restore_best_weights": true
+}
