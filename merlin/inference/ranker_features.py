@@ -1,3 +1,7 @@
+"""Export pre-fill Ranker-v2 pair features with lineage."""
+
+from __future__ import annotations
+
 from collections import Counter
 from datetime import datetime, timezone
 from itertools import groupby
