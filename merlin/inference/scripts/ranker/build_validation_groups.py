@@ -16,6 +16,7 @@ if __package__ in {None, ""}:
 from merlin.inference.artifact_paths import InferenceArtifactPaths
 from merlin.inference.candidate_pool import load_candidate_pool_manifest
 from merlin.inference.jsonl_artifact import write_json_atomic
+from merlin.inference.scratch import prepare_scratch_root
 from merlin.inference.split import load_split_manifest
 from merlin.inference.tag_data import load_tag_idf
 from merlin.inference.validation_groups import (
@@ -56,6 +57,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     parser.add_argument("--audio-pair-engine", choices=("numpy", "spark"), default="numpy")
     parser.add_argument("--audio-block-size", type=int, default=256)
+    parser.add_argument("--scratch-root", type=Path)
+    parser.add_argument("--min-free-gb", type=float)
     return parser.parse_args()
 
 
@@ -77,6 +80,18 @@ def main() -> None:
     if args.shuffle_partitions <= 0 or args.audio_block_size <= 0:
         raise ValueError("shuffle partitions and audio block size must be positive")
     _require_new_outputs((args.thresholds, args.positives, args.validation_pairs, args.manifest))
+    prepare_scratch_root(
+        args.validation_pairs.parent,
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=4.0 if args.scope == "formal" else 0.0,
+    )
+    scratch_root = prepare_scratch_root(
+        args.scratch_root or args.validation_pairs.parent / ".c3-scratch",
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=4.0 if args.scope == "formal" else 0.0,
+    )
     split_manifest = load_split_manifest(args.split_manifest, args.split_assignments)
     if args.scope == "formal" and split_manifest.get("scope") != "formal":
         raise ValueError("formal validation groups require a formal split artifact")
@@ -136,15 +151,21 @@ def main() -> None:
         right = F.col(f"{prefix_right}_song_id")
         return ~(left.isNotNull() & right.isNotNull() & (left == right))
 
+    spark_local_temporary = TemporaryDirectory(prefix="merlin-c3-spark-", dir=scratch_root)
     spark = (
         SparkSession.builder.appName("MerlinBuildSetBValidationGroups")
         .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .config("spark.local.dir", spark_local_temporary.name)
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
     cached = []
     audio_pair_temporary = None
     try:
+        def release(frame) -> None:
+            frame.unpersist(blocking=True)
+            cached[:] = [item for item in cached if item is not frame]
+
         def read_rows(path: Path):
             return (
                 spark.read.parquet(_uri(path))
@@ -274,8 +295,15 @@ def main() -> None:
                 cosine(F.col("q_vector"), F.col("c_vector"), F.col("q_norm"), F.col("c_norm")),
             )
             .where(F.col("pre_pca_cosine").isNotNull() & ~F.isnan("pre_pca_cosine"))
-            .orderBy(F.xxhash64("q_track_id", "c_track_id", F.lit(VALIDATION_GROUP_SEED)))
+            .select(
+                "pre_pca_cosine",
+                F.xxhash64(
+                    "q_track_id", "c_track_id", F.lit(VALIDATION_GROUP_SEED)
+                ).alias("sample_hash"),
+            )
+            .orderBy("sample_hash")
             .limit(args.max_threshold_pairs)
+            .select("pre_pca_cosine")
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
         cached.append(threshold_sample)
@@ -290,11 +318,17 @@ def main() -> None:
             raise ValueError("Set-A pre-PCA thresholds are not finite")
         if acoustic_p90 < acoustic_p50:
             raise ValueError("Set-A pre-PCA thresholds are not monotonic")
+        release(threshold_sample)
+        release(indexed)
 
         set_b = vectors.where(F.col("split") == "set_b").drop("split").persist(
             StorageLevel.MEMORY_AND_DISK
         )
         cached.append(set_b)
+        if set_b.count() == 0:
+            raise ValueError("split has no Set-B C1 vectors")
+        release(vectors)
+        release(assignments)
         query_b = set_b.join(F.broadcast(pool_queries), TRACK_ID_COLUMN, "inner")
         if query_b.limit(1).count() == 0:
             raise ValueError("candidate pool has no Set-B query with a C1 vector")
@@ -335,7 +369,10 @@ def main() -> None:
             .localCheckpoint(eager=True)
         )
         cached.append(tag_scores)
-        tagged_artists = norms.select("artist_id")
+        tagged_artists = norms.select("artist_id").localCheckpoint(eager=True)
+        cached.append(tagged_artists)
+        release(terms)
+        release(norms)
 
         def q_columns(frame):
             return frame.select(
@@ -388,7 +425,9 @@ def main() -> None:
             )
         )
         if args.audio_pair_engine == "numpy":
-            audio_pair_temporary = TemporaryDirectory(prefix="merlin-setb-audio-pairs-")
+            audio_pair_temporary = TemporaryDirectory(
+                prefix="merlin-setb-audio-pairs-", dir=scratch_root
+            )
             raw_audio_pairs_path = Path(audio_pair_temporary.name) / "pairs.parquet"
             write_audio_threshold_pairs_numpy(
                 [row.asDict(recursive=True) for row in valid_q_audio.collect()],
@@ -431,6 +470,10 @@ def main() -> None:
             ).persist(StorageLevel.MEMORY_AND_DISK)
         )
         cached.append(audio_pairs)
+        audio_pairs.count()
+        if audio_pair_temporary is not None:
+            audio_pair_temporary.cleanup()
+            audio_pair_temporary = None
 
         q_meta = q_tracks.drop("q_vector")
         c_meta = c_tracks.drop("c_vector")
@@ -482,8 +525,12 @@ def main() -> None:
             ).persist(StorageLevel.MEMORY_AND_DISK)
         )
         cached.append(relation_pairs)
-        audio_pairs.count()
         relation_pairs.count()
+        release(relation_candidates)
+        release(tag_scores)
+        release(tagged_artists)
+        release(set_b)
+        release(pool_queries)
 
         counts = audio_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "audio_count").join(
             relation_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "relation_count"),
@@ -523,6 +570,10 @@ def main() -> None:
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
         cached.append(positives)
+        positives.count()
+        release(audio_pairs)
+        release(relation_pairs)
+        release(counts)
         eligible = positives.groupBy("query_track_id", "query_group").agg(
             F.count("*").cast("long").alias("eligible_positive_count")
         ).persist(StorageLevel.MEMORY_AND_DISK)
@@ -552,6 +603,9 @@ def main() -> None:
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
         cached.append(validation_pairs)
+        if validation_pairs.count() == 0:
+            raise ValueError("Set-B validation pairs are empty")
+        release(pool)
         missing_candidate_queries = eligible.select("query_track_id", "query_group").join(
             validation_pairs.select("query_track_id", "query_group").distinct(),
             ["query_track_id", "query_group"],
@@ -559,6 +613,7 @@ def main() -> None:
         ).limit(1).count()
         if missing_candidate_queries:
             raise ValueError("an eligible Set-B validation query has no canonical candidates")
+        release(eligible)
 
         positive_stats = {
             row["query_group"]: row.asDict()
@@ -613,7 +668,9 @@ def main() -> None:
         }
         write_json_atomic(threshold_payload, args.thresholds)
         positives.write.mode("errorifexists").parquet(_uri(args.positives))
+        release(positives)
         validation_pairs.write.mode("errorifexists").parquet(_uri(args.validation_pairs))
+        release(validation_pairs)
         manifest = write_validation_group_manifest(
             args.manifest,
             thresholds_path=args.thresholds,
@@ -649,6 +706,7 @@ def main() -> None:
         spark.stop()
         if audio_pair_temporary is not None:
             audio_pair_temporary.cleanup()
+        spark_local_temporary.cleanup()
 
 
 if __name__ == "__main__":
