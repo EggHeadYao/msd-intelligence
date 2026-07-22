@@ -126,3 +126,50 @@ def load_queries(experiment: Path) -> list[dict[str, Any]]:
         "query artists are not unique",
     )
     return rows
+
+
+def load_positives(
+    experiment: Path,
+    queries: list[dict[str, Any]],
+) -> dict[str, set[str]]:
+    table = pq.read_table(experiment / "positives.parquet")
+    require(
+        table.column_names == ["query_track_id", "positive_track_id"],
+        "positive pair schema mismatch",
+    )
+    positives: dict[str, set[str]] = defaultdict(set)
+    for query_id, positive_id in zip(
+        table["query_track_id"].to_pylist(),
+        table["positive_track_id"].to_pylist(),
+        strict=True,
+    ):
+        require(
+            query_id is not None and positive_id is not None, "positive pair is null"
+        )
+        positives[str(query_id)].add(str(positive_id))
+
+    query_ids = {str(row["query_track_id"]) for row in queries}
+    require(set(positives) <= query_ids, "positives contain an unknown query")
+    for row in queries:
+        query_id = str(row["query_track_id"])
+        require(
+            len(positives[query_id]) == int(row["positive_count"]),
+            f"positive count mismatch for {query_id}",
+        )
+    return positives
+
+
+def load_mapping(graph_output: Path) -> tuple[list[str], dict[str, int]]:
+    table = pq.read_table(graph_output / MAPPING_NAME)
+    require(
+        table.column_names == ["row_id", "node_id", "track_id"],
+        "FAISS mapping schema mismatch",
+    )
+    row_ids = table["row_id"].combine_chunks().to_numpy(zero_copy_only=False)
+    require(
+        np.array_equal(row_ids, np.arange(table.num_rows)),
+        "FAISS mapping row IDs are not contiguous",
+    )
+    row_to_track = [str(value) for value in table["track_id"].to_pylist()]
+    require(len(row_to_track) == len(set(row_to_track)), "FAISS track mapping repeats")
+    return row_to_track, {track_id: row for row, track_id in enumerate(row_to_track)}
