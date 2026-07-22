@@ -373,3 +373,31 @@ def aggregate_rows(
             for cutoff in cutoffs
         }
     return result
+
+
+def model_report(
+    rows: list[dict[str, Any]],
+    model: str,
+    cutoffs: tuple[int, ...],
+) -> dict[str, Any]:
+    connectable = [row for row in rows if bool(row["connectable"])]
+    report: dict[str, Any] = {
+        "all_query": aggregate_rows(rows, model, cutoffs),
+        "connectable_conditional": aggregate_rows(connectable, model, cutoffs),
+        "slices": {},
+    }
+    for slice_name in (
+        "artist_size_slice",
+        "release_degree_slice",
+        "popularity_slice",
+    ):
+        values = sorted({str(row[slice_name]) for row in rows})
+        report["slices"][slice_name] = {
+            value: aggregate_rows(
+                [row for row in rows if row[slice_name] == value],
+                model,
+                cutoffs,
+            )
+            for value in values
+        }
+    return report
