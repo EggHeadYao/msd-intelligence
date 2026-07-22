@@ -6,13 +6,15 @@ from dataclasses import dataclass, field
 import json
 import math
 from pathlib import Path
-from typing import Callable, Iterable, Mapping
+from typing import Callable, Iterable, Mapping, Sequence
 
 from .feature_schema import RANKER_V2_SCHEMA_VERSION
+from .parquet_io import parquet_rows
 from .types import Candidate
 
 
 PairLookup = Callable[[str, str], float | None]
+BatchPairLookup = Callable[[str, Sequence[str]], Sequence[float | None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,21 +45,9 @@ def build_track_metadata_v2(
 
 
 def load_track_metadata_v2(path: str | Path) -> dict[str, TrackMetadataV2]:
-    """Read only ranker-v2 metadata columns in bounded Arrow batches."""
-    try:
-        import pyarrow.dataset as ds
-    except ImportError as error:
-        raise RuntimeError("loading ranker-v2 metadata requires pyarrow") from error
-
+    """Read only ranker-v2 metadata columns in bounded Parquet batches."""
     columns = ["track_id", "release_7digitalid", "year", "has_year"]
-    dataset = ds.dataset(str(path), format="parquet")
-
-    def rows():
-        for batch in dataset.to_batches(columns=columns):
-            values = [batch.column(index).to_pylist() for index in range(len(columns))]
-            yield from zip(*values)
-
-    return build_track_metadata_v2(rows())
+    return build_track_metadata_v2(parquet_rows(path, columns))
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +58,8 @@ class PairSignalLookups:
     graph: PairLookup
     bfs: PairLookup
     tags: PairLookup
+    audio_batch: BatchPairLookup | None = None
+    graph_batch: BatchPairLookup | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +104,34 @@ class RankerV2FeatureComputer:
     schema_version: str = RANKER_V2_SCHEMA_VERSION
 
     def compute(self, query_track_id: str, candidate: Candidate) -> Mapping[str, float]:
+        raw = self.compute_raw(query_track_id, candidate)
+        audio = self._fill("cos_audio", raw["cos_audio"])
+        graph = self._fill("cos_graph", raw["cos_graph"])
+        bfs = self._fill("bfs_score", raw["bfs_score"])
+        tags = self._fill("tag_tfidf_cosine", raw["tag_tfidf_cosine"])
+        year_gap = self._fill("year_gap", raw["year_gap"])
+        return {
+            "cos_audio": audio,
+            "cos_graph": graph,
+            "has_graph": float(raw["has_graph"]),
+            "bfs_score": bfs,
+            "has_bfs": float(raw["has_bfs"]),
+            "tag_tfidf_cosine": tags,
+            "has_tags": float(raw["has_tags"]),
+            "same_release": float(raw["same_release"]),
+            "has_release": float(raw["has_release"]),
+            "year_gap": year_gap,
+            "has_year": float(raw["has_year"]),
+            "audio_tag_interaction": audio * tags,
+            "graph_bfs_interaction": graph * bfs,
+        }
+
+    def compute_raw(
+        self,
+        query_track_id: str,
+        candidate: Candidate,
+    ) -> Mapping[str, float | None]:
+        """Return pre-fill base signals for Set-A statistics and training."""
         candidate_id = candidate.track_id
         audio_raw = _finite(self.signals.audio(query_track_id, candidate_id))
         graph_raw = _finite(self.signals.graph(query_track_id, candidate_id))
