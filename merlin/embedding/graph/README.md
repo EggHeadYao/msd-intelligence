@@ -109,10 +109,16 @@ The outputs are:
 ```text
 index_graph.faiss
 index_graph_track_ids.parquet/
-graph_faiss_metadata.json
+index_graph_manifest.json
 ```
 
 The mapping contains `row_id`, `node_id`, and `track_id`. `validate_artifacts.py` independently checks embedding and mapping coverage, uniqueness, dimensions, normalization, the FAISS metric and size, the index hash, and deterministic self-retrieval samples.
+
+`index_graph_manifest.json` uses the shared C1/C2 FAISS manifest contract
+`merlin_faiss_index_v1`. It records the `graph` embedding space, frozen
+`c2_graph_version`, exact index and mapping paths, and SHA-256 lineage for the
+index, row mapping, and graph encoder metadata. C3 rejects missing, historical,
+or mismatched manifests before loading the index.
 
 ## Commands
 
