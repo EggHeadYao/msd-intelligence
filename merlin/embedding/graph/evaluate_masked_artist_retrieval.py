@@ -469,3 +469,36 @@ def main() -> None:
         all(track_id in track_to_song for track_id in row_to_track),
         "FAISS mapping contains a track absent from metadata",
     )
+
+    max_cutoff = cutoffs[-1]
+    c2_rankings = search_c2(
+        index,
+        queries,
+        track_to_row,
+        row_to_track,
+        track_to_song,
+        max_cutoff,
+        args.overfetch,
+        args.batch_size,
+    )
+    release_rankings = release_only_rankings(
+        queries,
+        release_to_tracks,
+        track_to_song,
+        max_cutoff,
+        int(config["seed"]),
+    )
+    index_song_counts = Counter(track_to_song[track_id] for track_id in row_to_track)
+    random_candidate_counts = {
+        str(query["query_track_id"]): index.ntotal
+        - index_song_counts[track_to_song[str(query["query_track_id"])]]
+        for query in queries
+    }
+    rows = make_query_rows(
+        queries,
+        positives,
+        c2_rankings,
+        release_rankings,
+        random_candidate_counts,
+        cutoffs,
+    )
