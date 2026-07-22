@@ -14,12 +14,18 @@ import pyarrow.parquet as pq
 
 from merlin.embedding.graph.build_faiss import (
     ENCODER_METADATA_NAME,
+    FAISS_MANIFEST_VERSION,
     INDEX_NAME,
     MAPPING_NAME,
     METADATA_NAME,
     NORM_TOLERANCE,
+    read_expected_dimension,
 )
-from merlin.embedding.graph.config import WORD2VEC_VECTOR_SIZE
+from merlin.embedding.graph.config import (
+    GRAPH_CONTRACT_KEY,
+    GRAPH_CONTRACT_VERSION,
+    WORD2VEC_VECTOR_SIZE,
+)
 from merlin.embedding.graph.train_word2vec import EMBEDDINGS_NAME
 
 
@@ -37,11 +43,20 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def sha256_file(path: Path) -> str:
+def sha256_path(path: Path) -> str:
+    if not path.exists():
+        raise FileNotFoundError(f"artifact does not exist: {path}")
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(8 * 1024 * 1024):
-            digest.update(chunk)
+    files = (path,) if path.is_file() else tuple(
+        sorted(item for item in path.rglob("*") if item.is_file())
+    )
+    for item in files:
+        relative = item.name if path.is_file() else item.relative_to(path).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        with item.open("rb") as handle:
+            while chunk := handle.read(8 * 1024 * 1024):
+                digest.update(chunk)
     return digest.hexdigest()
 
 
@@ -146,18 +161,59 @@ def validate_faiss(
 
     faiss_metadata = read_json(output / METADATA_NAME)
     require(
-        faiss_metadata["index"]["type"] == "IndexFlatIP", "FAISS metadata type mismatch"
+        faiss_metadata["artifact_type"] == "merlin_faiss_index",
+        "FAISS metadata artifact type mismatch",
     )
     require(
-        faiss_metadata["index"]["rows"] == expected_rows, "FAISS metadata rows mismatch"
+        faiss_metadata["manifest_version"] == FAISS_MANIFEST_VERSION,
+        "FAISS metadata version mismatch",
     )
     require(
-        faiss_metadata["index"]["dimension"] == dimension,
+        faiss_metadata["embedding_space"] == "graph",
+        "FAISS metadata embedding space mismatch",
+    )
+    require(
+        faiss_metadata[GRAPH_CONTRACT_KEY] == GRAPH_CONTRACT_VERSION,
+        "FAISS metadata graph contract mismatch",
+    )
+    require(
+        faiss_metadata["index_file"] == INDEX_NAME,
+        "FAISS metadata index path mismatch",
+    )
+    require(
+        faiss_metadata["mapping_path"] == MAPPING_NAME,
+        "FAISS metadata mapping path mismatch",
+    )
+    require(
+        faiss_metadata["mapping_columns"] == ["row_id", "node_id", "track_id"],
+        "FAISS metadata mapping columns mismatch",
+    )
+    require(
+        faiss_metadata["mapping_order"] == "node_id_ascending",
+        "FAISS metadata mapping order mismatch",
+    )
+    require(
+        faiss_metadata["index_type"] == "IndexFlatIP",
+        "FAISS metadata type mismatch",
+    )
+    require(faiss_metadata["metric"] == "inner_product", "FAISS metadata metric mismatch")
+    require(faiss_metadata["row_count"] == expected_rows, "FAISS metadata rows mismatch")
+    require(
+        faiss_metadata["dimension"] == dimension,
         "FAISS metadata dimension mismatch",
     )
     require(
-        faiss_metadata["index"]["sha256"] == sha256_file(index_path),
+        faiss_metadata["index_sha256"] == sha256_path(index_path),
         "FAISS index hash mismatch",
+    )
+    require(
+        faiss_metadata["mapping_sha256"] == sha256_path(output / MAPPING_NAME),
+        "FAISS mapping hash mismatch",
+    )
+    require(
+        faiss_metadata["encoder_metadata_sha256"]
+        == sha256_path(output / ENCODER_METADATA_NAME),
+        "FAISS encoder metadata hash mismatch",
     )
 
 
