@@ -538,3 +538,8 @@ def main() -> None:
             "relation-blind or inductive inference."
         ),
     }
+    (args.output / REPORT_NAME).write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="ascii",
+    )
+    print(f"Masked-artist evaluation written to {args.output.resolve()}")
