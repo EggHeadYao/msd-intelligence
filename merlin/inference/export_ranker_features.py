@@ -1,3 +1,70 @@
+"""CLI to export pre-fill Ranker-v2 features for labeled pairs."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
+
+from .artifact_paths import InferenceArtifactPaths
+from .catalog_data import load_catalog_context
+from .faiss_index import FaissTrackIndex
+from .features_v2 import PairSignalLookups, RankerV2FeatureComputer
+from .loaders import load_audio_index
+from .ranker_features import export_raw_pair_features
+from .training_pairs import load_training_pair_manifest
+from .validation_groups import load_validation_group_manifest
+from .recall_factory import build_canonical_retrievers
+from .retrieval import TagRetriever
+from .tag_data import load_tag_idf
+
+
+def parse_args() -> argparse.Namespace:
+    defaults = InferenceArtifactPaths()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pair-kind", choices=("training", "validation"), default="training")
+    parser.add_argument("--pairs", type=Path)
+    parser.add_argument("--pairs-manifest", type=Path)
+    parser.add_argument("--validation-positives", type=Path, default=defaults.validation_group_positives)
+    parser.add_argument("--validation-thresholds", type=Path, default=defaults.validation_group_thresholds)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
+    parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
+    parser.add_argument("--graph-contract-key", default=GRAPH_CONTRACT_KEY)
+    parser.add_argument("--graph-contract-version", default=GRAPH_CONTRACT_VERSION)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    paths = InferenceArtifactPaths()
+    pairs = args.pairs or (
+        paths.training_pairs if args.pair_kind == "training" else paths.validation_pairs
+    )
+    pairs_manifest = args.pairs_manifest or (
+        paths.training_pairs_manifest
+        if args.pair_kind == "training"
+        else paths.validation_groups_manifest
+    )
+    output = args.output or (
+        paths.raw_pair_features
+        if args.pair_kind == "training"
+        else paths.validation_raw_features
+    )
+    output_manifest = args.manifest or (
+        paths.raw_pair_features_manifest
+        if args.pair_kind == "training"
+        else paths.validation_raw_features_manifest
+    )
+    if args.pair_kind == "training":
+        load_training_pair_manifest(
+            pairs_manifest,
+            pairs,
+            expected_scope=args.scope,
+            expected_stage=args.stage,
+        )
     else:
         if args.stage != "tuning":
             raise ValueError("validation features are only defined for tuning")
