@@ -48,6 +48,79 @@ class FaissTrackIndex:
             raise ValueError("FAISS pair similarity is not finite")
         return score
 
+    def similarities(
+        self,
+        left_track_id: str,
+        right_track_ids: list[str] | tuple[str, ...],
+    ) -> list[float | None]:
+        """Vectorize exact pair similarities for one query and many candidates."""
+        if not self.contains(left_track_id):
+            return [None] * len(right_track_ids)
+        left = self._reconstruct(left_track_id)
+        results: list[float | None] = [None] * len(right_track_ids)
+        positions = [
+            index
+            for index, track_id in enumerate(right_track_ids)
+            if self.contains(track_id)
+        ]
+        if not positions:
+            return results
+        vectors = self._reconstruct_many([right_track_ids[index] for index in positions])
+        scores = vectors @ left
+        if not np.all(np.isfinite(scores)):
+            raise ValueError("FAISS batch pair similarity is not finite")
+        for position, score in zip(positions, scores, strict=True):
+            results[position] = float(score)
+        return results
+
+    def pair_similarities(
+        self,
+        pairs: list[tuple[str, str]] | tuple[tuple[str, str], ...],
+    ) -> list[float | None]:
+        """Vectorize exact similarities for an arbitrary bounded pair batch."""
+        results: list[float | None] = [None] * len(pairs)
+        positions = [
+            index
+            for index, (left, right) in enumerate(pairs)
+            if self.contains(left) and self.contains(right)
+        ]
+        if not positions:
+            return results
+        left = self._reconstruct_many([pairs[index][0] for index in positions])
+        right = self._reconstruct_many([pairs[index][1] for index in positions])
+        scores = np.einsum("ij,ij->i", left, right, optimize=True)
+        if not np.all(np.isfinite(scores)):
+            raise ValueError("FAISS batch pair similarity is not finite")
+        for position, score in zip(positions, scores, strict=True):
+            results[position] = float(score)
+        return results
+
+    def _reconstruct_many(self, track_ids: list[str]) -> np.ndarray:
+        rows = [self._track_to_row[track_id] for track_id in track_ids]
+        missing_rows = [row_id for row_id in rows if row_id not in self._vector_cache]
+        if missing_rows and hasattr(self.index, "reconstruct_batch"):
+            matrix = np.asarray(
+                self.index.reconstruct_batch(np.asarray(missing_rows, dtype=np.int64)),
+                dtype=np.float32,
+            )
+            if matrix.shape != (len(missing_rows), self.dimension):
+                raise ValueError("reconstructed FAISS batch has an invalid shape")
+            if not np.all(np.isfinite(matrix)):
+                raise ValueError("reconstructed FAISS batch contains non-finite values")
+            norms = np.linalg.norm(matrix, axis=1)
+            if np.any(np.abs(norms - 1.0) > 1e-5):
+                raise ValueError("reconstructed FAISS batch is not unit normalized")
+            for row_id, vector in zip(missing_rows, matrix, strict=True):
+                vector.setflags(write=False)
+                self._vector_cache[row_id] = vector
+                self._vector_cache.move_to_end(row_id)
+            while len(self._vector_cache) > self._VECTOR_CACHE_SIZE:
+                self._vector_cache.popitem(last=False)
+        return np.stack(
+            [self._reconstruct(self.row_to_track[row_id]) for row_id in rows],
+            axis=0,
+        )
+
     def _reconstruct(self, track_id: str) -> np.ndarray:
         row_id = self._track_to_row[track_id]
         cached = self._vector_cache.get(row_id)
