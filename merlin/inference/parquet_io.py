@@ -1,3 +1,22 @@
+"""Small optional DuckDB/PyArrow Parquet reader used by online assembly."""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+from pathlib import Path
+import re
+from typing import Iterable, Sequence
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validated_identifier(value: str) -> str:
+    if not _IDENTIFIER.fullmatch(value):
+        raise ValueError(f"invalid Parquet column name: {value!r}")
+    return value
+
 
 def _select_engine(requested: str) -> str:
     configured = os.environ.get("MERLIN_PARQUET_ENGINE", requested)
