@@ -263,3 +263,30 @@ def search_c2(
                 )[:max_cutoff]
             ]
     return rankings
+
+
+def release_only_rankings(
+    queries: list[dict[str, Any]],
+    release_to_tracks: dict[int, list[str]],
+    track_to_song: dict[str, str],
+    max_cutoff: int,
+    seed: int,
+) -> dict[str, list[str]]:
+    rankings: dict[str, list[str]] = {}
+    for query in queries:
+        query_id = str(query["query_track_id"])
+        if not bool(query["connectable"]):
+            rankings[query_id] = []
+            continue
+        release = int(query["release_7digitalid"])
+        query_song = track_to_song[query_id]
+        candidates = {
+            track_id
+            for track_id in release_to_tracks.get(release, [])
+            if track_id != query_id and track_to_song[track_id] != query_song
+        }
+        rankings[query_id] = sorted(
+            candidates,
+            key=lambda track_id: (stable_rank_key(seed, query_id, track_id), track_id),
+        )[:max_cutoff]
+    return rankings
