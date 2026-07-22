@@ -1,3 +1,78 @@
+            sampled += 1
+            tag = tag_similarity(left, right)
+            if audio is not None and math.isfinite(float(audio)):
+                audio_values.append(float(audio))
+            if tag is not None and math.isfinite(float(tag)) and float(tag) > 0.0:
+                tag_values.append(float(tag))
+    if not audio_values:
+        raise ValueError("Set-A threshold sample has no valid audio similarities")
+    if not tag_values:
+        raise ValueError("Set-A threshold sample has no nonzero tag similarities")
+    return {
+        "artifact_type": "weak_label_thresholds",
+        "artifact_version": WEAK_LABEL_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "fit_split": "set_a",
+        "seed": WEAK_LABEL_SEED,
+        "quantile": 0.90,
+        "quantile_method": "nearest_rank",
+        "max_sample_pairs": max_pairs,
+        "sampled_cross_artist_pairs": sampled,
+        "valid_audio_pairs": len(audio_values),
+        "nonzero_tag_pairs": len(tag_values),
+        "audio_cosine_p90": _nearest_rank(audio_values, 0.90),
+        "tag_tfidf_cosine_p90": _nearest_rank(tag_values, 0.90),
+    }
+
+
+def select_weak_positives(
+    query_track_id: str,
+    allowed_tracks: set[str],
+    track_to_artist: Mapping[str, str],
+    same_artist_tracks: Sequence[str],
+    audio_neighbors: Sequence[tuple[str, float]],
+    tag_neighbors: Sequence[tuple[str, float]],
+    same_song: Callable[[str, str], bool],
+    thresholds: Mapping[str, object],
+    *,
+    limit: int = MAX_POSITIVES_PER_QUERY,
+) -> list[dict[str, object]]:
+    """Apply the three predicates and cap with deterministic source round-robin."""
+    if limit <= 0:
+        raise ValueError("positive limit must be positive")
+    root_artist = track_to_artist.get(query_track_id)
+    audio_threshold = float(thresholds["audio_cosine_p90"])
+    tag_threshold = float(thresholds["tag_tfidf_cosine_p90"])
+    provenance: dict[str, set[str]] = {}
+
+    def eligible(track_id: str) -> bool:
+        return (
+            track_id in allowed_tracks
+            and track_id != query_track_id
+            and not same_song(query_track_id, track_id)
+        )
+
+    same_artist = sorted(
+        track_id for track_id in same_artist_tracks if eligible(track_id)
+    )
+    audio = sorted(
+        (
+            (track_id, float(score))
+            for track_id, score in audio_neighbors
+            if eligible(track_id)
+            and track_to_artist.get(track_id) != root_artist
+            and math.isfinite(float(score))
+            and float(score) >= audio_threshold
+        ),
+        key=lambda item: (-item[1], item[0]),
+    )
+    tags = sorted(
+        (
+            (track_id, float(score))
+            for track_id, score in tag_neighbors
+            if eligible(track_id)
+            and track_to_artist.get(track_id) != root_artist
+            and math.isfinite(float(score))
             and float(score) >= tag_threshold
         ),
         key=lambda item: (-item[1], item[0]),
