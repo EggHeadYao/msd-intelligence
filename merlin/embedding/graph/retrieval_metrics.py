@@ -109,3 +109,13 @@ def random_expectation(
         result[f"hit@{cutoff}"] = 1.0 - no_hit
         result[f"ndcg@{cutoff}"] = expected_dcg / ideal
     return result
+
+
+def macro_average(rows: Sequence[dict[str, float]]) -> dict[str, float]:
+    """Average equal-schema query-level metrics."""
+    if not rows:
+        return {}
+    keys = tuple(rows[0])
+    if any(tuple(row) != keys for row in rows):
+        raise ValueError("metric rows must have identical ordered keys")
+    return {key: sum(float(row[key]) for row in rows) / len(rows) for key in keys}
