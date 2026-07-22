@@ -1,3 +1,58 @@
+"""CLI to construct split-safe candidate-aware Ranker pairs."""
+
+from __future__ import annotations
+
+import argparse
+from functools import lru_cache
+import json
+from pathlib import Path
+
+from .artifact_paths import InferenceArtifactPaths
+from .catalog_data import load_catalog_context
+from .candidate_pool import load_candidate_pool_manifest
+from .loaders import load_audio_index
+from .retrieval import TagRetriever
+from .split import load_split_assignments
+from .tag_data import load_tag_idf
+from .training_pairs import write_training_pair_artifacts
+from .weak_labels import load_weak_positive_manifest, load_weak_positives
+
+
+def parse_args() -> argparse.Namespace:
+    defaults = InferenceArtifactPaths()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--candidate-pool", type=Path, default=defaults.candidate_pool)
+    parser.add_argument("--candidate-pool-manifest", type=Path, default=defaults.candidate_pool_manifest)
+    parser.add_argument("--weak-positives", type=Path, default=defaults.weak_positives)
+    parser.add_argument("--weak-positives-manifest", type=Path, default=defaults.weak_positives_manifest)
+    parser.add_argument("--thresholds", type=Path, default=defaults.weak_label_thresholds)
+    parser.add_argument("--split-assignments", type=Path, default=defaults.split_assignments)
+    parser.add_argument("--output", type=Path, default=defaults.training_pairs)
+    parser.add_argument("--manifest", type=Path, default=defaults.training_pairs_manifest)
+    parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
+    parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    paths = InferenceArtifactPaths()
+    load_candidate_pool_manifest(
+        args.candidate_pool_manifest,
+        args.candidate_pool,
+        expected_scope=args.scope,
+    )
+    load_weak_positive_manifest(
+        args.weak_positives_manifest,
+        args.weak_positives,
+        args.thresholds,
+        expected_scope=args.scope,
+    )
+    assignments = load_split_assignments(args.split_assignments)
+    positives = load_weak_positives(args.weak_positives)
+    with args.thresholds.open("r", encoding="utf-8") as stream:
+        thresholds = json.load(stream)
+    audio_threshold = float(thresholds["audio_cosine_p90"])
     tag_threshold = float(thresholds["tag_tfidf_cosine_p90"])
     audio = load_audio_index()
     catalog = load_catalog_context(paths.songs_metadata, paths.graph_edges)
