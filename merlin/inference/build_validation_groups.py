@@ -1,3 +1,78 @@
+    def cosine(left, right, left_norm, right_norm):
+        return array_dot(left, right) / (left_norm * right_norm)
+
+    def not_same_song(prefix_left: str, prefix_right: str):
+        left = F.col(f"{prefix_left}_song_id")
+        right = F.col(f"{prefix_right}_song_id")
+        return ~(left.isNotNull() & right.isNotNull() & (left == right))
+
+    spark = (
+        SparkSession.builder.appName("MerlinBuildSetBValidationGroups")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    cached = []
+    audio_pair_temporary = None
+    try:
+        def read_rows(path: Path):
+            return (
+                spark.read.parquet(_uri(path))
+                if path.suffix == ".parquet"
+                else spark.read.json(_uri(path))
+            )
+
+        assignments = read_rows(args.split_assignments).select(
+            F.col("track_id").cast("string"), F.col("split").cast("string")
+        ).persist(StorageLevel.MEMORY_AND_DISK)
+        cached.append(assignments)
+        pool = read_rows(args.candidate_pool).select(
+            F.col("query_track_id").cast("string"), "candidates"
+        ).persist(StorageLevel.MEMORY_AND_DISK)
+        cached.append(pool)
+        pool_queries = pool.select(F.col("query_track_id").alias("track_id")).distinct().persist(
+            StorageLevel.MEMORY_AND_DISK
+        )
+        cached.append(pool_queries)
+        invalid_pool_queries = (
+            pool_queries.join(assignments, "track_id", "left")
+            .where(F.col("split").isNull() | (F.col("split") != "set_b"))
+            .limit(1)
+            .count()
+        )
+        if invalid_pool_queries:
+            raise ValueError("candidate pool contains a query outside Set B")
+
+        selected_ids = assignments.where(F.col("split").isin("set_a", "set_b")).select(
+            TRACK_ID_COLUMN
+        )
+        raw = spark.read.parquet(_uri(args.raw_audio)).join(
+            F.broadcast(selected_ids), TRACK_ID_COLUMN, "inner"
+        )
+        processed = apply_frozen_preprocess(raw, feature_columns, encoder_metadata["preprocess"])
+        assembled = VectorAssembler(
+            inputCols=list(feature_columns), outputCol=FEATURES_COLUMN
+        ).transform(processed)
+        scaler = StandardScalerModel.load(_uri(scaler_model_path))
+        scaler_checks = (
+            (
+                tuple(float(value) for value in scaler.mean),
+                tuple(float(value) for value in encoder_metadata["scaler_mean"]),
+            ),
+            (
+                tuple(float(value) for value in scaler.std),
+                tuple(float(value) for value in encoder_metadata["scaler_std"]),
+            ),
+        )
+        if any(
+            len(actual) != len(expected)
+            or max(
+                (abs(left - right) for left, right in zip(actual, expected)),
+                default=0.0,
+            )
+            > 1e-12
+            for actual, expected in scaler_checks
+        ):
             raise ValueError("C1 scaler model does not match encoder metadata")
         pre_pca = scaler.transform(assembled).select(
             TRACK_ID_COLUMN,
