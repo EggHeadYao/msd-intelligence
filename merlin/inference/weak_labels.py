@@ -1,3 +1,29 @@
+"""Frozen weak-positive thresholds, selection, and artifact contracts."""
+
+from __future__ import annotations
+
+from collections import Counter
+from datetime import datetime, timezone
+import hashlib
+import json
+import math
+from pathlib import Path
+from itertools import islice
+from typing import Callable, Iterable, Iterator, Mapping, Sequence
+
+from .artifact_lineage import sha256_path
+from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
+
+
+WEAK_LABEL_VERSION = "merlin_weak_labels_v1"
+WEAK_LABEL_SEED = 42
+MAX_THRESHOLD_PAIRS = 1_000_000
+MAX_POSITIVES_PER_QUERY = 50
+POSITIVE_SOURCES = ("same_artist", "tag_derived", "audio_derived")
+PairSimilarity = Callable[[str, str], float | None]
+PairBatchSimilarity = Callable[[Sequence[tuple[str, str]]], Sequence[float | None]]
+
+
 def deterministic_cross_artist_pairs(
     track_ids: Sequence[str],
     track_to_artist: Mapping[str, str],
