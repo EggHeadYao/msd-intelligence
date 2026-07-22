@@ -1,3 +1,78 @@
+import math
+from pathlib import Path
+from typing import Any
+
+from .feature_schema import RANKER_V2_FEATURES
+from .ranker_artifacts import write_ranker_artifacts
+from .ranker_features import FILL_FEATURES
+from .ranker_features import load_raw_feature_manifest
+from .ranker_selection import REG_PARAMS, select_reg_param
+
+
+QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--train-features", type=Path, required=True)
+    parser.add_argument("--train-features-manifest", type=Path, required=True)
+    parser.add_argument("--validation-features", type=Path)
+    parser.add_argument("--validation-features-manifest", type=Path)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
+    parser.add_argument("--fixed-reg-param", type=float)
+    parser.add_argument("--parent", action="append", default=[], metavar="NAME=PATH")
+    parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
+    return parser.parse_args()
+
+
+def parse_parents(values: list[str]) -> dict[str, Path]:
+    parents = {}
+    for value in values:
+        name, separator, path = value.partition("=")
+        if not separator or not name or not path or name in parents:
+            raise ValueError(f"invalid or duplicate parent binding: {value!r}")
+        parents[name] = Path(path)
+    return parents
+
+
+def _idcg20(positive_count: int) -> float:
+    return sum(
+        1.0 / math.log2(rank + 1.0)
+        for rank in range(1, min(int(positive_count), 20) + 1)
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    if args.stage == "tuning" and args.validation_features is None:
+        raise ValueError("tuning requires validation features")
+    if args.stage == "tuning" and args.validation_features_manifest is None:
+        raise ValueError("tuning requires a validation feature manifest")
+    if args.stage == "final_retrain" and args.fixed_reg_param not in REG_PARAMS:
+        raise ValueError("final retrain requires one frozen regParam")
+    load_raw_feature_manifest(
+        args.train_features_manifest,
+        args.train_features,
+        expected_scope=args.scope,
+        expected_pair_kind="training",
+        expected_stage=args.stage,
+    )
+    if args.stage == "tuning":
+        load_raw_feature_manifest(
+            args.validation_features_manifest,
+            args.validation_features,
+            expected_scope=args.scope,
+            expected_pair_kind="validation",
+            expected_stage="tuning",
+        )
+    from pyspark.ml.classification import LogisticRegression
+    from pyspark.ml.feature import StandardScaler, VectorAssembler
+    from pyspark.ml.functions import vector_to_array
+    from pyspark import StorageLevel
+    from pyspark.sql import SparkSession, Window
+    from pyspark.sql import functions as F
+
     spark = SparkSession.builder.appName("MerlinRankerTraining").getOrCreate()
     cached = []
     try:
