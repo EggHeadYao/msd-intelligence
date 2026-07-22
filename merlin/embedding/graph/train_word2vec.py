@@ -20,6 +20,8 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, IntegerType, StringType
 
 from merlin.embedding.graph.config import (
+    GRAPH_CONTRACT_KEY,
+    GRAPH_CONTRACT_VERSION,
     NUM_WALKS,
     SEED,
     WORD2VEC_MAX_ITER,
@@ -446,6 +448,7 @@ def main() -> None:
         elapsed = time.monotonic() - started
         metadata = {
             "artifact": "merlin_c2_graph_embeddings",
+            GRAPH_CONTRACT_KEY: GRAPH_CONTRACT_VERSION,
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
             "embedding_source": "direct_word2vec_track_token",
             "input": {

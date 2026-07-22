@@ -16,7 +16,18 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from merlin.embedding.graph.config import WORD2VEC_VECTOR_SIZE
+from merlin.embedding.graph.config import (
+    GRAPH_CONTRACT_KEY,
+    GRAPH_CONTRACT_VERSION,
+    SEED,
+    WORD2VEC_MAX_ITER,
+    WORD2VEC_MAX_SENTENCE_LENGTH,
+    WORD2VEC_MIN_COUNT,
+    WORD2VEC_NUM_PARTITIONS,
+    WORD2VEC_STEP_SIZE,
+    WORD2VEC_VECTOR_SIZE,
+    WORD2VEC_WINDOW_SIZE,
+)
 
 
 INDEX_NAME = "index_graph.faiss"
@@ -69,12 +80,35 @@ def prepare_output(output: Path, overwrite: bool) -> tuple[Path, Path, Path]:
 def read_expected_dimension(output: Path, fallback: int) -> int:
     metadata_path = output / ENCODER_METADATA_NAME
     if not metadata_path.exists():
-        return fallback
+        raise FileNotFoundError(f"missing graph encoder metadata: {metadata_path}")
     with metadata_path.open("r", encoding="utf-8") as handle:
         metadata = json.load(handle)
+    require(
+        metadata.get(GRAPH_CONTRACT_KEY) == GRAPH_CONTRACT_VERSION,
+        "graph encoder contract version mismatch",
+    )
+    require(
+        metadata.get("embedding_source") == "direct_word2vec_track_token",
+        "graph embedding source mismatch",
+    )
     dimension = int(metadata["output"]["dimension"])
     require(
         dimension == fallback, "requested dimension conflicts with encoder metadata"
+    )
+    training = metadata.get("training", {})
+    expected_training = {
+        "vector_size": WORD2VEC_VECTOR_SIZE,
+        "window_size": WORD2VEC_WINDOW_SIZE,
+        "min_count": WORD2VEC_MIN_COUNT,
+        "max_iter": WORD2VEC_MAX_ITER,
+        "step_size": WORD2VEC_STEP_SIZE,
+        "num_partitions": WORD2VEC_NUM_PARTITIONS,
+        "max_sentence_length": WORD2VEC_MAX_SENTENCE_LENGTH,
+        "seed": SEED,
+    }
+    require(
+        training == expected_training,
+        "graph encoder training parameters do not match the frozen C2 contract",
     )
     return dimension
 

@@ -14,6 +14,9 @@ WORD2VEC_STEP_SIZE: float = 0.025
 WORD2VEC_NUM_PARTITIONS: int = 20
 WORD2VEC_MAX_SENTENCE_LENGTH: int = WALK_LENGTH
 
+GRAPH_CONTRACT_KEY: str = "c2_graph_version"
+GRAPH_CONTRACT_VERSION: str = "c2_graph_r10_l40_w5_i5_p20_v1"
+
 EDGE_SCHEMA: dict[str, tuple[str, str]] = {
     "track_artist": ("track", "artist"),
     "track_release": ("track", "release"),
