@@ -1,3 +1,78 @@
+            "positive_sources": [],
+            "negative_source": "random",
+            "recall_sources": [],
+        }
+        for track_id in random_selected
+    )
+    rows.sort(
+        key=lambda row: (
+            -int(row["label"]),
+            _pair_hash(query_id, str(row["candidate_track_id"]), "output"),
+        )
+    )
+    return rows, {
+        "positive_count": len(positive_ids),
+        "negative_count": negative_target,
+        "candidate_aware_count": len(candidate_selected),
+        "random_count": len(random_selected),
+        "candidate_shortage": candidate_target - len(candidate_selected),
+        "negative_shortage": 0,
+        "rejections": dict(sorted(rejection_counts.items())),
+    }
+
+
+def write_training_pair_artifacts(
+    candidate_pool_path: str | Path,
+    positives: Mapping[str, Mapping[str, frozenset[str]]],
+    assignments: Mapping[str, str],
+    output_path: str | Path,
+    manifest_path: str | Path,
+    *,
+    stage: str,
+    same_song: SameSong,
+    is_positive: IsPositive,
+    parent_paths: Mapping[str, str | Path],
+    scope: str,
+    is_positive_batch: IsPositiveBatch | None = None,
+) -> dict[str, object]:
+    if scope not in {"formal", "smoke"}:
+        raise ValueError("training-pair scope must be formal or smoke")
+    allowed = allowed_training_tracks(assignments, stage)
+    universe = tuple(sorted(allowed))
+    totals: Counter[str] = Counter()
+    rejection_totals: Counter[str] = Counter()
+    query_count = 0
+
+    def pair_rows() -> Iterator[dict[str, object]]:
+        nonlocal query_count
+        for record in iter_candidate_pool(candidate_pool_path):
+            query_id = str(record["query_track_id"])
+            if query_id not in positives or query_id not in allowed:
+                continue
+            rows, audit = construct_query_pairs(
+                query_id,
+                positives[query_id],
+                record["candidates"],
+                allowed,
+                universe,
+                same_song,
+                is_positive,
+                is_positive_batch,
+            )
+            if not rows:
+                continue
+            query_count += 1
+            for key in (
+                "positive_count",
+                "negative_count",
+                "candidate_aware_count",
+                "random_count",
+                "candidate_shortage",
+            ):
+                totals[key] += int(audit[key])
+            rejection_totals.update(audit["rejections"])
+            yield from rows
+
     output = Path(output_path)
     parquet_schema = None
     if output.suffix == ".parquet":
