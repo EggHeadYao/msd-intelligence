@@ -391,5 +391,25 @@ def main() -> None:
                     f"masking changed unrelated edge count: {edge_type}",
                 )
 
+        track_nodes = (
+            masked_edges.where(F.col("src_type") == "track")
+            .select(F.col("src_id").alias("track_id"))
+            .unionByName(
+                masked_edges.where(F.col("dst_type") == "track").select(
+                    F.col("dst_id").alias("track_id"),
+                ),
+            )
+            .distinct()
+            .count()
+        )
+        query_rows = queries.select(*QUERY_COLUMNS).orderBy("query_track_id")
+        query_ids = [
+            str(row["query_track_id"])
+            for row in query_rows.select("query_track_id").collect()
+        ]
+        query_sha256 = hashlib.sha256(
+            ("\n".join(query_ids) + "\n").encode("ascii"),
+        ).hexdigest()
+        connectable = queries.where(F.col("connectable")).count()
     finally:
         spark.stop()
