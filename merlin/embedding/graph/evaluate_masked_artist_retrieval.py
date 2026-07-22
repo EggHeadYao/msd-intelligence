@@ -205,3 +205,61 @@ def load_metadata(
             if release_value is not None and int(release_value) in query_releases:
                 release_to_tracks[int(release_value)].append(track_id)
     return track_to_song, release_to_tracks, table.num_rows
+
+
+def search_c2(
+    index: faiss.Index,
+    queries: list[dict[str, Any]],
+    track_to_row: dict[str, int],
+    row_to_track: list[str],
+    track_to_song: dict[str, str],
+    max_cutoff: int,
+    overfetch: int,
+    batch_size: int,
+) -> dict[str, list[str]]:
+    connectable = [row for row in queries if bool(row["connectable"])]
+    for row in connectable:
+        query_id = str(row["query_track_id"])
+        require(
+            query_id in track_to_row,
+            f"connectable query missing from FAISS: {query_id}",
+        )
+    rankings = {str(row["query_track_id"]): [] for row in queries}
+    search_size = min(index.ntotal, max_cutoff * overfetch)
+
+    for start in range(0, len(connectable), batch_size):
+        batch = connectable[start : start + batch_size]
+        vectors = np.stack(
+            [
+                index.reconstruct(track_to_row[str(row["query_track_id"])])
+                for row in batch
+            ],
+        ).astype(np.float32, copy=False)
+        scores, neighbors = index.search(vectors, search_size)
+        for query, query_scores, query_neighbors in zip(
+            batch,
+            scores,
+            neighbors,
+            strict=True,
+        ):
+            query_id = str(query["query_track_id"])
+            query_song = track_to_song[query_id]
+            candidates: dict[str, float] = {}
+            for score, row_id in zip(query_scores, query_neighbors, strict=True):
+                if row_id < 0:
+                    continue
+                candidate_id = row_to_track[int(row_id)]
+                if (
+                    candidate_id == query_id
+                    or track_to_song[candidate_id] == query_song
+                ):
+                    continue
+                candidates.setdefault(candidate_id, float(score))
+            rankings[query_id] = [
+                track_id
+                for track_id, _ in sorted(
+                    candidates.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )[:max_cutoff]
+            ]
+    return rankings
