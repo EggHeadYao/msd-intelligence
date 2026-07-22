@@ -6,13 +6,13 @@ import argparse
 from itertools import islice
 from pathlib import Path
 
-from .artifact_paths import (
+from ...artifact_paths import (
     SONGS_METADATA_PATH,
     SPLIT_ASSIGNMENTS_PATH,
     SPLIT_MANIFEST_PATH,
 )
-from .parquet_io import parquet_rows
-from .split import build_split_artifacts
+from ...parquet_io import parquet_rows
+from ...split import build_split_artifacts
 
 
 def parse_args() -> argparse.Namespace:

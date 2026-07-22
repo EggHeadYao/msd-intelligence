@@ -11,7 +11,7 @@ import sys
 from tempfile import TemporaryDirectory
 
 if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from merlin.inference.artifact_paths import InferenceArtifactPaths
 from merlin.inference.candidate_pool import load_candidate_pool_manifest
@@ -115,7 +115,7 @@ def main() -> None:
     from pyspark.sql import SparkSession, Window
     from pyspark.sql import functions as F
 
-    audio_module = Path(__file__).resolve().parents[1] / "embedding" / "audio"
+    audio_module = Path(__file__).resolve().parents[3] / "embedding" / "audio"
     sys.path.insert(0, str(audio_module))
     try:
         from columns import TRACK_ID_COLUMN

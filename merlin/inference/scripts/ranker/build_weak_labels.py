@@ -7,13 +7,13 @@ from itertools import islice
 import json
 from pathlib import Path
 
-from .artifact_paths import InferenceArtifactPaths
-from .catalog_data import load_catalog_context
-from .loaders import load_audio_index
-from .retrieval import TagRetriever
-from .split import load_split_assignments, load_split_manifest
-from .tag_data import load_tag_idf
-from .weak_labels import (
+from ...artifact_paths import InferenceArtifactPaths
+from ...catalog_data import load_catalog_context
+from ...loaders import load_audio_index
+from ...retrieval import TagRetriever
+from ...split import load_split_assignments, load_split_manifest
+from ...tag_data import load_tag_idf
+from ...weak_labels import (
     MAX_POSITIVES_PER_QUERY,
     fit_weak_label_thresholds,
     select_weak_positives,

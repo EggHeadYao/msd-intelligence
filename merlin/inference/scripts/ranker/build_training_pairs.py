@@ -7,15 +7,15 @@ from functools import lru_cache
 import json
 from pathlib import Path
 
-from .artifact_paths import InferenceArtifactPaths
-from .catalog_data import load_catalog_context
-from .candidate_pool import load_candidate_pool_manifest
-from .loaders import load_audio_index
-from .retrieval import TagRetriever
-from .split import load_split_assignments
-from .tag_data import load_tag_idf
-from .training_pairs import write_training_pair_artifacts
-from .weak_labels import load_weak_positive_manifest, load_weak_positives
+from ...artifact_paths import InferenceArtifactPaths
+from ...catalog_data import load_catalog_context
+from ...candidate_pool import load_candidate_pool_manifest
+from ...loaders import load_audio_index
+from ...retrieval import TagRetriever
+from ...split import load_split_assignments
+from ...tag_data import load_tag_idf
+from ...training_pairs import write_training_pair_artifacts
+from ...weak_labels import load_weak_positive_manifest, load_weak_positives
 
 
 def parse_args() -> argparse.Namespace:
