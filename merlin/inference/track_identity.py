@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
 
+from .parquet_io import parquet_rows
+
 
 @dataclass(frozen=True, slots=True)
 class SameSongFilter:
@@ -31,18 +33,6 @@ def build_track_to_song(rows: Iterable[tuple[str, str | None]]) -> dict[str, str
 
 def load_same_song_filter(path: str | Path) -> SameSongFilter:
     """Load track/song identity from prepared metadata in Arrow batches."""
-    try:
-        import pyarrow.dataset as ds
-    except ImportError as error:
-        raise RuntimeError("loading track identity requires pyarrow") from error
-
-    dataset = ds.dataset(str(path), format="parquet")
-
-    def rows():
-        for batch in dataset.to_batches(columns=["track_id", "song_id"]):
-            yield from zip(
-                batch.column(0).to_pylist(),
-                batch.column(1).to_pylist(),
-            )
-
-    return SameSongFilter(build_track_to_song(rows()))
+    return SameSongFilter(
+        build_track_to_song(parquet_rows(path, ("track_id", "song_id")))
+    )

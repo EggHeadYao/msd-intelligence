@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections import deque
-from dataclasses import dataclass
+from collections import deque, OrderedDict
+from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Callable, Mapping, Sequence
 
 from .interfaces import CandidateRetriever
@@ -16,6 +17,10 @@ def _different_song(_left: str, _right: str) -> bool:
 
 def _zero_similarity(_left: str, _right: str) -> float:
     return 0.0
+
+
+def _available(_track_id: str) -> bool:
+    return True
 
 
 def merge_candidates(groups: Sequence[Sequence[Candidate]], query_track_id: str) -> list[Candidate]:
@@ -54,6 +59,7 @@ class VectorRetriever(CandidateRetriever):
     _name: str
     search: Callable[[str, int], Sequence[tuple[str, float]]]
     same_song: Callable[[str, str], bool] = _different_song
+    query_available: Callable[[str], bool] = _available
     overfetch_factor: int = 3
 
     @property
@@ -63,6 +69,8 @@ class VectorRetriever(CandidateRetriever):
     def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
         if limit <= 0 or self.overfetch_factor <= 0:
             raise ValueError("vector recall limits must be positive")
+        if not self.is_available(query_track_id):
+            return []
         result: list[Candidate] = []
         seen: set[str] = set()
         neighbors = self.search(query_track_id, self.overfetch_factor * limit + 1)
@@ -84,6 +92,9 @@ class VectorRetriever(CandidateRetriever):
                 break
         return result
 
+    def is_available(self, query_track_id: str) -> bool:
+        return bool(self.query_available(query_track_id))
+
 
 @dataclass(slots=True)
 class BfsRetriever(CandidateRetriever):
@@ -98,6 +109,11 @@ class BfsRetriever(CandidateRetriever):
     max_depth: int = 2
     per_artist_cap: int = 10
     _name: str = "bfs"
+    _distance_cache: OrderedDict[str, dict[str, int]] = field(
+        init=False,
+        repr=False,
+        default_factory=OrderedDict,
+    )
 
     @classmethod
     def from_parquet(
@@ -134,34 +150,38 @@ class BfsRetriever(CandidateRetriever):
         target = self.track_to_artist.get(right_track_id)
         if source is None or target is None or source == target:
             return None
+        distance = self._distances(source).get(target)
+        return None if distance is None else 1.0 / (1.0 + distance)
+
+    def _distances(self, source: str) -> dict[str, int]:
+        cached = self._distance_cache.get(source)
+        if cached is not None:
+            self._distance_cache.move_to_end(source)
+            return cached
         queue = deque([(source, 0)])
-        visited = {source}
+        distances = {source: 0}
         while queue:
             artist, distance = queue.popleft()
             if distance == self.max_depth:
                 continue
             next_distance = distance + 1
             for neighbor in self.artist_neighbors.get(artist, ()):
-                if neighbor == target:
-                    return 1.0 / (1.0 + next_distance)
-                if neighbor not in visited:
-                    visited.add(neighbor)
+                if neighbor not in distances:
+                    distances[neighbor] = next_distance
                     queue.append((neighbor, next_distance))
-        return None
+        self._distance_cache[source] = distances
+        if len(self._distance_cache) > 4_096:
+            self._distance_cache.popitem(last=False)
+        return distances
+
+    def is_available(self, query_track_id: str) -> bool:
+        return query_track_id in self.track_to_artist
 
     def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
         root = self.track_to_artist.get(query_track_id)
         if root is None:
             return []
-        queue = deque([(root, 0)])
-        distances = {root: 0}
-        while queue:
-            artist, distance = queue.popleft()
-            if distance < self.max_depth:
-                for neighbor in self.artist_neighbors.get(artist, ()):
-                    if neighbor not in distances:
-                        distances[neighbor] = distance + 1
-                        queue.append((neighbor, distance + 1))
+        distances = self._distances(root)
 
         ordered: list[tuple[int, float, str]] = []
         for artist, distance in distances.items():
