@@ -401,3 +401,16 @@ def model_report(
             for value in values
         }
     return report
+
+
+def prepare_output(output: Path, overwrite: bool) -> None:
+    if output.exists() and not overwrite:
+        raise FileExistsError(
+            f"masked-artist evaluation output already exists: {output}"
+        )
+    if output.exists():
+        if output.is_dir():
+            shutil.rmtree(output)
+        else:
+            output.unlink()
+    output.mkdir(parents=True)
