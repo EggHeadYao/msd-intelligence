@@ -114,3 +114,43 @@ def _require_columns(frame: DataFrame, required: tuple[str, ...], name: str) -> 
 
 def _valid_string(column: str) -> F.Column:
     return F.col(column).isNotNull() & (F.length(F.trim(F.col(column))) > 0)
+
+
+def enrich_metadata(metadata: DataFrame) -> tuple[DataFrame, int]:
+    required = (
+        "track_id",
+        "artist_id",
+        "song_id",
+        "release_7digitalid",
+        "song_hotttnesss",
+    )
+    _require_columns(metadata, required, "songs metadata")
+    metadata = metadata.select(*required)
+
+    counts = metadata.agg(
+        F.count("*").alias("rows"),
+        F.countDistinct("track_id").alias("tracks"),
+    ).first()
+    require(counts is not None, "songs metadata is empty")
+    total_tracks = int(counts["rows"])
+    require(total_tracks == int(counts["tracks"]), "track_id is not unique")
+    require(
+        metadata.where(~_valid_string("track_id")).limit(1).count() == 0,
+        "track_id contains null or empty values",
+    )
+
+    base = metadata.withColumn(
+        "song_key",
+        F.when(
+            _valid_string("song_id"),
+            F.concat(F.lit("song:"), F.col("song_id")),
+        ).otherwise(F.concat(F.lit("track:"), F.col("track_id"))),
+    )
+    artist_stats = (
+        base.where(_valid_string("artist_id"))
+        .groupBy("artist_id")
+        .agg(
+            F.count("*").cast("int").alias("artist_track_count"),
+            F.countDistinct("song_key").cast("int").alias("artist_song_count"),
+        )
+    )
