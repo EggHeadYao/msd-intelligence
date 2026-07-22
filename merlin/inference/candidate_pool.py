@@ -1,3 +1,78 @@
+"""Persist and validate the canonical Recall-to-Ranker handoff."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+from typing import Iterable, Iterator, Mapping
+
+from .artifact_lineage import sha256_path
+from .candidate_policy import CANDIDATE_POLICY_VERSION
+from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
+from .recall import RecallPipeline
+from .types import Candidate
+
+
+CANDIDATE_POOL_VERSION = "merlin_candidate_pool_v1"
+
+
+def _candidate_payload(candidate: Candidate) -> dict[str, object]:
+    return {
+        "track_id": candidate.track_id,
+        "recall_sources": sorted(candidate.sources),
+        "recall_scores": dict(sorted(candidate.recall_scores.items())),
+        "source_ranks": dict(sorted(candidate.source_ranks.items())),
+    }
+
+
+def export_candidate_pool(
+    pipeline: RecallPipeline,
+    query_track_ids: Iterable[str],
+    output_path: str | Path,
+    manifest_path: str | Path,
+    *,
+    parent_paths: Mapping[str, str | Path],
+    scope: str = "formal",
+) -> dict[str, object]:
+    """Write one ordered candidate-list record per query and bind all parents."""
+    if scope not in {"formal", "smoke"}:
+        raise ValueError("candidate pool scope must be formal or smoke")
+    queries = tuple(query_track_ids)
+    if not queries or any(not query_id for query_id in queries):
+        raise ValueError("candidate pool queries must be non-empty")
+    if len(set(queries)) != len(queries):
+        raise ValueError("candidate pool queries must be unique")
+
+    totals = {"raw_candidates": 0, "unique_candidates": 0}
+    source_totals = {name: 0 for name in pipeline.retriever_limits}
+
+    def rows() -> Iterator[dict[str, object]]:
+        for query_id in queries:
+            candidates, audit = pipeline.recall(query_id)
+            totals["raw_candidates"] += audit.raw_candidates
+            totals["unique_candidates"] += audit.unique_candidates
+            for name, count in audit.source_counts.items():
+                source_totals[name] += count
+            yield {
+                "query_track_id": query_id,
+                "candidates": [_candidate_payload(candidate) for candidate in candidates],
+                "audit": {
+                    "raw_candidates": audit.raw_candidates,
+                    "unique_candidates": audit.unique_candidates,
+                    "duplicate_candidates": audit.duplicate_candidates,
+                    "source_available": dict(audit.source_available),
+                    "source_counts": dict(audit.source_counts),
+                    "source_shortages": dict(audit.source_shortages),
+                },
+            }
+
+    output = Path(output_path)
+    parquet_schema = None
+    if output.suffix == ".parquet":
+        import pyarrow as pa
+
+        parquet_schema = pa.schema((
             pa.field("query_track_id", pa.string(), nullable=False),
             pa.field("candidates", pa.list_(pa.struct((
                 pa.field("track_id", pa.string(), nullable=False),
