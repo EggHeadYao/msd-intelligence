@@ -1,3 +1,78 @@
+    scope: str,
+    pair_kind: str = "training",
+    stage: str = "tuning",
+) -> dict[str, object]:
+    if scope not in {"formal", "smoke"}:
+        raise ValueError("raw-feature scope must be formal or smoke")
+    if pair_kind not in {"training", "validation"}:
+        raise ValueError("raw-feature pair kind must be training or validation")
+    if stage not in {"tuning", "final_retrain"}:
+        raise ValueError("raw-feature stage must be tuning or final_retrain")
+    counts: Counter[str] = Counter()
+
+    def pair_rows() -> Iterator[Mapping[str, object]]:
+        if pair_kind == "training":
+            yield from read_row_artifact(pair_path)
+            return
+        for values in parquet_rows(
+            pair_path,
+            (
+                "query_track_id",
+                "candidate_track_id",
+                "label",
+                "query_group",
+                "eligible_positive_count",
+                "recall_sources",
+            ),
+            order_by=("query_group", "query_track_id", "candidate_track_id"),
+        ):
+            query_id, candidate_id, label, query_group, positive_count, recall_sources = values
+            yield {
+                "query_track_id": query_id,
+                "candidate_track_id": candidate_id,
+                "label": label,
+                "query_group": query_group,
+                "eligible_positive_count": positive_count,
+                "positive_sources": [],
+                "negative_source": None,
+                "recall_sources": list(recall_sources or ()),
+            }
+
+    def rows() -> Iterator[dict[str, object]]:
+        for query_id, grouped in groupby(
+            pair_rows(), key=lambda pair: str(pair["query_track_id"])
+        ):
+            pairs = list(grouped)
+            candidates = [Candidate(str(pair["candidate_track_id"])) for pair in pairs]
+            compute_many = getattr(computer, "compute_raw_many", None)
+            raw_rows = (
+                compute_many(query_id, candidates)
+                if compute_many is not None
+                else [computer.compute_raw(query_id, candidate) for candidate in candidates]
+            )
+            for pair, candidate, raw in zip(pairs, candidates, raw_rows, strict=True):
+                label = int(pair["label"])
+                if label not in {0, 1}:
+                    raise ValueError("training pair label must be binary")
+                counts["rows"] += 1
+                counts[f"label_{label}"] += 1
+                yield {
+                    "query_track_id": query_id,
+                    "candidate_track_id": candidate.track_id,
+                    "label": label,
+                    "positive_sources": pair.get("positive_sources", []),
+                    "negative_source": pair.get("negative_source"),
+                    "recall_sources": pair.get("recall_sources", []),
+                    **(
+                        {"query_group": pair["query_group"]}
+                        if "query_group" in pair
+                        else {}
+                    ),
+                    **(
+                        {"eligible_positive_count": int(pair["eligible_positive_count"])}
+                        if "eligible_positive_count" in pair
+                        else {}
+                    ),
                     **raw,
                 }
 
