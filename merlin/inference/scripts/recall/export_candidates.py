@@ -8,14 +8,14 @@ from pathlib import Path
 
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
-from .artifact_paths import (
+from ...artifact_paths import (
     CANDIDATE_POOL_MANIFEST_PATH,
     CANDIDATE_POOL_PATH,
     InferenceArtifactPaths,
 )
-from .candidate_pool import export_candidate_pool
-from .split import load_split_assignments, load_split_manifest
-from .recall_factory import load_recall_pipeline
+from ...candidate_pool import export_candidate_pool
+from ...split import load_split_assignments, load_split_manifest
+from ...recall_factory import load_recall_pipeline
 from .validate_recall import read_queries
 
 
