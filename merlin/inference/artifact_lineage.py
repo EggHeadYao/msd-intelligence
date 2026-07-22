@@ -12,6 +12,16 @@ FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
 FAISS_ARTIFACT_TYPE = "merlin_faiss_index"
 
 
+def artifact_size_bytes(path: str | Path) -> int:
+    """Return the total payload bytes for one file or artifact directory."""
+    root = Path(path)
+    if not root.exists():
+        raise FileNotFoundError(f"artifact does not exist: {root}")
+    if root.is_file():
+        return root.stat().st_size
+    return sum(item.stat().st_size for item in root.rglob("*") if item.is_file())
+
+
 def sha256_path(path: str | Path) -> str:
     """Hash one file or a directory using relative names and file contents."""
     root = Path(path)

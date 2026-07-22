@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping, Sequence
 
-from .artifact_lineage import sha256_path
+from .artifact_lineage import artifact_size_bytes, sha256_path
 from .candidate_pool import iter_candidate_pool
 from .jsonl_artifact import write_json_atomic, write_row_artifact
 
@@ -304,6 +304,7 @@ def write_training_pair_artifacts(
         "pairs_file": output.name,
         "storage_format": "parquet" if output.suffix == ".parquet" else "jsonl_gzip",
         "pairs_sha256": sha256_path(output),
+        "pairs_size_bytes": artifact_size_bytes(output),
         "parent_hashes": {
             name: sha256_path(path) for name, path in sorted(parent_paths.items())
         },

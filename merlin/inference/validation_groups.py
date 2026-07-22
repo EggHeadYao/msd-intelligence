@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from .artifact_lineage import sha256_path
+from .artifact_lineage import artifact_size_bytes, sha256_path
 from .jsonl_artifact import write_json_atomic
 
 
@@ -228,8 +228,10 @@ def write_validation_group_manifest(
         "thresholds_sha256": sha256_path(thresholds_path),
         "positives_path": Path(positives_path).name,
         "positives_sha256": sha256_path(positives_path),
+        "positives_size_bytes": artifact_size_bytes(positives_path),
         "validation_pairs_path": Path(validation_pairs_path).name,
         "validation_pairs_sha256": sha256_path(validation_pairs_path),
+        "validation_pairs_size_bytes": artifact_size_bytes(validation_pairs_path),
         "parent_hashes": {
             name: sha256_path(path) for name, path in sorted(parent_paths.items())
         },
