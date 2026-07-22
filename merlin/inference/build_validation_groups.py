@@ -1,3 +1,78 @@
+        cached.append(threshold_sample)
+        threshold_sample_count = threshold_sample.count()
+        if threshold_sample_count == 0:
+            raise ValueError("Set-A pre-PCA threshold sample is empty")
+        percentiles = threshold_sample.select(
+            F.percentile_approx("pre_pca_cosine", [0.5, 0.9], 1_000_000).alias("values")
+        ).first()["values"]
+        acoustic_p50, acoustic_p90 = (float(value) for value in percentiles)
+        if not math.isfinite(acoustic_p50) or not math.isfinite(acoustic_p90):
+            raise ValueError("Set-A pre-PCA thresholds are not finite")
+        if acoustic_p90 < acoustic_p50:
+            raise ValueError("Set-A pre-PCA thresholds are not monotonic")
+
+        set_b = vectors.where(F.col("split") == "set_b").drop("split").persist(
+            StorageLevel.MEMORY_AND_DISK
+        )
+        cached.append(set_b)
+        query_b = set_b.join(F.broadcast(pool_queries), TRACK_ID_COLUMN, "inner")
+        if query_b.limit(1).count() == 0:
+            raise ValueError("candidate pool has no Set-B query with a C1 vector")
+
+        b_artists = set_b.where(
+            F.col("artist_id").isNotNull() & (F.length("artist_id") > 0)
+        ).select("artist_id").distinct()
+        idf_rows = [(term, float(value) ** 2) for term, value in sorted(tag_idf.items())]
+        idf = spark.createDataFrame(idf_rows, ("term", "idf_squared"))
+        terms = (
+            spark.read.parquet(_uri(args.graph_edges / "edge_type=artist_term"))
+            .select(F.col("src_id").cast("string").alias("artist_id"), F.col("dst_id").cast("string").alias("term"))
+            .distinct()
+            .join(F.broadcast(b_artists), "artist_id", "inner")
+            .join(F.broadcast(idf), "term", "inner")
+            .persist(StorageLevel.MEMORY_AND_DISK)
+        )
+        cached.append(terms)
+        norms = terms.groupBy("artist_id").agg(
+            F.sqrt(F.sum("idf_squared")).alias("tag_norm")
+        ).persist(StorageLevel.MEMORY_AND_DISK)
+        cached.append(norms)
+        left_terms = terms.select(
+            F.col("artist_id").alias("q_artist_id"), "term", "idf_squared"
+        )
+        right_terms = terms.select(
+            F.col("artist_id").alias("c_artist_id"), "term"
+        )
+        tag_scores = (
+            left_terms.join(right_terms, "term", "inner")
+            .where(F.col("q_artist_id") != F.col("c_artist_id"))
+            .groupBy("q_artist_id", "c_artist_id")
+            .agg(F.sum("idf_squared").alias("tag_numerator"))
+            .join(norms.select(F.col("artist_id").alias("q_artist_id"), F.col("tag_norm").alias("q_norm")), "q_artist_id")
+            .join(norms.select(F.col("artist_id").alias("c_artist_id"), F.col("tag_norm").alias("c_norm")), "c_artist_id")
+            .withColumn("tag_tfidf_cosine", F.col("tag_numerator") / (F.col("q_norm") * F.col("c_norm")))
+            .select("q_artist_id", "c_artist_id", "tag_tfidf_cosine")
+            .localCheckpoint(eager=True)
+        )
+        cached.append(tag_scores)
+        tagged_artists = norms.select("artist_id")
+
+        def q_columns(frame):
+            return frame.select(
+                F.col(TRACK_ID_COLUMN).alias("query_track_id"),
+                F.col("song_id").alias("q_song_id"),
+                F.col("artist_id").alias("q_artist_id"),
+                F.col("release_id").alias("q_release_id"),
+                F.col("pre_pca_vector").alias("q_vector"),
+                F.col("pre_pca_norm").alias("q_norm"),
+            )
+
+        def c_columns(frame):
+            return frame.select(
+                F.col(TRACK_ID_COLUMN).alias("candidate_track_id"),
+                F.col("song_id").alias("c_song_id"),
+                F.col("artist_id").alias("c_artist_id"),
+                F.col("release_id").alias("c_release_id"),
                 F.col("pre_pca_vector").alias("c_vector"),
                 F.col("pre_pca_norm").alias("c_norm"),
             )
