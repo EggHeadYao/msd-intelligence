@@ -129,25 +129,34 @@ def main() -> None:
         ]
 
     def records():
-        for query_id in queries:
-            split = assignments[query_id]
-            artist = tag.track_to_artist.get(query_id)
-            positives = select_weak_positives(
-                query_id,
-                allowed_by_split[split],
-                tag.track_to_artist,
-                tag.artist_tracks.get(artist, ()) if artist else (),
-                audio.search(query_id, args.positive_neighbor_limit),
-                tag_neighbors(query_id),
-                same_song,
-                thresholds,
-                limit=MAX_POSITIVES_PER_QUERY,
-            )
-            yield {
-                "query_track_id": query_id,
-                "split": split,
-                "positives": positives,
-            }
+        for start in range(0, len(queries), QUERY_BATCH_SIZE):
+            batch = queries[start : start + QUERY_BATCH_SIZE]
+            audio_neighbors = audio_neighbor_batches(batch)
+            for query_id, neighbors in zip(batch, audio_neighbors, strict=True):
+                split = assignments[query_id]
+                artist = tag.track_to_artist.get(query_id)
+                positives = select_weak_positives(
+                    query_id,
+                    allowed_by_split[split],
+                    tag.track_to_artist,
+                    tag.artist_tracks.get(artist, ()) if artist else (),
+                    neighbors,
+                    tag_neighbors(query_id),
+                    same_song,
+                    thresholds,
+                    limit=MAX_POSITIVES_PER_QUERY,
+                )
+                yield {
+                    "query_track_id": query_id,
+                    "split": split,
+                    "positives": positives,
+                }
+            processed = min(start + len(batch), len(queries))
+            if processed == len(queries) or processed % (10 * QUERY_BATCH_SIZE) == 0:
+                print(
+                    f"weak_labels_progress queries={processed}/{len(queries)}",
+                    flush=True,
+                )
 
     scope = "smoke" if args.limit_queries or split_manifest["scope"] == "smoke" else "formal"
     manifest = write_weak_positive_artifacts(
