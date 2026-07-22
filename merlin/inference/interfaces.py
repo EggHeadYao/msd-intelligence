@@ -32,10 +32,3 @@ class Ranker(Protocol):
     def feature_schema_version(self) -> str: ...
 
     def score(self, features: Mapping[str, float]) -> float: ...
-
-
-class RedundancyModel(Protocol):
-    """Compute the MMR redundancy between two candidate tracks."""
-
-    def similarity(self, left_track_id: str, right_track_id: str) -> float: ...
-

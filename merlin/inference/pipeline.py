@@ -7,7 +7,6 @@ from typing import Mapping, Sequence
 
 from .candidate_policy import validate_canonical_policy
 from .interfaces import CandidateRetriever, PairFeatureComputer, Ranker
-from .mmr import ScoredCandidate
 from .recall import recall_candidates
 from .types import Candidate, RecallAudit, Recommendation
 
@@ -59,20 +58,20 @@ class MerlinPipeline:
         scored = []
         for candidate in candidates:
             features = dict(self.feature_computer.compute(query_track_id, candidate))
-            scored.append(ScoredCandidate(candidate, self.ranker.score(features), features))
+            scored.append((candidate, self.ranker.score(features), features))
         ranked = sorted(
             scored,
-            key=lambda item: (-item.relevance_score, item.candidate.track_id),
+            key=lambda item: (-item[1], item[0].track_id),
         )[:final_limit]
         return [
             Recommendation(
-                track_id=item.candidate.track_id,
-                relevance_score=item.relevance_score,
+                track_id=candidate.track_id,
+                relevance_score=relevance_score,
                 rank=rank,
-                sources=item.candidate.sources,
-                features=item.features,
+                sources=candidate.sources,
+                features=features,
             )
-            for rank, item in enumerate(ranked, start=1)
+            for rank, (candidate, relevance_score, features) in enumerate(ranked, start=1)
         ]
 
     def recall(self, query_track_id: str) -> tuple[list[Candidate], RecallAudit]:
