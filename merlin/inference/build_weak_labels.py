@@ -1,3 +1,74 @@
+"""Fit Set-A weak-label thresholds and build capped positive lists."""
+
+from __future__ import annotations
+
+import argparse
+from itertools import islice
+import json
+from pathlib import Path
+
+from .artifact_paths import InferenceArtifactPaths
+from .catalog_data import load_catalog_context
+from .loaders import load_audio_index
+from .retrieval import TagRetriever
+from .split import load_split_assignments, load_split_manifest
+from .tag_data import load_tag_idf
+from .weak_labels import (
+    MAX_POSITIVES_PER_QUERY,
+    fit_weak_label_thresholds,
+    select_weak_positives,
+    write_weak_positive_artifacts,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    defaults = InferenceArtifactPaths()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--split-assignments", type=Path, default=defaults.split_assignments)
+    parser.add_argument("--split-manifest", type=Path, default=defaults.split_manifest)
+    parser.add_argument("--thresholds", type=Path, default=defaults.weak_label_thresholds)
+    parser.add_argument("--positives", type=Path, default=defaults.weak_positives)
+    parser.add_argument("--manifest", type=Path, default=defaults.weak_positives_manifest)
+    parser.add_argument("--query-splits", default="set_a")
+    parser.add_argument("--max-threshold-pairs", type=int, default=1_000_000)
+    parser.add_argument("--positive-neighbor-limit", type=int, default=1_001)
+    parser.add_argument("--limit-queries", type=int, default=0)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.max_threshold_pairs <= 0 or args.positive_neighbor_limit <= 0:
+        raise ValueError("weak-label pair and neighbor limits must be positive")
+    if args.limit_queries < 0:
+        raise ValueError("limit-queries must be non-negative")
+    paths = InferenceArtifactPaths()
+    split_manifest = load_split_manifest(args.split_manifest, args.split_assignments)
+    assignments = load_split_assignments(args.split_assignments)
+    set_a = tuple(sorted(
+        track_id for track_id, split in assignments.items() if split == "set_a"
+    ))
+    if not set_a:
+        raise ValueError("split has no Set-A tracks for threshold fitting")
+    query_splits = {value.strip() for value in args.query_splits.split(",") if value.strip()}
+    if not query_splits.issubset({"set_a", "set_b", "set_c", "remaining"}):
+        raise ValueError("query-splits contains an unknown split")
+
+    audio = load_audio_index()
+    catalog = load_catalog_context(paths.songs_metadata, paths.graph_edges)
+    same_song = catalog.same_song
+    tag = TagRetriever.from_data(
+        catalog.tag_data,
+        idf_values=load_tag_idf(
+            paths.tag_idf,
+            expected_graph_edges_path=paths.graph_edges,
+        ),
+        same_song=same_song,
+    )
+    thresholds = fit_weak_label_thresholds(
+        set_a,
+        tag.track_to_artist,
+        audio.similarity,
         tag.pair_score,
         max_pairs=args.max_threshold_pairs,
         audio_batch_similarity=audio.pair_similarities,
