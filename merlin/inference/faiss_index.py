@@ -49,8 +49,13 @@ class FaissTrackIndex:
         return score
 
     def _reconstruct(self, track_id: str) -> np.ndarray:
+        row_id = self._track_to_row[track_id]
+        cached = self._vector_cache.get(row_id)
+        if cached is not None:
+            self._vector_cache.move_to_end(row_id)
+            return cached
         vector = np.asarray(
-            self.index.reconstruct(self._track_to_row[track_id]),
+            self.index.reconstruct(row_id),
             dtype=np.float32,
         )
         if vector.shape != (self.dimension,) or not np.all(np.isfinite(vector)):
