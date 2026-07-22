@@ -431,5 +431,37 @@ def main() -> None:
             args.metadata.resolve(),
             prepared / "songs_metadata.parquet",
         )
+
+        payload = {
+            "experiment_version": EXPERIMENT_VERSION,
+            "seed": args.seed,
+            "requested_queries": args.queries,
+            "query_count": len(query_ids),
+            "query_track_ids_sha256": query_sha256,
+            "strata": {
+                "order": list(STRATA),
+                "available_artists": available,
+                "selected_queries": quotas,
+            },
+            "source": {
+                "metadata": str(args.metadata.resolve()),
+                "graph": str(args.graph.resolve()),
+            },
+            "counts": {
+                "catalog_tracks": total_tracks,
+                "positive_pairs": positive_rows,
+                "connectable_queries": connectable,
+                "unconnectable_queries": args.queries - connectable,
+                "masked_graph_track_nodes": track_nodes,
+                "edges_before": before_counts,
+                "edges_after": after_counts,
+            },
+            "mask": {
+                "edge_type": "track_artist",
+                "forward_edge_removed": True,
+                "reverse_adjacency_rebuilt_from_masked_graph": True,
+            },
+        }
+        _write_json(staging / "experiment_config.json", payload)
     finally:
         spark.stop()
