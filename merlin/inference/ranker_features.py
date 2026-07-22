@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Iterator, Mapping
 
-from .artifact_lineage import sha256_path
+from .artifact_lineage import artifact_size_bytes, sha256_path
 from .feature_schema import RANKER_V2_SCHEMA_VERSION
 from .features_v2 import RankerV2FeatureComputer
 from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
@@ -17,7 +17,7 @@ from .parquet_io import parquet_rows
 from .types import Candidate
 
 
-RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v1"
+RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v2"
 RAW_BASE_FEATURES = (
     "cos_audio",
     "cos_graph",
@@ -103,7 +103,7 @@ def export_raw_pair_features(
                 "eligible_positive_count",
                 "recall_sources",
             ),
-            order_by=("query_group", "query_track_id", "candidate_track_id"),
+            order_by=("query_track_id", "candidate_track_id", "query_group"),
         ):
             query_id, candidate_id, label, query_group, positive_count, recall_sources = values
             yield {
@@ -141,19 +141,6 @@ def export_raw_pair_features(
                     "query_track_id": query_id,
                     "candidate_track_id": candidate.track_id,
                     "label": label,
-                    "positive_sources": pair.get("positive_sources", []),
-                    "negative_source": pair.get("negative_source"),
-                    "recall_sources": pair.get("recall_sources", []),
-                    **(
-                        {"query_group": pair["query_group"]}
-                        if "query_group" in pair
-                        else {}
-                    ),
-                    **(
-                        {"eligible_positive_count": int(pair["eligible_positive_count"])}
-                        if "eligible_positive_count" in pair
-                        else {}
-                    ),
                     **raw,
                 }
 
@@ -205,14 +192,19 @@ def export_raw_pair_features(
         fields = [
             pa.field("query_track_id", pa.string(), nullable=False),
             pa.field("candidate_track_id", pa.string(), nullable=False),
-            pa.field("label", pa.int64(), nullable=False),
-            pa.field("positive_sources", pa.list_(pa.string()), nullable=False),
-            pa.field("negative_source", pa.string()),
-            pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
-            pa.field("query_group", pa.string()),
-            pa.field("eligible_positive_count", pa.int64()),
         ]
-        fields.extend(pa.field(name, pa.float64()) for name in RAW_BASE_FEATURES)
+        if pair_kind == "training":
+            fields.append(pa.field("label", pa.int64(), nullable=False))
+        else:
+            fields.extend((
+                pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
+                pa.field("validation_groups", pa.list_(pa.struct((
+                    pa.field("query_group", pa.string(), nullable=False),
+                    pa.field("label", pa.int64(), nullable=False),
+                    pa.field("eligible_positive_count", pa.int64(), nullable=False),
+                ))), nullable=False),
+            ))
+        fields.extend(pa.field(name, pa.float32()) for name in RAW_BASE_FEATURES)
         parquet_schema = pa.schema(fields)
     row_count = write_row_artifact(rows(), output, parquet_schema=parquet_schema)
     if row_count == 0:
@@ -224,6 +216,11 @@ def export_raw_pair_features(
         "scope": scope,
         "pair_kind": pair_kind,
         "stage": stage,
+        "row_layout": (
+            "one_row_per_training_pair"
+            if pair_kind == "training"
+            else "one_feature_row_per_pair_with_nested_validation_groups"
+        ),
         "feature_schema_version": RANKER_V2_SCHEMA_VERSION,
         "raw_feature_order": list(RAW_BASE_FEATURES),
         "row_count": row_count,
@@ -231,6 +228,7 @@ def export_raw_pair_features(
         "output_file": output.name,
         "storage_format": "parquet" if output.suffix == ".parquet" else "jsonl_gzip",
         "output_sha256": sha256_path(output),
+        "output_size_bytes": artifact_size_bytes(output),
         "parent_hashes": {
             name: sha256_path(path) for name, path in sorted(parent_paths.items())
         },
