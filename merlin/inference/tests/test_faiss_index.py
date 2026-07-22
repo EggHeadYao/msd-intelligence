@@ -47,7 +47,3 @@ class FaissTrackIndexTest(unittest.TestCase):
 
         with self.assertRaisesRegex(KeyError, "not in FAISS mapping"):
             index.search("unknown", 1)
-
-
-if __name__ == "__main__":
-    unittest.main()

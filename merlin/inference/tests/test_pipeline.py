@@ -72,7 +72,3 @@ class PipelineTest(unittest.TestCase):
 
         self.assertEqual([item.track_id for item in result], ["best", "other"])
         self.assertEqual([item.rank for item in result], [1, 2])
-
-
-if __name__ == "__main__":
-    unittest.main()

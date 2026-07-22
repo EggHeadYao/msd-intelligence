@@ -51,7 +51,3 @@ class TagRetrievalTest(unittest.TestCase):
 
         self.assertEqual([item.track_id for item in candidates], ["b1", "c1"])
         self.assertEqual([item.source_ranks["tag"] for item in candidates], [1, 2])
-
-
-if __name__ == "__main__":
-    unittest.main()

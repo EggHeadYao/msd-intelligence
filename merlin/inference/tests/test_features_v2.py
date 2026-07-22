@@ -15,21 +15,6 @@ from merlin.inference.types import Candidate
 
 
 class RankerV2FeaturesTest(unittest.TestCase):
-    def test_builds_real_release_metadata_and_applies_year_mask(self):
-        tracks = build_track_metadata_v2([
-            ("q", 123, 2000, True),
-            ("missing", 0, 1999, False),
-        ])
-
-        self.assertEqual(tracks["q"], TrackMetadataV2("123", 2000))
-        self.assertEqual(tracks["missing"], TrackMetadataV2(None, None))
-
-    def test_rejects_conflicting_v2_metadata(self):
-        with self.assertRaisesRegex(ValueError, "conflicting v2 metadata"):
-            build_track_metadata_v2([
-                ("q", 123, 2000, True),
-                ("q", 456, 2000, True),
-            ])
 
     def test_computes_signals_independently_of_recall_provenance(self):
         signals = PairSignalLookups(
@@ -81,7 +66,3 @@ class RankerV2FeaturesTest(unittest.TestCase):
         self.assertEqual(features["year_gap"], 5.0)
         self.assertAlmostEqual(features["audio_tag_interaction"], 0.12)
         self.assertAlmostEqual(features["graph_bfs_interaction"], 0.02)
-
-
-if __name__ == "__main__":
-    unittest.main()

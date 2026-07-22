@@ -70,7 +70,3 @@ class LogisticRankerTest(unittest.TestCase):
         self.assertEqual(margin, 2.0)
         self.assertGreater(display, 0.5)
         self.assertLess(display, 1.0)
-
-
-if __name__ == "__main__":
-    unittest.main()

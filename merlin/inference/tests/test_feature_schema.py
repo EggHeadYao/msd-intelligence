@@ -26,7 +26,3 @@ class FeatureSchemaTest(unittest.TestCase):
         forbidden = {"candidate_popularity", "from_audio", "from_graph", "from_bfs", "from_tag"}
 
         self.assertTrue(forbidden.isdisjoint(RANKER_V2_FEATURES))
-
-
-if __name__ == "__main__":
-    unittest.main()

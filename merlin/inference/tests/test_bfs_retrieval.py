@@ -70,7 +70,3 @@ class BfsRetrievalTest(unittest.TestCase):
     def test_rejects_conflicting_track_artist_rows(self):
         with self.assertRaisesRegex(ValueError, "multiple artists"):
             build_bfs_data([("q", "a"), ("q", "b")], [])
-
-
-if __name__ == "__main__":
-    unittest.main()
