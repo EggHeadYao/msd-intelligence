@@ -463,5 +463,18 @@ def main() -> None:
             },
         }
         _write_json(staging / "experiment_config.json", payload)
+
+        metadata.unpersist()
+        positives.unpersist()
+        masked_edges.unpersist()
+        edges.unpersist()
+        queries.unpersist()
     finally:
         spark.stop()
+
+    staging.rename(args.output.resolve())
+    print(f"Masked-artist input written to {args.output.resolve()}")
+
+
+if __name__ == "__main__":
+    main()
