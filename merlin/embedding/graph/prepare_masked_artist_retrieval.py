@@ -371,5 +371,25 @@ def main() -> None:
             "positive pair count does not match the query manifest",
         )
 
+        edges = spark.read.parquet(spark_path(args.graph)).persist(
+            StorageLevel.MEMORY_AND_DISK,
+        )
+        before_counts = edge_counts(edges)
+        masked_edges = mask_track_artist_edges(edges, queries).persist(
+            StorageLevel.MEMORY_AND_DISK,
+        )
+        after_counts = edge_counts(masked_edges)
+        require(
+            before_counts.get("track_artist", 0) - after_counts.get("track_artist", 0)
+            == args.queries,
+            "masking did not remove exactly one track_artist edge per query",
+        )
+        for edge_type, count in before_counts.items():
+            if edge_type != "track_artist":
+                require(
+                    after_counts.get(edge_type) == count,
+                    f"masking changed unrelated edge count: {edge_type}",
+                )
+
     finally:
         spark.stop()
