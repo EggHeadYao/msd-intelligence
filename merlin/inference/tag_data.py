@@ -9,6 +9,14 @@ import math
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
+from .artifact_lineage import sha256_path
+from .parquet_io import parquet_rows
+
+
+TAG_IDF_ARTIFACT_TYPE = "artist_term_idf"
+TAG_IDF_MANIFEST_VERSION = "merlin_artist_term_idf_v1"
+TAG_IDF_FORMULA = "log((artist_count + 1) / (artist_frequency + 1)) + 1"
+
 
 @dataclass(frozen=True, slots=True)
 class TagData:
@@ -25,6 +33,7 @@ def artist_tag_cosine(
     left_artist: str,
     right_artist: str,
     idf_values: Mapping[str, float] | None = None,
+    norms: Mapping[str, float] | None = None,
 ) -> float | None:
     """Compute exact binary TF-IDF cosine for one artist pair."""
     left = data.artist_terms.get(left_artist)
@@ -42,8 +51,16 @@ def artist_tag_cosine(
         return math.log((1.0 + len(data.artist_terms)) / (1.0 + frequency)) + 1.0
 
     numerator = sum(idf(term) ** 2 for term in left & right)
-    left_norm = math.sqrt(sum(idf(term) ** 2 for term in left))
-    right_norm = math.sqrt(sum(idf(term) ** 2 for term in right))
+    left_norm = (
+        float(norms[left_artist])
+        if norms is not None and left_artist in norms
+        else math.sqrt(sum(idf(term) ** 2 for term in left))
+    )
+    right_norm = (
+        float(norms[right_artist])
+        if norms is not None and right_artist in norms
+        else math.sqrt(sum(idf(term) ** 2 for term in right))
+    )
     if left_norm <= 0.0 or right_norm <= 0.0:
         return None
     return numerator / (left_norm * right_norm)
@@ -95,34 +112,30 @@ def load_tag_data(
     return build_tag_data(songs, terms)
 
 
-def _graph_edge_rows(path: str | Path, edge_type: str) -> Iterable[tuple[str, str]]:
-    try:
-        import pyarrow.dataset as ds
-    except ImportError as error:
-        raise RuntimeError("loading Tag graph edges requires pyarrow") from error
-    dataset = ds.dataset(str(path), format="parquet", partitioning="hive")
-    scanner = dataset.scanner(
-        columns=["src_id", "dst_id"],
-        filter=ds.field("edge_type") == edge_type,
+def load_artist_term_data(
+    graph_edges_path: str | Path,
+    *,
+    parquet_engine: str = "auto",
+) -> TagData:
+    """Load only canonical artist-term edges for the frozen IDF artifact."""
+    rows = parquet_rows(
+        graph_edges_path,
+        ("src_id", "dst_id"),
+        edge_type="artist_term",
+        engine=parquet_engine,
     )
-    for batch in scanner.to_batches():
-        yield from zip(batch.column(0).to_pylist(), batch.column(1).to_pylist())
+    return build_tag_data((), rows)
+
+
+def _graph_edge_rows(path: str | Path, edge_type: str) -> Iterable[tuple[str, str]]:
+    yield from parquet_rows(path, ("src_id", "dst_id"), edge_type=edge_type)
 
 
 def _parquet_rows(
     path: str | Path,
     columns: tuple[str, str],
 ) -> Iterable[tuple[str, str]]:
-    try:
-        import pyarrow.dataset as ds
-    except ImportError as error:
-        raise RuntimeError("loading tag Parquet data requires pyarrow") from error
-
-    dataset = ds.dataset(str(path), format="parquet")
-    for batch in dataset.to_batches(columns=list(columns)):
-        left = batch.column(0).to_pylist()
-        right = batch.column(1).to_pylist()
-        yield from zip(left, right)
+    yield from parquet_rows(path, columns)
 
 
 def find_similar_artists(
@@ -132,6 +145,7 @@ def find_similar_artists(
     *,
     max_term_artists: int = 5_000,
     idf_values: Mapping[str, float] | None = None,
+    norms: Mapping[str, float] | None = None,
 ) -> list[tuple[str, float]]:
     """Rank artists by cosine similarity over binary TF-IDF tag vectors."""
     if top_k <= 0 or max_term_artists <= 0:
@@ -155,7 +169,11 @@ def find_similar_artists(
         for term in query_terms
         if len(data.term_artists.get(term, ())) <= max_term_artists
     ]
-    query_norm = math.sqrt(sum(idf(term) ** 2 for term in query_terms))
+    query_norm = (
+        float(norms[artist_id])
+        if norms is not None and artist_id in norms
+        else math.sqrt(sum(idf(term) ** 2 for term in query_terms))
+    )
     numerators: dict[str, float] = defaultdict(float)
     for term in usable_terms:
         weight = idf(term) ** 2
@@ -165,14 +183,19 @@ def find_similar_artists(
 
     scored = []
     for candidate, numerator in numerators.items():
-        candidate_norm = math.sqrt(
-            sum(idf(term) ** 2 for term in data.artist_terms[candidate])
+        candidate_norm = (
+            float(norms[candidate])
+            if norms is not None and candidate in norms
+            else math.sqrt(sum(idf(term) ** 2 for term in data.artist_terms[candidate]))
         )
         if candidate_norm > 0.0:
             scored.append((candidate, numerator / (query_norm * candidate_norm)))
     return sorted(scored, key=lambda item: (-item[1], item[0]))[:top_k]
 
 
+def compute_artist_tag_norms(
+    data: TagData,
+    idf_values: Mapping[str, float] | None = None,
 ) -> dict[str, float]:
     """Precompute exact TF-IDF norms shared by recall and pair scoring."""
     artist_count = len(data.artist_terms)
