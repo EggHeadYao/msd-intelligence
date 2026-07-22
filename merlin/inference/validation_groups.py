@@ -1,3 +1,78 @@
+            block = queries[start : start + block_size]
+            query_matrix = normalized_matrix(block, "q_vector", "q_norm")
+            mask = query_matrix @ candidate_matrix.T >= threshold
+            query_tracks = np.asarray(
+                [str(row["query_track_id"]) for row in block], dtype=object
+            )
+            query_songs = np.asarray([row.get("q_song_id") for row in block], dtype=object)
+            query_artists = np.asarray(
+                [str(row["q_artist_id"]) for row in block], dtype=object
+            )
+            query_releases = np.asarray([row["q_release_id"] for row in block], dtype=object)
+            mask &= query_tracks[:, None] != candidate_tracks[None, :]
+            mask &= query_artists[:, None] != candidate_artists[None, :]
+            mask &= query_releases[:, None] != candidate_releases[None, :]
+            same_song = (
+                (query_songs[:, None] != None)  # noqa: E711
+                & (candidate_songs[None, :] != None)  # noqa: E711
+                & (query_songs[:, None] == candidate_songs[None, :])
+            )
+            mask &= ~same_song
+            query_positions, candidate_positions = np.nonzero(mask)
+            if not len(query_positions):
+                continue
+            writer.write_table(pa.Table.from_arrays(
+                (
+                    pa.array(query_tracks[query_positions].tolist(), type=pa.string()),
+                    pa.array(candidate_tracks[candidate_positions].tolist(), type=pa.string()),
+                    pa.array(query_artists[query_positions].tolist(), type=pa.string()),
+                    pa.array(candidate_artists[candidate_positions].tolist(), type=pa.string()),
+                ),
+                schema=schema,
+            ))
+            count += len(query_positions)
+    finally:
+        writer.close()
+    temporary.replace(output)
+    return count
+
+
+def classify_validation_pair(
+    pair: Mapping[str, object],
+    *,
+    acoustic_p50: float,
+    acoustic_p90: float,
+    tag_positive_threshold: float,
+) -> tuple[bool, bool]:
+    """Return Audio-dominant and Relation-dominant membership for one pair."""
+    if not all(math.isfinite(value) for value in (
+        acoustic_p50,
+        acoustic_p90,
+        tag_positive_threshold,
+    )):
+        raise ValueError("validation-group thresholds must be finite")
+    if not acoustic_p50 <= acoustic_p90:
+        raise ValueError("pre-PCA acoustic thresholds must satisfy p50 <= p90")
+    acoustic = float(pair["pre_pca_cosine"])
+    if not math.isfinite(acoustic):
+        raise ValueError("pre-PCA acoustic cosine must be finite")
+    tag_value = pair.get("tag_tfidf_cosine")
+    tag = None if tag_value is None else float(tag_value)
+    if tag is not None and not math.isfinite(tag):
+        raise ValueError("artist-term cosine must be finite when present")
+
+    same_song = bool(pair.get("same_song", False))
+    same_artist = bool(pair.get("same_artist", False))
+    same_release = bool(pair.get("same_release", False))
+    has_artist_pair = bool(pair.get("has_artist_pair", False))
+    has_release_pair = bool(pair.get("has_release_pair", False))
+    directed_artist_similarity = bool(pair.get("directed_artist_similarity", False))
+    if same_song:
+        return False, False
+
+    audio_dominant = (
+        acoustic >= acoustic_p90
+        and has_artist_pair
         and not same_artist
         and has_release_pair
         and not same_release
