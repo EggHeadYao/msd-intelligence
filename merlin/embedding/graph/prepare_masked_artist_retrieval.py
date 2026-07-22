@@ -358,5 +358,18 @@ def main() -> None:
             args.queries,
             args.seed,
         )
+        positives = build_positives(metadata, queries).persist(
+            StorageLevel.MEMORY_AND_DISK,
+        )
+
+        positive_rows = positives.count()
+        expected_positive_rows = int(
+            queries.agg(F.sum("positive_count").alias("count")).first()["count"],
+        )
+        require(
+            positive_rows == expected_positive_rows,
+            "positive pair count does not match the query manifest",
+        )
+
     finally:
         spark.stop()
