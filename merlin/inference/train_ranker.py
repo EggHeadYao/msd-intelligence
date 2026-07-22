@@ -1,3 +1,78 @@
+            return model
+
+        selection: dict[str, object]
+        if args.stage == "tuning":
+            validation = read_rows(args.validation_features).persist(
+                StorageLevel.MEMORY_AND_DISK
+            )
+            cached.append(validation)
+            invalid_groups = validation.where(
+                ~F.col("query_group").isin(*QUERY_GROUPS)
+                | F.col("eligible_positive_count").isNull()
+                | (F.col("eligible_positive_count") <= 0)
+            ).limit(1).count()
+            if invalid_groups:
+                raise ValueError("Set-B validation contains an invalid group or denominator")
+            scaled_validation = scaler.transform(
+                assembler.transform(materialize(validation))
+            ).persist(StorageLevel.MEMORY_AND_DISK)
+            cached.append(scaled_validation)
+            models = {}
+            for reg_param in REG_PARAMS:
+                model = fit(reg_param)
+                models[reg_param] = model
+            feature_array = vector_to_array("features")
+            score_structs = []
+            for reg_param in REG_PARAMS:
+                fitted = models[reg_param]
+                coefficient_array = F.array(
+                    *(F.lit(float(value)) for value in fitted.coefficients)
+                )
+                margin = F.aggregate(
+                    F.zip_with(
+                        feature_array,
+                        coefficient_array,
+                        lambda feature, coefficient: feature * coefficient,
+                    ),
+                    F.lit(float(fitted.intercept)),
+                    lambda total, value: total + value,
+                )
+                score_structs.append(F.struct(
+                    F.lit(float(reg_param)).alias("reg_param"),
+                    margin.alias("margin"),
+                ))
+            predictions = (
+                scaled_validation.withColumn(
+                    "model_score", F.explode(F.array(*score_structs))
+                )
+                .select("*", "model_score.*")
+                .drop("model_score")
+            )
+            ranking = Window.partitionBy(
+                "reg_param", "query_track_id", "query_group"
+            ).orderBy(F.desc("margin"), F.asc("candidate_track_id"))
+            query_window = Window.partitionBy(
+                "reg_param", "query_track_id", "query_group"
+            )
+            per_query = (
+                predictions.withColumn("rank", F.row_number().over(ranking))
+                .withColumn(
+                    "positive_count",
+                    F.max("eligible_positive_count").over(query_window),
+                )
+                .withColumn(
+                    "gain",
+                    F.when(
+                        (F.col("rank") <= 20) & (F.col("label") == 1),
+                        1.0 / F.log2(F.col("rank") + 1.0),
+                    ).otherwise(0.0),
+                )
+                .groupBy("reg_param", "query_track_id", "query_group")
+                .agg(
+                    F.sum("gain").alias("dcg"),
+                    F.max("positive_count").alias("positive_count"),
+                )
+                .withColumn(
                     "idcg20",
                     F.aggregate(
                         F.sequence(
