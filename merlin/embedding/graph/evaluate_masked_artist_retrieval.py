@@ -336,3 +336,40 @@ def make_query_rows(
                 row[f"{model}_{metric.replace('@', '_at_')}"] = value
         rows.append(row)
     return rows
+
+
+def aggregate_rows(
+    rows: list[dict[str, Any]],
+    model: str,
+    cutoffs: tuple[int, ...],
+) -> dict[str, Any]:
+    metric_names = ("mrr",) + tuple(
+        f"{metric}@{cutoff}"
+        for cutoff in cutoffs
+        for metric in ("recall", "hit", "ndcg")
+    )
+    metric_rows = [
+        {
+            name: float(row[f"{model}_{name.replace('@', '_at_')}"])
+            for name in metric_names
+        }
+        for row in rows
+    ]
+    candidate_key = {
+        "c2": "c2_candidate_count",
+        "release_only": "release_candidate_count",
+        "random": "random_candidate_count",
+    }[model]
+    result: dict[str, Any] = {
+        "query_count": len(rows),
+        "metrics": macro_average(metric_rows),
+    }
+    if rows and candidate_key in rows[0]:
+        result["mean_candidate_count"] = sum(
+            int(row[candidate_key]) for row in rows
+        ) / len(rows)
+        result["candidate_shortage"] = {
+            str(cutoff): sum(int(row[candidate_key]) < cutoff for row in rows)
+            for cutoff in cutoffs
+        }
+    return result
