@@ -1,3 +1,78 @@
+        expected_space="graph",
+        expected_contract_key=graph_contract_key,
+        expected_contract=graph_contract_version,
+    )
+    catalog = load_catalog_context(paths.songs_metadata, paths.graph_edges)
+    same_song = catalog.same_song
+    tag = TagRetriever.from_data(
+        catalog.tag_data,
+        idf_values=load_tag_idf(
+            paths.tag_idf,
+            expected_graph_edges_path=paths.graph_edges,
+        ),
+        same_song=same_song,
+        artist_neighbor_limit=CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT,
+        max_term_artists=CANONICAL_TAG_MAX_TERM_ARTISTS,
+        per_artist_cap=CANONICAL_TAG_PER_ARTIST_CAP,
+    )
+    retrievers = build_canonical_retrievers(audio, graph, paths, same_song, tag)
+    return RecallPipeline(
+        retrievers=retrievers,
+        retriever_limits={
+            str(name): int(limit)
+            for name, limit in policy["retriever_limits"].items()
+        },
+        candidate_limit=int(policy["candidate_limit"]),
+        canonical=True,
+    )
+
+
+def validate_recall_low_memory(
+    query_track_ids: tuple[str, ...],
+    paths: InferenceArtifactPaths = InferenceArtifactPaths(),
+    *,
+    graph_contract_key: str,
+    graph_contract_version: str,
+) -> dict[str, object]:
+    """Validate sources sequentially when two full FAISS indexes cannot coexist."""
+    if not query_track_ids:
+        raise ValueError("recall validation requires at least one query")
+    policy: dict[str, Any] = load_candidate_policy(paths.candidate_policy)
+    limits = {
+        str(name): int(limit)
+        for name, limit in policy["retriever_limits"].items()
+    }
+    groups: dict[str, dict[str, list[Any]]] = {
+        query_id: {} for query_id in query_track_ids
+    }
+    availability: dict[str, dict[str, bool]] = {
+        query_id: {} for query_id in query_track_ids
+    }
+    same_song = load_same_song_filter(paths.songs_metadata)
+
+    def capture(retriever: Any) -> None:
+        for query_id in query_track_ids:
+            available = bool(retriever.is_available(query_id))
+            first = (
+                list(retriever.retrieve(query_id, limits[retriever.name]))
+                if available
+                else []
+            )
+            second = (
+                list(retriever.retrieve(query_id, limits[retriever.name]))
+                if available
+                else []
+            )
+            if candidate_digest(first) != candidate_digest(second):
+                raise ValueError(
+                    f"{retriever.name} recall is not deterministic for {query_id}"
+                )
+            groups[query_id][retriever.name] = first
+            availability[query_id][retriever.name] = available
+
+    audio_index = load_audio_index(
+        paths.audio_index,
+        paths.audio_mapping,
         paths.audio_manifest,
         paths.audio_encoder_metadata,
     )
