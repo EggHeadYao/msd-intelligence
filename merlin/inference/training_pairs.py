@@ -1,3 +1,78 @@
+        track_id = str(candidate["track_id"])
+        recall_sources = frozenset(str(value) for value in candidate["recall_sources"])
+        if track_id == query_id:
+            rejection_counts["query_self"] += 1
+        elif track_id not in allowed_tracks:
+            rejection_counts["outside_universe"] += 1
+        elif track_id in seen_candidates:
+            rejection_counts["duplicate_pair"] += 1
+        elif same_song(query_id, track_id):
+            rejection_counts["same_song"] += 1
+        elif track_id in positive_ids:
+            rejection_counts["known_positive"] += 1
+        else:
+            seen_candidates.add(track_id)
+            predicate_candidates.append((track_id, recall_sources))
+    predicate_results = (
+        is_positive_batch(
+            query_id,
+            [track_id for track_id, _sources in predicate_candidates],
+        )
+        if is_positive_batch is not None
+        else [is_positive(query_id, track_id) for track_id, _sources in predicate_candidates]
+    )
+    if len(predicate_results) != len(predicate_candidates):
+        raise ValueError("batch positive predicate returned the wrong number of results")
+    for candidate, positive in zip(predicate_candidates, predicate_results, strict=True):
+        if positive:
+            rejection_counts["known_positive"] += 1
+        else:
+            eligible_candidates.append(candidate)
+    eligible_candidates.sort(
+        key=lambda item: _pair_hash(query_id, item[0], "candidate_aware")
+    )
+    candidate_selected = eligible_candidates[:candidate_target]
+    rejected = positive_ids | {track_id for track_id, _sources in candidate_selected}
+    random_target = negative_target - len(candidate_selected)
+    random_selected = _random_negatives(
+        query_id,
+        random_universe,
+        random_target,
+        rejected,
+        same_song,
+        is_positive,
+        rejection_counts,
+    )
+    if len(candidate_selected) + len(random_selected) != negative_target:
+        raise ValueError(f"negative sampling shortage for query {query_id}")
+
+    rows = [
+        {
+            "query_track_id": query_id,
+            "candidate_track_id": track_id,
+            "label": 1,
+            "positive_sources": sorted(sources),
+            "negative_source": None,
+            "recall_sources": [],
+        }
+        for track_id, sources in sorted(selected_positives.items())
+    ]
+    rows.extend(
+        {
+            "query_track_id": query_id,
+            "candidate_track_id": track_id,
+            "label": 0,
+            "positive_sources": [],
+            "negative_source": "candidate_aware",
+            "recall_sources": sorted(sources),
+        }
+        for track_id, sources in candidate_selected
+    )
+    rows.extend(
+        {
+            "query_track_id": query_id,
+            "candidate_track_id": track_id,
+            "label": 0,
             "positive_sources": [],
             "negative_source": "random",
             "recall_sources": [],
