@@ -1,3 +1,49 @@
+"""Deterministic gzip-JSONL helpers for scalable C3 row artifacts."""
+
+from __future__ import annotations
+
+import gzip
+import io
+import json
+from pathlib import Path
+from typing import Any, Iterable, Iterator, Mapping
+
+
+def write_jsonl_gzip(
+    rows: Iterable[Mapping[str, object]],
+    path: str | Path,
+) -> int:
+    """Atomically write canonical JSON lines with a reproducible gzip header."""
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    count = 0
+    with temporary.open("wb") as raw:
+        with gzip.GzipFile(fileobj=raw, mode="wb", filename="", mtime=0) as compressed:
+            with io.TextIOWrapper(compressed, encoding="utf-8", newline="\n") as stream:
+                for row in rows:
+                    stream.write(json.dumps(dict(row), separators=(",", ":"), sort_keys=True))
+                    stream.write("\n")
+                    count += 1
+    temporary.replace(output)
+    return count
+
+
+def read_jsonl_gzip(path: str | Path) -> Iterator[dict[str, object]]:
+    source = Path(path)
+    if not source.is_file():
+        raise FileNotFoundError(f"JSONL artifact does not exist: {source}")
+    with gzip.open(source, "rt", encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                raise ValueError(f"blank JSONL row at line {line_number}")
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError(f"JSONL row {line_number} is not an object")
+            yield row
+
+
+def write_row_artifact(
     rows: Iterable[Mapping[str, object]],
     path: str | Path,
     *,
