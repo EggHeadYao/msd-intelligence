@@ -126,6 +126,47 @@ class RecallPipeline:
             query_track_id,
         )
 
+    def recall_many(
+        self,
+        query_track_ids: Sequence[str],
+    ) -> Mapping[str, tuple[list[Candidate], RecallAudit]]:
+        """Generate a bounded batch while allowing vector retrievers to batch-search."""
+        queries = tuple(query_track_ids)
+        if any(not query_id for query_id in queries):
+            raise ValueError("batch query track IDs must not be empty")
+        if len(set(queries)) != len(queries):
+            raise ValueError("batch query track IDs must be unique")
+        groups = {query_id: {} for query_id in queries}
+        availability = {query_id: {} for query_id in queries}
+        for retriever in self.retrievers:
+            available = getattr(retriever, "is_available", lambda _query: True)
+            states = {query_id: bool(available(query_id)) for query_id in queries}
+            retrieve_many = getattr(retriever, "retrieve_many", None)
+            retrieved = (
+                retrieve_many(queries, self.retriever_limits[retriever.name])
+                if retrieve_many is not None
+                else {
+                    query_id: retriever.retrieve(
+                        query_id, self.retriever_limits[retriever.name]
+                    )
+                    for query_id in queries
+                    if states[query_id]
+                }
+            )
+            for query_id in queries:
+                availability[query_id][retriever.name] = states[query_id]
+                groups[query_id][retriever.name] = list(retrieved.get(query_id, ()))
+        return {
+            query_id: audit_recall_groups(
+                groups[query_id],
+                self.retriever_limits,
+                self.candidate_limit,
+                query_id,
+                availability[query_id],
+            )
+            for query_id in queries
+        }
+
 
 def candidate_digest(candidates: Sequence[Candidate]) -> str:
     payload = [

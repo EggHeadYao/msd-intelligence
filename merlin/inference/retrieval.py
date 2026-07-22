@@ -61,6 +61,9 @@ class VectorRetriever(CandidateRetriever):
     same_song: Callable[[str, str], bool] = _different_song
     query_available: Callable[[str], bool] = _available
     overfetch_factor: int = 3
+    batch_search: (
+        Callable[[Sequence[str], int], Sequence[Sequence[tuple[str, float]]]] | None
+    ) = None
 
     @property
     def name(self) -> str:
@@ -71,9 +74,33 @@ class VectorRetriever(CandidateRetriever):
             raise ValueError("vector recall limits must be positive")
         if not self.is_available(query_track_id):
             return []
+        neighbors = self.search(query_track_id, self.overfetch_factor * limit + 1)
+        return self._filter_neighbors(query_track_id, neighbors, limit)
+
+    def retrieve_many(
+        self,
+        query_track_ids: Sequence[str],
+        limit: int,
+    ) -> Mapping[str, Sequence[Candidate]]:
+        if self.batch_search is None:
+            return {query_id: self.retrieve(query_id, limit) for query_id in query_track_ids}
+        available = [query_id for query_id in query_track_ids if self.is_available(query_id)]
+        searched = self.batch_search(available, self.overfetch_factor * limit + 1)
+        if len(searched) != len(available):
+            raise ValueError("vector batch search returned the wrong number of rows")
+        results = {query_id: () for query_id in query_track_ids}
+        for query_id, neighbors in zip(available, searched, strict=True):
+            results[query_id] = self._filter_neighbors(query_id, neighbors, limit)
+        return results
+
+    def _filter_neighbors(
+        self,
+        query_track_id: str,
+        neighbors: Sequence[tuple[str, float]],
+        limit: int,
+    ) -> list[Candidate]:
         result: list[Candidate] = []
         seen: set[str] = set()
-        neighbors = self.search(query_track_id, self.overfetch_factor * limit + 1)
         for track_id, score in neighbors:
             if (
                 track_id == query_track_id

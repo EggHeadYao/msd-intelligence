@@ -61,6 +61,7 @@ def build_canonical_retrievers(
         VectorRetriever(
             "audio",
             audio.search,
+            batch_search=audio.search_many,
             same_song=same_song,
             query_available=audio.contains,
             overfetch_factor=CANONICAL_VECTOR_OVERFETCH_FACTOR,
@@ -68,6 +69,7 @@ def build_canonical_retrievers(
         VectorRetriever(
             "graph",
             graph.search,
+            batch_search=graph.search_many,
             same_song=same_song,
             query_available=graph.contains,
             overfetch_factor=CANONICAL_VECTOR_OVERFETCH_FACTOR,
@@ -178,6 +180,7 @@ def validate_recall_low_memory(
         VectorRetriever(
             "audio",
             audio_index.search,
+            batch_search=audio_index.search_many,
             same_song=same_song,
             query_available=audio_index.contains,
             overfetch_factor=CANONICAL_VECTOR_OVERFETCH_FACTOR,
@@ -199,6 +202,7 @@ def validate_recall_low_memory(
         VectorRetriever(
             "graph",
             graph_index.search,
+            batch_search=graph_index.search_many,
             same_song=same_song,
             query_available=graph_index.contains,
             overfetch_factor=CANONICAL_VECTOR_OVERFETCH_FACTOR,
