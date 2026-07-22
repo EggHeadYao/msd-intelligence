@@ -1,3 +1,78 @@
+    parser.add_argument("--shuffle-partitions", type=int, default=64)
+    parser.add_argument("--audio-pair-engine", choices=("numpy", "spark"), default="numpy")
+    parser.add_argument("--audio-block-size", type=int, default=256)
+    return parser.parse_args()
+
+
+def _uri(path: Path) -> str:
+    # Hadoop's local filesystem does not decode an escaped Hive partition '='.
+    return path.resolve().as_uri().replace("%3D", "=")
+
+
+def _require_new_outputs(paths: tuple[Path, ...]) -> None:
+    existing = [str(path) for path in paths if path.exists()]
+    if existing:
+        raise FileExistsError(f"validation-group outputs already exist: {existing}")
+
+
+def main() -> None:
+    args = parse_args()
+    if args.max_threshold_pairs <= 0 or args.max_threshold_pairs > MAX_THRESHOLD_PAIRS:
+        raise ValueError("max-threshold-pairs must be in [1, 1000000]")
+    if args.shuffle_partitions <= 0 or args.audio_block_size <= 0:
+        raise ValueError("shuffle partitions and audio block size must be positive")
+    _require_new_outputs((args.thresholds, args.positives, args.validation_pairs, args.manifest))
+    split_manifest = load_split_manifest(args.split_manifest, args.split_assignments)
+    if args.scope == "formal" and split_manifest.get("scope") != "formal":
+        raise ValueError("formal validation groups require a formal split artifact")
+    candidate_manifest = load_candidate_pool_manifest(
+        args.candidate_pool_manifest,
+        args.candidate_pool,
+        expected_scope=args.scope,
+    )
+    with args.weak_thresholds.open("r", encoding="utf-8") as stream:
+        weak_thresholds = json.load(stream)
+    if weak_thresholds.get("artifact_type") != "weak_label_thresholds":
+        raise ValueError("weak-label threshold artifact type mismatch")
+    tag_positive_threshold = float(weak_thresholds["tag_tfidf_cosine_p90"])
+    if not math.isfinite(tag_positive_threshold):
+        raise ValueError("tag positive threshold must be finite")
+    tag_idf = load_tag_idf(args.tag_idf, expected_graph_edges_path=args.graph_edges)
+
+    encoder_metadata_path = args.audio_root / "audio_encoder_metadata.json"
+    c1_manifest_path = args.audio_root / "c1_manifest.json"
+    scaler_model_path = args.audio_root / "scaler_model"
+    with encoder_metadata_path.open("r", encoding="utf-8") as stream:
+        encoder_metadata = json.load(stream)
+    with c1_manifest_path.open("r", encoding="utf-8") as stream:
+        c1_manifest = json.load(stream)
+    if c1_manifest.get("artifact_type") != "c1_audio_encoder" or c1_manifest.get("status") != "valid":
+        raise ValueError("C1 manifest is not a valid audio encoder")
+    if encoder_metadata.get("run_id") != c1_manifest.get("run_id"):
+        raise ValueError("C1 encoder metadata run does not match its manifest")
+    if encoder_metadata.get("model_ready_schema_version") != "c1_model_ready_v2":
+        raise ValueError("unsupported C1 model-ready schema")
+    feature_columns = tuple(str(value) for value in encoder_metadata["feature_columns"])
+
+    from pyspark import StorageLevel
+    from pyspark.ml.feature import StandardScalerModel, VectorAssembler
+    from pyspark.ml.functions import vector_to_array
+    from pyspark.sql import SparkSession, Window
+    from pyspark.sql import functions as F
+
+    audio_module = Path(__file__).resolve().parents[1] / "embedding" / "audio"
+    sys.path.insert(0, str(audio_module))
+    try:
+        from columns import TRACK_ID_COLUMN
+        from frozen_preprocess import apply_frozen_preprocess
+        from train_pca import FEATURES_COLUMN, SCALED_FEATURES_COLUMN
+    finally:
+        sys.path.pop(0)
+
+    def array_dot(left, right):
+        products = F.zip_with(left, right, lambda x, y: x.cast("double") * y.cast("double"))
+        return F.aggregate(products, F.lit(0.0), lambda total, value: total + value)
+
     def cosine(left, right, left_norm, right_norm):
         return array_dot(left, right) / (left_norm * right_norm)
 
