@@ -198,3 +198,62 @@ def enrich_metadata(metadata: DataFrame) -> tuple[DataFrame, int]:
         .where(F.col("positive_count") > 0)
     )
     return enriched, total_tracks
+
+
+def select_queries(
+    enriched: DataFrame,
+    requested: int,
+    seed: int,
+) -> tuple[DataFrame, dict[str, int], dict[str, int]]:
+    track_order = Window.partitionBy("artist_id").orderBy(
+        F.xxhash64(F.lit(seed), "artist_id", "track_id"),
+        F.col("track_id"),
+    )
+    one_per_artist = (
+        enriched.withColumn("_track_rank", F.row_number().over(track_order))
+        .where(F.col("_track_rank") == 1)
+        .drop("_track_rank")
+        .persist(StorageLevel.MEMORY_AND_DISK)
+    )
+    available_rows = one_per_artist.groupBy("stratum").count().collect()
+    available = {name: 0 for name in STRATA}
+    for row in available_rows:
+        available[str(row["stratum"])] = int(row["count"])
+    quotas = allocate_balanced_quotas(available, requested)
+
+    selected_parts: list[DataFrame] = []
+    for offset, name in enumerate(STRATA):
+        selected_parts.append(
+            one_per_artist.where(F.col("stratum") == name)
+            .orderBy(
+                F.xxhash64(F.lit(seed + 1 + offset), "artist_id"),
+                F.col("artist_id"),
+            )
+            .limit(quotas[name])
+        )
+    queries = (
+        reduce(DataFrame.unionByName, selected_parts)
+        .withColumnRenamed("track_id", "query_track_id")
+        .select(
+            "query_track_id",
+            "artist_id",
+            "song_id",
+            "song_key",
+            "release_7digitalid",
+            "song_hotttnesss",
+            "artist_track_count",
+            "positive_count",
+            "release_degree",
+            "candidate_catalog_size",
+            "connectable",
+            "stratum",
+        )
+        .persist(StorageLevel.MEMORY_AND_DISK)
+    )
+    require(queries.count() == requested, "query selection returned the wrong count")
+    require(
+        queries.select("artist_id").distinct().count() == requested,
+        "query selection contains duplicate artists",
+    )
+    one_per_artist.unpersist()
+    return queries, available, quotas
