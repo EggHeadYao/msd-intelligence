@@ -1,3 +1,29 @@
+"""CLI to persist the canonical four-source candidate pool."""
+
+from __future__ import annotations
+
+import argparse
+from itertools import islice
+from pathlib import Path
+
+from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
+
+from .artifact_paths import (
+    CANDIDATE_POOL_MANIFEST_PATH,
+    CANDIDATE_POOL_PATH,
+    InferenceArtifactPaths,
+)
+from .candidate_pool import export_candidate_pool
+from .split import load_split_assignments, load_split_manifest
+from .recall_factory import load_recall_pipeline
+from .validate_recall import read_queries
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--queries", type=Path)
+    source.add_argument("--split-assignments", type=Path)
     parser.add_argument("--split-manifest", type=Path)
     parser.add_argument("--query-split", choices=("set_a", "set_b"))
     parser.add_argument("--output", type=Path)
