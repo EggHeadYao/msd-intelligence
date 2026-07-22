@@ -138,8 +138,6 @@ The pipeline rejects a ranker whose schema version differs from its feature
 computer. Fixed Spark/Python pairs must match on features and raw margin within
 `1e-6` before the artifact is accepted.
 
-The example artifact is only for integration testing. It is not a trained model.
-
 ## FAISS artifacts
 
 Install `faiss-cpu`, `numpy`, and `pyarrow` in the inference environment. Final

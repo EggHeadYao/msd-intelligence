@@ -30,21 +30,6 @@ class LogisticRanker:
             raise ValueError("ranker standard deviations must be positive")
 
     @classmethod
-    def from_json(cls, path: str | Path) -> "LogisticRanker":
-        with Path(path).open("r", encoding="utf-8") as stream:
-            artifact = json.load(stream)
-        if artifact.get("model_type") != "logistic_regression":
-            raise ValueError("unsupported ranker model_type")
-        return cls(
-            feature_schema_version=str(artifact["feature_schema_version"]),
-            feature_order=tuple(artifact["feature_order"]),
-            means=_floats(artifact["means"]),
-            stds=_floats(artifact["stds"]),
-            coefficients=_floats(artifact["coefficients"]),
-            intercept=float(artifact["intercept"]),
-        )
-
-    @classmethod
     def from_artifacts(
         cls,
         schema_path: str | Path,
@@ -73,19 +58,6 @@ class LogisticRanker:
             intercept=float(model["intercept"]),
         )
 
-    @classmethod
-    def mock(cls, feature_schema_version: str, feature_order: Sequence[str]) -> "LogisticRanker":
-        """Create an equal-weight artifact for pipeline integration tests."""
-        size = len(feature_order)
-        return cls(
-            feature_schema_version=feature_schema_version,
-            feature_order=tuple(feature_order),
-            means=(0.0,) * size,
-            stds=(1.0,) * size,
-            coefficients=(1.0,) * size,
-            intercept=0.0,
-        )
-
     def score(self, features: Mapping[str, float]) -> float:
         """Return the raw LR margin used for ranking."""
         return self.raw_margin(features)
@@ -104,15 +76,6 @@ class LogisticRanker:
                 raise ValueError(f"ranker feature {name} is not finite")
             logit += coefficient * ((value - mean) / std)
         return logit
-
-    def display_score(self, features: Mapping[str, float]) -> float:
-        """Return a sigmoid display score; it is not a calibrated probability."""
-        margin = self.raw_margin(features)
-        if margin >= 0.0:
-            return 1.0 / (1.0 + math.exp(-margin))
-        exp_margin = math.exp(margin)
-        return exp_margin / (1.0 + exp_margin)
-
 
 def _floats(values: Sequence[object]) -> tuple[float, ...]:
     return tuple(float(value) for value in values)
