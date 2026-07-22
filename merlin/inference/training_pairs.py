@@ -1,3 +1,47 @@
+"""Deterministic split-safe candidate-aware Ranker pair construction."""
+
+from __future__ import annotations
+
+from collections import Counter
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+from typing import Callable, Iterable, Iterator, Mapping, Sequence
+
+from .artifact_lineage import sha256_path
+from .candidate_pool import iter_candidate_pool
+from .jsonl_artifact import write_json_atomic, write_row_artifact
+
+
+TRAINING_PAIR_VERSION = "merlin_training_pairs_v1"
+PAIR_SEED = 42
+NEGATIVE_RATIO = 3
+CANDIDATE_AWARE_FRACTION = 0.75
+IsPositive = Callable[[str, str], bool]
+IsPositiveBatch = Callable[[str, Sequence[str]], Sequence[bool]]
+SameSong = Callable[[str, str], bool]
+
+
+def allowed_training_tracks(
+    assignments: Mapping[str, str],
+    stage: str,
+) -> set[str]:
+    if stage == "tuning":
+        allowed_splits = {"set_a"}
+    elif stage == "final_retrain":
+        allowed_splits = {"set_a", "set_b", "remaining"}
+    else:
+        raise ValueError("training stage must be tuning or final_retrain")
+    return {
+        track_id for track_id, split in assignments.items() if split in allowed_splits
+    }
+
+
+def _pair_hash(query_id: str, candidate_id: str, source: str) -> str:
+    return hashlib.sha256(
+        f"{PAIR_SEED}\0{query_id}\0{candidate_id}\0{source}".encode("utf-8")
+    ).hexdigest()
 
 
 def _random_negatives(
