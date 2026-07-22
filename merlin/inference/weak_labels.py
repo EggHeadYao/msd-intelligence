@@ -1,3 +1,78 @@
+def deterministic_cross_artist_pairs(
+    track_ids: Sequence[str],
+    track_to_artist: Mapping[str, str],
+    *,
+    max_pairs: int = MAX_THRESHOLD_PAIRS,
+    seed: int = WEAK_LABEL_SEED,
+) -> Iterator[tuple[str, str]]:
+    """Yield a stable bounded sample without materializing the pair product."""
+    tracks = tuple(sorted(set(track_ids)))
+    if len(tracks) < 2 or max_pairs <= 0:
+        return
+    target = min(max_pairs, len(tracks) * max(1, min(20, len(tracks) - 1)))
+    seen: set[tuple[str, str]] = set()
+    attempts = 0
+    maximum_attempts = max(target * 20, len(tracks) * 4)
+    cursor = 0
+    while len(seen) < target and attempts < maximum_attempts:
+        left = tracks[cursor % len(tracks)]
+        digest = hashlib.sha256(
+            f"{seed}\0{left}\0{attempts}".encode("utf-8")
+        ).digest()
+        right = tracks[int.from_bytes(digest[:8], "big") % len(tracks)]
+        attempts += 1
+        cursor += 1
+        if left == right:
+            continue
+        left_artist = track_to_artist.get(left)
+        right_artist = track_to_artist.get(right)
+        if left_artist is None or right_artist is None or left_artist == right_artist:
+            continue
+        pair = tuple(sorted((left, right)))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        yield pair
+
+
+def _nearest_rank(values: Sequence[float], quantile: float) -> float:
+    if not values or not 0.0 < quantile <= 1.0:
+        raise ValueError("quantile input must be non-empty and in (0, 1]")
+    ordered = sorted(values)
+    index = max(0, math.ceil(quantile * len(ordered)) - 1)
+    return float(ordered[index])
+
+
+def fit_weak_label_thresholds(
+    track_ids: Sequence[str],
+    track_to_artist: Mapping[str, str],
+    audio_similarity: PairSimilarity,
+    tag_similarity: PairSimilarity,
+    *,
+    max_pairs: int = MAX_THRESHOLD_PAIRS,
+    audio_batch_similarity: PairBatchSimilarity | None = None,
+    batch_size: int = 10_000,
+) -> dict[str, object]:
+    """Fit both p90 values once from deterministic Set-A cross-artist pairs."""
+    audio_values: list[float] = []
+    tag_values: list[float] = []
+    sampled = 0
+    if batch_size <= 0:
+        raise ValueError("weak-label similarity batch size must be positive")
+    pairs = deterministic_cross_artist_pairs(
+        track_ids,
+        track_to_artist,
+        max_pairs=max_pairs,
+    )
+    while batch := list(islice(pairs, batch_size)):
+        audio_scores = (
+            audio_batch_similarity(batch)
+            if audio_batch_similarity is not None
+            else [audio_similarity(left, right) for left, right in batch]
+        )
+        if len(audio_scores) != len(batch):
+            raise ValueError("audio batch similarity returned the wrong number of scores")
+        for (left, right), audio in zip(batch, audio_scores, strict=True):
             sampled += 1
             tag = tag_similarity(left, right)
             if audio is not None and math.isfinite(float(audio)):
