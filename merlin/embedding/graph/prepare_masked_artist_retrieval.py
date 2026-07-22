@@ -63,3 +63,54 @@ def require(condition: bool, message: str) -> None:
 
 def spark_path(path: Path) -> str:
     return path.resolve().as_uri()
+
+
+def create_spark(shuffle_partitions: int) -> SparkSession:
+    os.environ["PYSPARK_PYTHON"] = sys.executable
+    return (
+        SparkSession.builder.appName("MerlinC2MaskedArtistPrepare")
+        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+        .config("spark.hadoop.fs.defaultFS", "file:///")
+        .config("spark.pyspark.python", sys.executable)
+        .getOrCreate()
+    )
+
+
+def allocate_balanced_quotas(
+    available: dict[str, int],
+    requested: int,
+) -> dict[str, int]:
+    """Allocate near-equal deterministic quotas, redistributing short strata."""
+    if requested <= 0:
+        raise ValueError("requested query count must be positive")
+    if set(available) != set(STRATA):
+        raise ValueError(f"availability must contain exactly {STRATA}")
+    if any(value < 0 for value in available.values()):
+        raise ValueError("stratum availability cannot be negative")
+    if sum(available.values()) < requested:
+        raise ValueError("not enough eligible artists for the requested queries")
+
+    quotas = {name: 0 for name in STRATA}
+    remaining = requested
+    while remaining:
+        progressed = False
+        for name in STRATA:
+            if quotas[name] >= available[name]:
+                continue
+            quotas[name] += 1
+            remaining -= 1
+            progressed = True
+            if remaining == 0:
+                break
+        if not progressed:
+            raise RuntimeError("query quota allocation made no progress")
+    return quotas
+
+
+def _require_columns(frame: DataFrame, required: tuple[str, ...], name: str) -> None:
+    missing = set(required) - set(frame.columns)
+    require(not missing, f"{name} is missing columns: {sorted(missing)}")
+
+
+def _valid_string(column: str) -> F.Column:
+    return F.col(column).isNotNull() & (F.length(F.trim(F.col(column))) > 0)
