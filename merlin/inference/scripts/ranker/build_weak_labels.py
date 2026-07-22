@@ -21,6 +21,9 @@ from ...weak_labels import (
 )
 
 
+QUERY_BATCH_SIZE = 256
+
+
 def parse_args() -> argparse.Namespace:
     defaults = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -82,6 +85,33 @@ def main() -> None:
     allowed_by_split: dict[str, set[str]] = {}
     for track_id, split in assignments.items():
         allowed_by_split.setdefault(split, set()).add(track_id)
+
+    weak_audio_index = None
+    weak_audio_tracks: tuple[str, ...] = ()
+    if query_splits == {"set_a"}:
+        import faiss
+
+        weak_audio_tracks = tuple(sorted(allowed_by_split["set_a"]))
+        weak_audio_index = faiss.IndexFlatIP(audio.dimension)
+        weak_audio_index.add(audio.reconstruct_many(weak_audio_tracks))
+
+    def audio_neighbor_batches(batch: tuple[str, ...]):
+        if weak_audio_index is None:
+            return audio.search_many(batch, args.positive_neighbor_limit)
+        result_limit = min(args.positive_neighbor_limit, len(weak_audio_tracks))
+        scores, row_ids = weak_audio_index.search(
+            audio.reconstruct_many(batch), result_limit
+        )
+        return [
+            sorted(
+                (
+                    (weak_audio_tracks[int(row_id)], float(score))
+                    for row_id, score in zip(rows, values, strict=True)
+                ),
+                key=lambda item: (-item[1], item[0]),
+            )
+            for values, rows in zip(scores, row_ids, strict=True)
+        ]
 
     def tag_neighbors(query_id: str) -> list[tuple[str, float]]:
         artist = tag.track_to_artist.get(query_id)
