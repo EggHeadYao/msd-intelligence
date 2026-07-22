@@ -291,3 +291,26 @@ def build_positives(metadata: DataFrame, queries: DataFrame) -> DataFrame:
             F.col("candidate.track_id").alias("positive_track_id"),
         )
     )
+
+
+def mask_track_artist_edges(edges: DataFrame, queries: DataFrame) -> DataFrame:
+    _require_columns(edges, GRAPH_COLUMNS, "graph edges")
+    query_ids = F.broadcast(
+        queries.select(F.col("query_track_id").alias("masked_track_id")),
+    )
+    artist_edges = edges.where(F.col("edge_type") == "track_artist")
+    kept_artist_edges = artist_edges.join(
+        query_ids,
+        artist_edges.src_id == query_ids.masked_track_id,
+        "left_anti",
+    )
+    return edges.where(F.col("edge_type") != "track_artist").unionByName(
+        kept_artist_edges,
+    )
+
+
+def edge_counts(edges: DataFrame) -> dict[str, int]:
+    return {
+        str(row["edge_type"]): int(row["count"])
+        for row in edges.groupBy("edge_type").count().collect()
+    }
