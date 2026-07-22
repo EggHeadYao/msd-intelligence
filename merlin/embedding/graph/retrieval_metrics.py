@@ -61,3 +61,51 @@ def score_ranking(
         result[f"hit@{cutoff}"] = float(hits > 0)
         result[f"ndcg@{cutoff}"] = dcg / ideal
     return result
+
+
+def random_expectation(
+    catalog_candidates: int,
+    positive_count: int,
+    cutoffs: Sequence[int] = DEFAULT_CUTOFFS,
+) -> dict[str, float]:
+    """Return exact expectations for a uniform ranking without replacement."""
+    cutoffs = _validate_cutoffs(cutoffs)
+    population = int(catalog_candidates)
+    positives = int(positive_count)
+    if population <= 0:
+        raise ValueError("catalog candidate count must be positive")
+    if positives <= 0 or positives > population:
+        raise ValueError("positive count must be within the candidate catalog")
+
+    result: dict[str, float] = {}
+    max_rank = min(cutoffs[-1], population)
+    no_positive_before = 1.0
+    expected_rr = 0.0
+    for rank in range(1, max_rank + 1):
+        remaining = population - rank + 1
+        first_at_rank = no_positive_before * positives / remaining
+        expected_rr += first_at_rank / rank
+        non_positive_remaining = population - positives - rank + 1
+        if non_positive_remaining <= 0:
+            no_positive_before = 0.0
+        else:
+            no_positive_before *= non_positive_remaining / remaining
+    result["mrr"] = expected_rr
+
+    for cutoff in cutoffs:
+        k = min(cutoff, population)
+        expected_recall = k / population
+        no_hit = 1.0
+        for draw in range(k):
+            non_positive_remaining = population - positives - draw
+            total_remaining = population - draw
+            if non_positive_remaining <= 0:
+                no_hit = 0.0
+                break
+            no_hit *= non_positive_remaining / total_remaining
+        expected_dcg = positives / population * _discount_sum(k)
+        ideal = _discount_sum(min(positives, cutoff))
+        result[f"recall@{cutoff}"] = expected_recall
+        result[f"hit@{cutoff}"] = 1.0 - no_hit
+        result[f"ndcg@{cutoff}"] = expected_dcg / ideal
+    return result
