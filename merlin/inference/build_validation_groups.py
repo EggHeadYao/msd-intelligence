@@ -1,3 +1,78 @@
+            raise ValueError("C1 scaler model does not match encoder metadata")
+        pre_pca = scaler.transform(assembled).select(
+            TRACK_ID_COLUMN,
+            vector_to_array(F.col(SCALED_FEATURES_COLUMN)).alias("pre_pca_vector"),
+        ).withColumn(
+            "pre_pca_norm",
+            F.sqrt(array_dot(F.col("pre_pca_vector"), F.col("pre_pca_vector"))),
+        )
+        metadata = spark.read.parquet(_uri(args.songs_metadata)).select(
+            TRACK_ID_COLUMN,
+            F.col("song_id").cast("string"),
+            F.col("artist_id").cast("string"),
+            F.col("release_7digitalid").cast("long").alias("release_id"),
+        )
+        vectors = pre_pca.join(metadata, TRACK_ID_COLUMN, "inner").join(
+            assignments, TRACK_ID_COLUMN, "inner"
+        ).localCheckpoint(eager=True)
+        cached.append(vectors)
+
+        set_a = vectors.where(F.col("split") == "set_a").drop("split")
+        set_a_count = set_a.count()
+        if set_a_count < 2:
+            raise ValueError("Set A has too few C1 vectors for threshold fitting")
+        slots = max(1, math.ceil(2 * args.max_threshold_pairs / set_a_count) + 4)
+        indexed_schema = set_a.schema.add("sample_row_id", "long", nullable=False)
+        indexed = spark.createDataFrame(
+            set_a.orderBy(TRACK_ID_COLUMN).rdd.zipWithIndex().map(
+                lambda row_and_index: (*row_and_index[0], int(row_and_index[1]))
+            ),
+            schema=indexed_schema,
+        ).persist(StorageLevel.MEMORY_AND_DISK)
+        cached.append(indexed)
+        queries = indexed.select(
+            F.col(TRACK_ID_COLUMN).alias("q_track_id"),
+            F.col("song_id").alias("q_song_id"),
+            F.col("artist_id").alias("q_artist_id"),
+            F.col("pre_pca_vector").alias("q_vector"),
+            F.col("pre_pca_norm").alias("q_norm"),
+        ).withColumn("sample_slot", F.explode(F.sequence(F.lit(0), F.lit(slots - 1))))
+        queries = queries.withColumn(
+            "candidate_row_id",
+            F.pmod(
+                F.xxhash64("q_track_id", "sample_slot", F.lit(VALIDATION_GROUP_SEED)),
+                F.lit(set_a_count),
+            ),
+        )
+        candidates = indexed.select(
+            F.col("sample_row_id").alias("candidate_row_id"),
+            F.col(TRACK_ID_COLUMN).alias("c_track_id"),
+            F.col("song_id").alias("c_song_id"),
+            F.col("artist_id").alias("c_artist_id"),
+            F.col("pre_pca_vector").alias("c_vector"),
+            F.col("pre_pca_norm").alias("c_norm"),
+        )
+        threshold_sample = (
+            queries.join(candidates, "candidate_row_id", "inner")
+            .where(F.col("q_track_id") < F.col("c_track_id"))
+            .where(not_same_song("q", "c"))
+            .where(
+                F.col("q_artist_id").isNotNull()
+                & F.col("c_artist_id").isNotNull()
+                & (F.length("q_artist_id") > 0)
+                & (F.length("c_artist_id") > 0)
+                & (F.col("q_artist_id") != F.col("c_artist_id"))
+            )
+            .dropDuplicates(["q_track_id", "c_track_id"])
+            .withColumn(
+                "pre_pca_cosine",
+                cosine(F.col("q_vector"), F.col("c_vector"), F.col("q_norm"), F.col("c_norm")),
+            )
+            .where(F.col("pre_pca_cosine").isNotNull() & ~F.isnan("pre_pca_cosine"))
+            .orderBy(F.xxhash64("q_track_id", "c_track_id", F.lit(VALIDATION_GROUP_SEED)))
+            .limit(args.max_threshold_pairs)
+            .persist(StorageLevel.MEMORY_AND_DISK)
+        )
         cached.append(threshold_sample)
         threshold_sample_count = threshold_sample.count()
         if threshold_sample_count == 0:
