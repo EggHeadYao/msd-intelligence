@@ -218,7 +218,12 @@ def validate_faiss(
 
 
 def validate_encoder_metadata(output: Path, expected_rows: int, dimension: int) -> None:
+    read_expected_dimension(output, dimension)
     metadata = read_json(output / ENCODER_METADATA_NAME)
+    require(
+        metadata[GRAPH_CONTRACT_KEY] == GRAPH_CONTRACT_VERSION,
+        "graph encoder contract mismatch",
+    )
     require(
         metadata["embedding_source"] == "direct_word2vec_track_token",
         "graph embedding source mismatch",
