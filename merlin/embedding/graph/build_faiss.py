@@ -32,8 +32,9 @@ from merlin.embedding.graph.config import (
 
 INDEX_NAME = "index_graph.faiss"
 MAPPING_NAME = "index_graph_track_ids.parquet"
-METADATA_NAME = "graph_faiss_metadata.json"
+METADATA_NAME = "index_graph_manifest.json"
 ENCODER_METADATA_NAME = "graph_encoder_metadata.json"
+FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
 REQUIRED_COLUMNS = ("node_id", "track_id", "embedding")
 NORM_TOLERANCE = 1e-4
 
@@ -222,11 +223,20 @@ def validate_index(
     }
 
 
-def sha256_file(path: Path) -> str:
+def sha256_path(path: Path) -> str:
+    if not path.exists():
+        raise FileNotFoundError(f"artifact does not exist: {path}")
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(8 * 1024 * 1024):
-            digest.update(chunk)
+    files = (path,) if path.is_file() else tuple(
+        sorted(item for item in path.rglob("*") if item.is_file())
+    )
+    for item in files:
+        relative = item.name if path.is_file() else item.relative_to(path).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        with item.open("rb") as handle:
+            while chunk := handle.read(8 * 1024 * 1024):
+                digest.update(chunk)
     return digest.hexdigest()
 
 
@@ -259,24 +269,25 @@ def main() -> None:
     temporary_index.replace(index_path)
     write_mapping(table, mapping_path)
 
+    encoder_metadata_path = args.output / ENCODER_METADATA_NAME
     metadata = {
-        "artifact": "merlin_c2_graph_faiss",
+        "artifact_type": "merlin_faiss_index",
+        "manifest_version": FAISS_MANIFEST_VERSION,
+        "embedding_space": "graph",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        GRAPH_CONTRACT_KEY: GRAPH_CONTRACT_VERSION,
         "input_embeddings": str(args.embeddings.resolve()),
-        "index": {
-            "file": INDEX_NAME,
-            "type": "IndexFlatIP",
-            "metric": "inner_product",
-            "rows": int(index.ntotal),
-            "dimension": int(index.d),
-            "sha256": sha256_file(index_path),
-        },
-        "mapping": {
-            "path": MAPPING_NAME,
-            "columns": ["row_id", "node_id", "track_id"],
-            "order": "node_id_ascending",
-            "rows": table.num_rows,
-        },
+        "index_type": "IndexFlatIP",
+        "metric": "inner_product",
+        "dimension": int(index.d),
+        "row_count": int(index.ntotal),
+        "index_file": INDEX_NAME,
+        "mapping_path": MAPPING_NAME,
+        "index_sha256": sha256_path(index_path),
+        "mapping_sha256": sha256_path(mapping_path),
+        "encoder_metadata_sha256": sha256_path(encoder_metadata_path),
+        "mapping_columns": ["row_id", "node_id", "track_id"],
+        "mapping_order": "node_id_ascending",
         "validation": validation,
     }
     write_metadata(metadata_path, metadata)
