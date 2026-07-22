@@ -173,8 +173,79 @@ def find_similar_artists(
     return sorted(scored, key=lambda item: (-item[1], item[0]))[:top_k]
 
 
-def load_tag_idf(path: str | Path) -> dict[str, float]:
-    """Load and validate Person A's frozen artist-term IDF artifact."""
+) -> dict[str, float]:
+    """Precompute exact TF-IDF norms shared by recall and pair scoring."""
+    artist_count = len(data.artist_terms)
+
+    def idf(term: str) -> float:
+        if idf_values is not None:
+            try:
+                return float(idf_values[term])
+            except KeyError as error:
+                raise ValueError(f"tag IDF artifact is missing term {term!r}") from error
+        frequency = len(data.term_artists.get(term, ()))
+        return math.log((1.0 + artist_count) / (1.0 + frequency)) + 1.0
+
+    return {
+        artist: math.sqrt(sum(idf(term) ** 2 for term in terms))
+        for artist, terms in data.artist_terms.items()
+    }
+
+
+def compute_tag_idf(data: TagData) -> dict[str, float]:
+    """Compute the canonical binary artist-term IDF table."""
+    artist_count = len(data.artist_terms)
+    if artist_count == 0 or not data.term_artists:
+        raise ValueError("artist-term data must not be empty")
+    values = {
+        term: math.log((artist_count + 1.0) / (len(artists) + 1.0)) + 1.0
+        for term, artists in sorted(data.term_artists.items())
+    }
+    if any(not math.isfinite(value) or value <= 0.0 for value in values.values()):
+        raise ValueError("computed tag IDF values must be finite and positive")
+    return values
+
+
+def build_tag_idf_artifact(
+    data: TagData,
+    graph_edges_path: str | Path,
+) -> dict[str, object]:
+    """Build a lineage-bound canonical Tag-IDF artifact."""
+    graph_root = Path(graph_edges_path)
+    artist_term_path = graph_root / "edge_type=artist_term"
+    values = compute_tag_idf(data)
+    return {
+        "artifact_type": TAG_IDF_ARTIFACT_TYPE,
+        "manifest_version": TAG_IDF_MANIFEST_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "formula": TAG_IDF_FORMULA,
+        "artist_count": len(data.artist_terms),
+        "term_count": len(values),
+        "source": {
+            "artist_term_path": str(artist_term_path.resolve()),
+            "artist_term_sha256": sha256_path(artist_term_path),
+        },
+        "values": values,
+    }
+
+
+def write_tag_idf_artifact(artifact: Mapping[str, object], path: str | Path) -> None:
+    """Atomically publish a completed Tag-IDF artifact."""
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        json.dump(dict(artifact), stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    temporary.replace(output)
+
+
+def load_tag_idf(
+    path: str | Path,
+    *,
+    expected_graph_edges_path: str | Path | None = None,
+) -> dict[str, float]:
+    """Load and validate the frozen artist-term IDF artifact."""
     with Path(path).open("r", encoding="utf-8") as stream:
         artifact = json.load(stream)
     if artifact.get("artifact_type") != TAG_IDF_ARTIFACT_TYPE:
