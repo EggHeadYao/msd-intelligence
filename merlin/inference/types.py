@@ -45,6 +45,7 @@ class RecallAudit:
     duplicate_candidates: int = 0
     deduplication_rate: float = 0.0
     exclusive_candidates: Mapping[str, int] = field(default_factory=dict)
+    source_available: Mapping[str, bool] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_counts", MappingProxyType(dict(self.source_counts)))
@@ -57,6 +58,11 @@ class RecallAudit:
             self,
             "exclusive_candidates",
             MappingProxyType(dict(self.exclusive_candidates)),
+        )
+        object.__setattr__(
+            self,
+            "source_available",
+            MappingProxyType(dict(self.source_available)),
         )
         if self.raw_candidates < self.unique_candidates or self.duplicate_candidates < 0:
             raise ValueError("recall audit candidate counts are inconsistent")

@@ -46,6 +46,7 @@ def validate_pipeline(
             "deduplication_rate": audit.deduplication_rate,
             "source_counts": dict(audit.source_counts),
             "source_shortages": dict(audit.source_shortages),
+            "source_available": dict(audit.source_available),
             "exclusive_candidates": dict(audit.exclusive_candidates),
             "result_track_ids": [item.track_id for item in first],
             "max_repeat_score_error": max_error,
