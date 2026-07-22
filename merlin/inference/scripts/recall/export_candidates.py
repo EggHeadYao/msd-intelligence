@@ -8,6 +8,7 @@ from pathlib import Path
 
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
+from ...candidate_policy import CANONICAL_CANDIDATE_LIMIT
 from ...artifact_paths import (
     CANDIDATE_POOL_MANIFEST_PATH,
     CANDIDATE_POOL_PATH,
@@ -16,6 +17,7 @@ from ...artifact_paths import (
 from ...candidate_pool import export_candidate_pool
 from ...split import load_split_assignments, load_split_manifest
 from ...recall_factory import load_recall_pipeline
+from ...scratch import prepare_scratch_root
 from .validate_recall import read_queries
 
 
@@ -31,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--graph-contract-key", default=GRAPH_CONTRACT_KEY)
     parser.add_argument("--graph-contract-version", default=GRAPH_CONTRACT_VERSION)
     parser.add_argument("--limit-queries", type=int, default=0)
+    parser.add_argument("--min-free-gb", type=float)
     return parser.parse_args()
 
 
@@ -77,6 +80,15 @@ def main() -> None:
         paths.set_b_candidate_pool_manifest if is_set_b else CANDIDATE_POOL_MANIFEST_PATH
     )
     scope = "smoke" if args.limit_queries or split_scope == "smoke" else "formal"
+    projected_gb = (
+        len(queries) * CANONICAL_CANDIDATE_LIMIT * 64 / (1024 ** 3)
+    )
+    prepare_scratch_root(
+        output.parent,
+        scope=scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_gb,
+    )
     pipeline = load_recall_pipeline(
         paths,
         graph_contract_key=args.graph_contract_key,

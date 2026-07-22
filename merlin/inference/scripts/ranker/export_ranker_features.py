@@ -7,6 +7,7 @@ from pathlib import Path
 
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
+from ...artifact_lineage import artifact_size_bytes
 from ...artifact_paths import InferenceArtifactPaths
 from ...catalog_data import load_catalog_context
 from ...faiss_index import FaissTrackIndex
@@ -17,6 +18,7 @@ from ...training_pairs import load_training_pair_manifest
 from ...validation_groups import load_validation_group_manifest
 from ...recall_factory import build_canonical_retrievers
 from ...retrieval import TagRetriever
+from ...scratch import prepare_scratch_root
 from ...tag_data import load_tag_idf
 
 
@@ -34,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
     parser.add_argument("--graph-contract-key", default=GRAPH_CONTRACT_KEY)
     parser.add_argument("--graph-contract-version", default=GRAPH_CONTRACT_VERSION)
+    parser.add_argument("--min-free-gb", type=float)
     return parser.parse_args()
 
 
@@ -57,6 +60,13 @@ def main() -> None:
         paths.raw_pair_features_manifest
         if args.pair_kind == "training"
         else paths.validation_raw_features_manifest
+    )
+    projected_gb = artifact_size_bytes(pairs) * 2 / (1024 ** 3)
+    prepare_scratch_root(
+        output.parent,
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_gb,
     )
     if args.pair_kind == "training":
         load_training_pair_manifest(

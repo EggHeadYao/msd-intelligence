@@ -12,6 +12,7 @@ from ...catalog_data import load_catalog_context
 from ...candidate_pool import load_candidate_pool_manifest
 from ...loaders import load_audio_index
 from ...retrieval import TagRetriever
+from ...scratch import prepare_scratch_root
 from ...split import load_split_assignments
 from ...tag_data import load_tag_idf
 from ...training_pairs import write_training_pair_artifacts
@@ -31,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, default=defaults.training_pairs_manifest)
     parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
+    parser.add_argument("--min-free-gb", type=float)
     return parser.parse_args()
 
 
@@ -50,6 +52,14 @@ def main() -> None:
     )
     assignments = load_split_assignments(args.split_assignments)
     positives = load_weak_positives(args.weak_positives)
+    positive_count = sum(len(values) for values in positives.values())
+    projected_gb = positive_count * 4 * 80 / (1024 ** 3)
+    prepare_scratch_root(
+        args.output.parent,
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_gb,
+    )
     with args.thresholds.open("r", encoding="utf-8") as stream:
         thresholds = json.load(stream)
     audio_threshold = float(thresholds["audio_cosine_p90"])
