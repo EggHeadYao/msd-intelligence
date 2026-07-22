@@ -173,3 +173,35 @@ def load_mapping(graph_output: Path) -> tuple[list[str], dict[str, int]]:
     row_to_track = [str(value) for value in table["track_id"].to_pylist()]
     require(len(row_to_track) == len(set(row_to_track)), "FAISS track mapping repeats")
     return row_to_track, {track_id: row for row, track_id in enumerate(row_to_track)}
+
+
+def load_metadata(
+    metadata_path: Path,
+    query_releases: set[int],
+) -> tuple[dict[str, str], dict[int, list[str]], int]:
+    table = pq.read_table(
+        metadata_path,
+        columns=["track_id", "song_id", "release_7digitalid"],
+    )
+    track_to_song: dict[str, str] = {}
+    release_to_tracks: dict[int, list[str]] = defaultdict(list)
+    for batch in table.to_batches(max_chunksize=100_000):
+        tracks = batch["track_id"].to_pylist()
+        songs = batch["song_id"].to_pylist()
+        releases = batch["release_7digitalid"].to_pylist()
+        for track_value, song_value, release_value in zip(
+            tracks,
+            songs,
+            releases,
+            strict=True,
+        ):
+            require(track_value is not None, "metadata track ID contains null")
+            track_id = str(track_value)
+            require(track_id not in track_to_song, "metadata track ID is not unique")
+            track_to_song[track_id] = valid_song_key(
+                track_id,
+                None if song_value is None else str(song_value),
+            )
+            if release_value is not None and int(release_value) in query_releases:
+                release_to_tracks[int(release_value)].append(track_id)
+    return track_to_song, release_to_tracks, table.num_rows
