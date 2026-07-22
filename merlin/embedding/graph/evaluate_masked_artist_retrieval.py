@@ -445,3 +445,27 @@ def main() -> None:
         "query manifest hash mismatch",
     )
     positives = load_positives(args.experiment, queries)
+
+    index = faiss.read_index(str(args.graph_output / INDEX_NAME))
+    require(index.metric_type == faiss.METRIC_INNER_PRODUCT, "FAISS metric mismatch")
+    row_to_track, track_to_row = load_mapping(args.graph_output)
+    require(index.ntotal == len(row_to_track), "FAISS and mapping row counts differ")
+
+    query_releases = {
+        int(row["release_7digitalid"])
+        for row in queries
+        if row["release_7digitalid"] is not None and int(row["release_7digitalid"]) > 0
+    }
+    metadata_path = args.experiment / "prepared" / "songs_metadata.parquet"
+    track_to_song, release_to_tracks, metadata_rows = load_metadata(
+        metadata_path,
+        query_releases,
+    )
+    require(
+        metadata_rows == int(config["counts"]["catalog_tracks"]),
+        "metadata row count does not match experiment config",
+    )
+    require(
+        all(track_id in track_to_song for track_id in row_to_track),
+        "FAISS mapping contains a track absent from metadata",
+    )
