@@ -1,3 +1,78 @@
+from collections import Counter
+from datetime import datetime, timezone
+from itertools import groupby
+import json
+from pathlib import Path
+from typing import Iterator, Mapping
+
+from .artifact_lineage import sha256_path
+from .feature_schema import RANKER_V2_SCHEMA_VERSION
+from .features_v2 import RankerV2FeatureComputer
+from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
+from .parquet_io import parquet_rows
+from .types import Candidate
+
+
+RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v1"
+RAW_BASE_FEATURES = (
+    "cos_audio",
+    "cos_graph",
+    "has_graph",
+    "bfs_score",
+    "has_bfs",
+    "tag_tfidf_cosine",
+    "has_tags",
+    "same_release",
+    "has_release",
+    "year_gap",
+    "has_year",
+)
+FILL_FEATURES = (
+    "cos_audio",
+    "cos_graph",
+    "bfs_score",
+    "tag_tfidf_cosine",
+    "year_gap",
+)
+
+
+def materialize_raw_features(
+    raw: Mapping[str, object],
+    fill_values: Mapping[str, float],
+) -> dict[str, float]:
+    values = {
+        name: (
+            float(raw[name])
+            if raw.get(name) is not None
+            else float(fill_values[name])
+        )
+        for name in FILL_FEATURES
+    }
+    return {
+        "cos_audio": values["cos_audio"],
+        "cos_graph": values["cos_graph"],
+        "has_graph": float(raw["has_graph"]),
+        "bfs_score": values["bfs_score"],
+        "has_bfs": float(raw["has_bfs"]),
+        "tag_tfidf_cosine": values["tag_tfidf_cosine"],
+        "has_tags": float(raw["has_tags"]),
+        "same_release": float(raw["same_release"]),
+        "has_release": float(raw["has_release"]),
+        "year_gap": values["year_gap"],
+        "has_year": float(raw["has_year"]),
+        "audio_tag_interaction": values["cos_audio"]
+        * values["tag_tfidf_cosine"],
+        "graph_bfs_interaction": values["cos_graph"] * values["bfs_score"],
+    }
+
+
+def export_raw_pair_features(
+    pair_path: str | Path,
+    computer: RankerV2FeatureComputer,
+    output_path: str | Path,
+    manifest_path: str | Path,
+    *,
+    parent_paths: Mapping[str, str | Path],
     scope: str,
     pair_kind: str = "training",
     stage: str = "tuning",
