@@ -314,3 +314,25 @@ def edge_counts(edges: DataFrame) -> dict[str, int]:
         str(row["edge_type"]): int(row["count"])
         for row in edges.groupBy("edge_type").count().collect()
     }
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="ascii",
+    )
+
+
+def _prepare_output(output: Path, overwrite: bool) -> Path:
+    output = output.resolve()
+    staging = output.with_name(output.name + ".tmp")
+    existing = [path for path in (output, staging) if path.exists()]
+    if existing and not overwrite:
+        raise FileExistsError(f"masked-artist output already exists: {existing}")
+    for path in existing:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    staging.mkdir(parents=True)
+    return staging
