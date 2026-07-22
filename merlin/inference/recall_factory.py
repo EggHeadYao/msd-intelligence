@@ -1,3 +1,26 @@
+"""Production construction for canonical four-source candidate recall."""
+
+from __future__ import annotations
+
+import gc
+from typing import Any
+
+from .artifact_paths import InferenceArtifactPaths
+from .bfs_data import load_artist_neighbors
+from .candidate_policy import (
+    CANONICAL_BFS_MAX_DEPTH,
+    CANONICAL_BFS_PER_ARTIST_CAP,
+    CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT,
+    CANONICAL_TAG_MAX_TERM_ARTISTS,
+    CANONICAL_TAG_PER_ARTIST_CAP,
+    CANONICAL_VECTOR_OVERFETCH_FACTOR,
+    load_candidate_policy,
+)
+from .catalog_data import load_catalog_context
+from .faiss_index import FaissTrackIndex
+from .loaders import load_audio_index
+from .recall import (
+    RecallPipeline,
     audit_recall_groups,
     candidate_digest,
     recall_query_report,
