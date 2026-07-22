@@ -72,6 +72,19 @@ including split assignments, candidate pools, weak positives, training pairs,
 and raw feature rows. Explicit legacy `.jsonl.gz` paths remain readable and
 writable for compatibility with earlier smoke artifacts.
 
+Candidate-pool rows retain the required ordered track IDs and
+`recall_sources`; source scores and source ranks remain transient recall data.
+Training feature rows do not duplicate pair-audit columns, and validation
+features store one feature vector per `(query, candidate)` with compact nested
+group labels. Numeric feature columns are persisted as float32 and converted by
+Spark ML during assembly.
+
+High-volume formal stages reserve 16 GiB by default and fail before writing
+when the target filesystem is below that threshold. Spark stages place shuffle
+and NumPy pair scratch under the output filesystem instead of `/tmp`; use
+`--scratch-root` for a larger dedicated volume or `--min-free-gb` to raise the
+site-specific reserve.
+
 `build_validation_groups` is a Spark stage. It reconstructs cleaned and scaled
 pre-PCA C1 vectors from the frozen C1 preprocessing and scaler; it does not use
 PCA-128/FAISS cosine. It fits acoustic p50/p90 on at most one million
@@ -90,7 +103,8 @@ python -m merlin.inference.scripts.recall.export_candidates \
   --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
   --split-manifest parquets_new/merlin/ranker/split_manifest.json \
   --query-split set_b
-spark-submit merlin/inference/scripts/ranker/build_validation_groups.py --scope formal
+spark-submit merlin/inference/scripts/ranker/build_validation_groups.py \
+  --scope formal --scratch-root /path/to/large/scratch
 python -m merlin.inference.scripts.ranker.export_ranker_features \
   --pair-kind validation --scope formal --stage tuning
 ```
