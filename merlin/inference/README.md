@@ -27,13 +27,13 @@ Stage-1 can be built and audited before the Ranker artifacts exist. First create
 the frozen policy and Tag-IDF artifacts:
 
 ```bash
-python -m merlin.inference.build_recall_artifacts
+python -m merlin.inference.scripts.recall.build_recall_artifacts
 ```
 
 Then run deterministic four-source recall for a fixed query list:
 
 ```bash
-python -m merlin.inference.validate_recall --queries queries.txt
+python -m merlin.inference.scripts.recall.validate_recall --queries queries.txt
 ```
 
 The recall-only loader validates both FAISS lineages, the candidate policy,
@@ -63,11 +63,9 @@ split_manifest + split_assignments
   -> ranker schema + scaler + coefficients + training manifest
 ```
 
-The corresponding CLIs are `build_split`, `build_weak_labels`,
-`export_candidates`, `audit_candidates`, `build_training_pairs`,
-`build_validation_groups`, `export_ranker_features`, and `train_ranker`. Every
-CLI supports explicit paths; smoke outputs should be written outside the formal
-`ranker/` directory.
+Recall commands live under `scripts/recall`; supervised dataset, feature, and
+training commands live under `scripts/ranker`. Every CLI supports explicit
+paths; smoke outputs should be written outside the formal `ranker/` directory.
 
 High-volume row artifacts use Parquet with Zstandard compression by default,
 including split assignments, candidate pools, weak positives, training pairs,
@@ -88,12 +86,12 @@ artifacts. Build the Set-B pool from the frozen split, then export validation
 features separately from training features:
 
 ```bash
-python -m merlin.inference.export_candidates \
+python -m merlin.inference.scripts.recall.export_candidates \
   --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
   --split-manifest parquets_new/merlin/ranker/split_manifest.json \
   --query-split set_b
-spark-submit merlin/inference/build_validation_groups.py --scope formal
-python -m merlin.inference.export_ranker_features \
+spark-submit merlin/inference/scripts/ranker/build_validation_groups.py --scope formal
+python -m merlin.inference.scripts.ranker.export_ranker_features \
   --pair-kind validation --scope formal --stage tuning
 ```
 
