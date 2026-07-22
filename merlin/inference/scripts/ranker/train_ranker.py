@@ -5,13 +5,16 @@ from __future__ import annotations
 import argparse
 import math
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
+from ...artifact_lineage import artifact_size_bytes
 from ...feature_schema import RANKER_V2_FEATURES
 from ...ranker_artifacts import write_ranker_artifacts
-from ...ranker_features import FILL_FEATURES
+from ...ranker_features import FILL_FEATURES, RAW_BASE_FEATURES
 from ...ranker_features import load_raw_feature_manifest
 from ...ranker_selection import REG_PARAMS, select_reg_param
+from ...scratch import prepare_scratch_root
 
 
 QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
@@ -28,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fixed-reg-param", type=float)
     parser.add_argument("--parent", action="append", default=[], metavar="NAME=PATH")
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
+    parser.add_argument("--scratch-root", type=Path)
+    parser.add_argument("--min-free-gb", type=float)
     return parser.parse_args()
 
 
@@ -78,9 +83,34 @@ def main() -> None:
     from pyspark.sql import SparkSession, Window
     from pyspark.sql import functions as F
 
-    spark = SparkSession.builder.appName("MerlinRankerTraining").getOrCreate()
+    feature_bytes = artifact_size_bytes(args.train_features)
+    if args.validation_features is not None:
+        feature_bytes += artifact_size_bytes(args.validation_features)
+    projected_gb = feature_bytes * 2 / (1024 ** 3)
+    prepare_scratch_root(
+        args.output.parent,
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_gb,
+    )
+    scratch_root = prepare_scratch_root(
+        args.scratch_root or args.output.parent / ".c3-scratch",
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_gb,
+    )
+    spark_local_temporary = TemporaryDirectory(prefix="merlin-ranker-spark-", dir=scratch_root)
+    spark = (
+        SparkSession.builder.appName("MerlinRankerTraining")
+        .config("spark.local.dir", spark_local_temporary.name)
+        .getOrCreate()
+    )
     cached = []
     try:
+        def release(frame: Any) -> None:
+            frame.unpersist(blocking=True)
+            cached[:] = [item for item in cached if item is not frame]
+
         def read_rows(path: Path):
             return (
                 spark.read.parquet(str(path))
@@ -299,6 +329,7 @@ def main() -> None:
             except Exception:
                 pass
         spark.stop()
+        spark_local_temporary.cleanup()
 
 
 if __name__ == "__main__":
