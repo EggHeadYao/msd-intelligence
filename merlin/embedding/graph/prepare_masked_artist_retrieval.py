@@ -336,3 +336,27 @@ def _prepare_output(output: Path, overwrite: bool) -> Path:
             path.unlink()
     staging.mkdir(parents=True)
     return staging
+
+
+def main() -> None:
+    args = parse_args()
+    require(args.queries > 0, "query count must be positive")
+    require(args.shuffle_partitions > 0, "shuffle partitions must be positive")
+    require(args.output_partitions > 0, "output partitions must be positive")
+    require(args.metadata.is_dir(), "metadata path must be a Parquet directory")
+    require(args.graph.is_dir(), "graph path must be a Parquet directory")
+
+    staging = _prepare_output(args.output, args.overwrite)
+    spark = create_spark(args.shuffle_partitions)
+    try:
+        metadata = spark.read.parquet(spark_path(args.metadata)).persist(
+            StorageLevel.MEMORY_AND_DISK,
+        )
+        enriched, total_tracks = enrich_metadata(metadata)
+        queries, available, quotas = select_queries(
+            enriched,
+            args.queries,
+            args.seed,
+        )
+    finally:
+        spark.stop()
