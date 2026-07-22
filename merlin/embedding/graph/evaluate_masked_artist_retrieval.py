@@ -414,3 +414,34 @@ def prepare_output(output: Path, overwrite: bool) -> None:
         else:
             output.unlink()
     output.mkdir(parents=True)
+
+
+def main() -> None:
+    args = parse_args()
+    cutoffs = tuple(args.cutoffs)
+    require(
+        cutoffs == tuple(sorted(set(cutoffs))) and all(value > 0 for value in cutoffs),
+        "cutoffs must be unique, positive, and increasing",
+    )
+    require(args.overfetch >= 1, "overfetch must be at least one")
+    require(args.batch_size > 0, "batch size must be positive")
+
+    config = read_json(args.experiment / "experiment_config.json")
+    require(
+        config.get("experiment_version") == EXPERIMENT_VERSION,
+        "experiment version mismatch",
+    )
+    queries = load_queries(args.experiment)
+    require(
+        len(queries) == int(config["query_count"]),
+        "query count does not match experiment config",
+    )
+    sorted_query_ids = sorted(str(row["query_track_id"]) for row in queries)
+    query_hash = hashlib.sha256(
+        ("\n".join(sorted_query_ids) + "\n").encode("ascii"),
+    ).hexdigest()
+    require(
+        query_hash == config["query_track_ids_sha256"],
+        "query manifest hash mismatch",
+    )
+    positives = load_positives(args.experiment, queries)
