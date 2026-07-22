@@ -1,3 +1,78 @@
+    audit_recall_groups,
+    candidate_digest,
+    recall_query_report,
+)
+from .retrieval import BfsRetriever, TagRetriever, VectorRetriever
+from .track_identity import SameSongFilter, load_same_song_filter
+from .tag_data import load_tag_idf
+
+
+def build_canonical_retrievers(
+    audio: FaissTrackIndex,
+    graph: FaissTrackIndex,
+    paths: InferenceArtifactPaths,
+    same_song: SameSongFilter,
+    tag: TagRetriever | None = None,
+) -> tuple[VectorRetriever, VectorRetriever, BfsRetriever, TagRetriever]:
+    """Build all four retrievers with the frozen ordering and filtering policy."""
+    if tag is None:
+        tag = TagRetriever.from_parquet(
+            str(paths.songs_metadata),
+            str(paths.graph_edges),
+            tag_idf_path=str(paths.tag_idf),
+            same_song=same_song,
+            artist_neighbor_limit=CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT,
+            max_term_artists=CANONICAL_TAG_MAX_TERM_ARTISTS,
+            per_artist_cap=CANONICAL_TAG_PER_ARTIST_CAP,
+        )
+    bfs = BfsRetriever(
+        tag.track_to_artist,
+        load_artist_neighbors(paths.graph_edges),
+        tag.artist_tracks,
+        same_song=same_song,
+        tag_similarity=tag.artist_similarity,
+        max_depth=CANONICAL_BFS_MAX_DEPTH,
+        per_artist_cap=CANONICAL_BFS_PER_ARTIST_CAP,
+    )
+    return (
+        VectorRetriever(
+            "audio",
+            audio.search,
+            same_song=same_song,
+            query_available=audio.contains,
+            overfetch_factor=CANONICAL_VECTOR_OVERFETCH_FACTOR,
+        ),
+        VectorRetriever(
+            "graph",
+            graph.search,
+            same_song=same_song,
+            query_available=graph.contains,
+            overfetch_factor=CANONICAL_VECTOR_OVERFETCH_FACTOR,
+        ),
+        bfs,
+        tag,
+    )
+
+
+def load_recall_pipeline(
+    paths: InferenceArtifactPaths = InferenceArtifactPaths(),
+    *,
+    graph_contract_key: str,
+    graph_contract_version: str,
+) -> RecallPipeline:
+    """Load only Stage-1 artifacts; no Ranker bundle is required."""
+    policy: dict[str, Any] = load_candidate_policy(paths.candidate_policy)
+    audio = load_audio_index(
+        paths.audio_index,
+        paths.audio_mapping,
+        paths.audio_manifest,
+        paths.audio_encoder_metadata,
+    )
+    graph = FaissTrackIndex.from_files(
+        paths.graph_index,
+        paths.graph_mapping,
+        paths.graph_manifest,
+        paths.graph_encoder_metadata,
         expected_space="graph",
         expected_contract_key=graph_contract_key,
         expected_contract=graph_contract_version,
