@@ -1,3 +1,73 @@
+"""Deterministic song-group-aware C3 supervised split artifacts."""
+
+from __future__ import annotations
+
+from collections import Counter
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+from typing import Iterable, Iterator, Mapping
+
+from .artifact_lineage import sha256_path
+from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
+
+
+SPLIT_VERSION = "merlin_group_split_v1"
+SPLIT_SEED = 42
+SPLIT_THRESHOLDS = (
+    ("set_a", 0.10),
+    ("set_b", 0.11),
+    ("set_c", 0.13),
+)
+
+
+def split_key(track_id: str, song_id: str | None) -> str:
+    if not track_id:
+        raise ValueError("split track_id must not be empty")
+    return song_id if song_id else track_id
+
+
+def assign_split(key: str, seed: int = SPLIT_SEED) -> str:
+    digest = hashlib.sha256(f"{seed}\0{key}".encode("utf-8")).digest()
+    value = int.from_bytes(digest[:8], "big") / float(1 << 64)
+    for name, threshold in SPLIT_THRESHOLDS:
+        if value < threshold:
+            return name
+    return "remaining"
+
+
+def build_split_artifacts(
+    rows: Iterable[tuple[str, str | None]],
+    assignments_path: str | Path,
+    manifest_path: str | Path,
+    *,
+    songs_metadata_path: str | Path,
+    scope: str = "formal",
+) -> dict[str, object]:
+    if scope not in {"formal", "smoke"}:
+        raise ValueError("split scope must be formal or smoke")
+    counts: Counter[str] = Counter()
+    group_splits: dict[str, str] = {}
+    seen_tracks: set[str] = set()
+
+    def assignments() -> Iterator[dict[str, object]]:
+        for track_id, song_id in rows:
+            if not track_id:
+                raise ValueError("split input contains an empty track_id")
+            if track_id in seen_tracks:
+                raise ValueError(f"split input contains duplicate track {track_id!r}")
+            seen_tracks.add(track_id)
+            key = split_key(track_id, song_id)
+            assignment = assign_split(key)
+            previous = group_splits.setdefault(key, assignment)
+            if previous != assignment:
+                raise ValueError("one split group was assigned to multiple sets")
+            counts[assignment] += 1
+            yield {
+                "track_id": track_id,
+                "split_key": key,
+                "split": assignment,
             }
 
     output = Path(assignments_path)
