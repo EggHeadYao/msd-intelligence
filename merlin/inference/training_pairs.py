@@ -1,3 +1,78 @@
+
+
+def _random_negatives(
+    query_id: str,
+    universe: Sequence[str],
+    count: int,
+    rejected: set[str],
+    same_song: SameSong,
+    is_positive: IsPositive,
+    rejection_counts: Counter[str],
+) -> list[str]:
+    if count <= 0:
+        return []
+    selected: list[str] = []
+    selected_set: set[str] = set()
+    attempts = 0
+    maximum_attempts = max(len(universe) * 4, count * 100)
+    while len(selected) < count and attempts < maximum_attempts:
+        digest = hashlib.sha256(
+            f"{PAIR_SEED}\0{query_id}\0random\0{attempts}".encode("utf-8")
+        ).digest()
+        candidate_id = universe[int.from_bytes(digest[:8], "big") % len(universe)]
+        attempts += 1
+        if candidate_id == query_id:
+            rejection_counts["query_self"] += 1
+        elif candidate_id in rejected or candidate_id in selected_set:
+            rejection_counts["duplicate_pair"] += 1
+        elif same_song(query_id, candidate_id):
+            rejection_counts["same_song"] += 1
+        elif is_positive(query_id, candidate_id):
+            rejection_counts["known_positive"] += 1
+        else:
+            selected.append(candidate_id)
+            selected_set.add(candidate_id)
+    return selected
+
+
+def construct_query_pairs(
+    query_id: str,
+    positives: Mapping[str, frozenset[str]],
+    candidates: Sequence[Mapping[str, object]],
+    allowed_tracks: set[str],
+    random_universe: Sequence[str],
+    same_song: SameSong,
+    is_positive: IsPositive,
+    is_positive_batch: IsPositiveBatch | None = None,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Construct one query's exact 1:3 curriculum and rejection audit."""
+    if query_id not in allowed_tracks:
+        raise ValueError(f"query endpoint is outside the training universe: {query_id}")
+    selected_positives = {
+        track_id: sources
+        for track_id, sources in positives.items()
+        if track_id in allowed_tracks
+        and track_id != query_id
+        and not same_song(query_id, track_id)
+    }
+    if not selected_positives:
+        return [], {
+            "positive_count": 0,
+            "negative_count": 0,
+            "candidate_aware_count": 0,
+            "random_count": 0,
+            "candidate_shortage": 0,
+            "negative_shortage": 0,
+            "rejections": {},
+        }
+    positive_ids = set(selected_positives)
+    negative_target = NEGATIVE_RATIO * len(positive_ids)
+    candidate_target = int(negative_target * CANDIDATE_AWARE_FRACTION)
+    rejection_counts: Counter[str] = Counter()
+    eligible_candidates: list[tuple[str, frozenset[str]]] = []
+    predicate_candidates: list[tuple[str, frozenset[str]]] = []
+    seen_candidates: set[str] = set()
+    for candidate in candidates:
         track_id = str(candidate["track_id"])
         recall_sources = frozenset(str(value) for value in candidate["recall_sources"])
         if track_id == query_id:
