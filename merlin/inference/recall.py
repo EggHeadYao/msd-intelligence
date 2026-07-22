@@ -1,3 +1,48 @@
+"""Ranker-independent canonical Stage-1 candidate recall."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import hashlib
+import json
+from pathlib import Path
+from typing import Iterable, Mapping, Sequence
+
+from .candidate_policy import validate_canonical_policy
+from .interfaces import CandidateRetriever
+from .retrieval import merge_candidates
+from .types import Candidate, RecallAudit
+
+
+def validate_recall_configuration(
+    retrievers: Sequence[CandidateRetriever],
+    retriever_limits: Mapping[str, int],
+    candidate_limit: int,
+    *,
+    canonical: bool,
+) -> None:
+    names = [retriever.name for retriever in retrievers]
+    if not names or len(set(names)) != len(names):
+        raise ValueError("recall retriever names must be non-empty and unique")
+    if set(names) != set(retriever_limits):
+        raise ValueError("recall retrievers and limits must match")
+    limits = [int(retriever_limits[name]) for name in names]
+    if any(limit <= 0 for limit in limits):
+        raise ValueError("recall limits must be positive")
+    if candidate_limit <= 0 or sum(limits) > candidate_limit:
+        raise ValueError("retriever limits exceed candidate union cap")
+    if canonical:
+        validate_canonical_policy(retriever_limits, candidate_limit, 20)
+
+
+def recall_candidates(
+    retrievers: Sequence[CandidateRetriever],
+    retriever_limits: Mapping[str, int],
+    candidate_limit: int,
+    query_track_id: str,
+) -> tuple[list[Candidate], RecallAudit]:
+    """Generate one deterministic candidate union and coverage audit."""
+    if not query_track_id:
         raise ValueError("query_track_id must not be empty")
     groups: dict[str, list[Candidate]] = {}
     availability: dict[str, bool] = {}
