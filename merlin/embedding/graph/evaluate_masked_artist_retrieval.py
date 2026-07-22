@@ -502,3 +502,39 @@ def main() -> None:
         random_candidate_counts,
         cutoffs,
     )
+
+    prepare_output(args.output, args.overwrite)
+    pq.write_table(pa.Table.from_pylist(rows), args.output / QUERY_METRICS_NAME)
+    connectable_count = sum(bool(row["connectable"]) for row in rows)
+    report = {
+        "report_version": REPORT_VERSION,
+        "experiment_version": EXPERIMENT_VERSION,
+        "experiment_config": str(
+            (args.experiment / "experiment_config.json").resolve()
+        ),
+        "graph_output": str(args.graph_output.resolve()),
+        "parameters": {
+            "cutoffs": list(cutoffs),
+            "primary_cutoff": 20,
+            "faiss_overfetch": args.overfetch,
+            "mrr_scope": f"first positive within top {max_cutoff}",
+            "release_only_tie_break": "sha256(seed, query_track_id, candidate_track_id)",
+            "random_baseline": "exact uniform-without-replacement expectation",
+        },
+        "query_counts": {
+            "total": len(rows),
+            "without_positive": 0,
+            "connectable": connectable_count,
+            "unconnectable": len(rows) - connectable_count,
+            "connectable_coverage": connectable_count / len(rows),
+        },
+        "models": {
+            model: model_report(rows, model, cutoffs)
+            for model in ("c2", "release_only", "random")
+        },
+        "claim_boundary": (
+            "Transductive cross-relation metadata reconstruction; the masked query "
+            "may recover artist context through release and is not strict "
+            "relation-blind or inductive inference."
+        ),
+    }
