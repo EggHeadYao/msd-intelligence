@@ -11,6 +11,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from faiss_checks import validate_source_mapping
+from lineage import sha256_path
 from shared_contract import CONTRACT_VERSION
 
 
@@ -18,6 +19,7 @@ TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
 DEFAULT_AUDIO_DIR = Path("parquets_new/merlin/audio")
 FAISS_MANIFEST_NAME = "index_audio_manifest.json"
+FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,15 +75,34 @@ def validate_manifest(
     require(manifest_path.exists(), f"missing FAISS manifest: {manifest_path}")
     with manifest_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
-    require(manifest.get("shared_audio_contract_version") == CONTRACT_VERSION, "wrong manifest contract")
+    require(
+        manifest.get("artifact_type") == "merlin_faiss_index",
+        "wrong FAISS artifact type",
+    )
+    require(
+        manifest.get("manifest_version") == FAISS_MANIFEST_VERSION,
+        "wrong manifest version",
+    )
+    require(manifest.get("embedding_space") == "audio", "wrong embedding space")
+    require(
+        manifest.get("shared_audio_contract_version") == CONTRACT_VERSION,
+        "wrong manifest contract",
+    )
     require(int(manifest.get("c1_feature_version", -1)) == 2, "wrong manifest feature version")
     require(manifest.get("index_type") == "IndexFlatIP", "wrong FAISS index type")
+    require(manifest.get("metric") == "inner_product", "wrong FAISS metric")
     require(int(manifest.get("dimension", -1)) == 128, "wrong manifest dimension")
     require(int(manifest.get("row_count", -1)) == expected_rows, "wrong manifest row count")
     require(manifest.get("index_file") == index_path.name, "wrong manifest index path")
-    require(manifest.get("track_ids_path") == mapping_path.name, "wrong manifest mapping path")
+    require(manifest.get("mapping_path") == mapping_path.name, "wrong manifest mapping path")
+    require(manifest.get("index_sha256") == sha256_path(index_path), "wrong index hash")
+    require(manifest.get("mapping_sha256") == sha256_path(mapping_path), "wrong mapping hash")
     with metadata_path.open("r", encoding="utf-8") as handle:
         metadata = json.load(handle)
+    require(
+        manifest.get("encoder_metadata_sha256") == sha256_path(metadata_path),
+        "wrong encoder metadata hash",
+    )
     require(manifest.get("encoder_run_id") == metadata.get("run_id"), "encoder run mismatch")
 
 
@@ -90,7 +111,12 @@ def read_selected_k(output_dir: Path) -> int:
     require(metadata_path.exists(), f"missing C1 encoder metadata: {metadata_path}")
     with metadata_path.open("r", encoding="utf-8") as handle:
         metadata = json.load(handle)
-    required = ("shared_audio_contract_version", "c1_feature_version", "selected_k", "embedding_format")
+    required = (
+        "shared_audio_contract_version",
+        "c1_feature_version",
+        "selected_k",
+        "embedding_format",
+    )
     missing = [key for key in required if key not in metadata]
     require(not missing, f"C1 encoder metadata missing keys: {missing}")
     require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")

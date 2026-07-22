@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ from artifacts import (
     validate_c1_manifest,
     write_json_atomic,
 )
+from lineage import sha256_path
 from shared_contract import CONTRACT_VERSION
 
 
@@ -26,6 +28,7 @@ TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
 DEFAULT_AUDIO_DIR = Path("parquets_new/merlin/audio")
 FAISS_MANIFEST_NAME = "index_audio_manifest.json"
+FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,7 +69,12 @@ def encoder_contract(output_dir: Path) -> tuple[int, str]:
     require(metadata_path.exists(), f"missing C1 encoder metadata: {metadata_path}")
     with metadata_path.open("r", encoding="utf-8") as handle:
         metadata = json.load(handle)
-    required = ("shared_audio_contract_version", "c1_feature_version", "selected_k", "embedding_format")
+    required = (
+        "shared_audio_contract_version",
+        "c1_feature_version",
+        "selected_k",
+        "embedding_format",
+    )
     missing = [key for key in required if key not in metadata]
     require(not missing, f"C1 encoder metadata missing keys: {missing}")
     require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")
@@ -177,14 +185,23 @@ def main() -> None:
         print(f"audio_faiss_index_ready rows={index.ntotal}, dimension={index.d}", flush=True)
         staged_index = staging / args.index_name
         faiss.write_index(index, str(staged_index))
+        encoder_metadata_path = args.output / "audio_encoder_metadata.json"
         manifest = {
+            "artifact_type": "merlin_faiss_index",
+            "manifest_version": FAISS_MANIFEST_VERSION,
+            "embedding_space": "audio",
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
             "shared_audio_contract_version": CONTRACT_VERSION,
             "c1_feature_version": 2,
             "index_type": "IndexFlatIP",
+            "metric": "inner_product",
             "dimension": index.d,
             "row_count": index.ntotal,
             "index_file": args.index_name,
-            "track_ids_path": args.track_ids_name,
+            "mapping_path": args.track_ids_name,
+            "index_sha256": sha256_path(staged_index),
+            "mapping_sha256": sha256_path(staged_mapping),
+            "encoder_metadata_sha256": sha256_path(encoder_metadata_path),
             "encoder_run_id": encoder_run_id,
         }
         staged_manifest = staging / FAISS_MANIFEST_NAME
