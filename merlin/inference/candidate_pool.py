@@ -7,22 +7,21 @@ import json
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
 
-from .artifact_lineage import sha256_path
+from .artifact_lineage import artifact_size_bytes, sha256_path
 from .candidate_policy import CANDIDATE_POLICY_VERSION
 from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
 from .recall import RecallPipeline
 from .types import Candidate
 
 
-CANDIDATE_POOL_VERSION = "merlin_candidate_pool_v1"
+CANDIDATE_POOL_VERSION = "merlin_candidate_pool_v2"
+CANDIDATE_BATCH_SIZE = 256
 
 
 def _candidate_payload(candidate: Candidate) -> dict[str, object]:
     return {
         "track_id": candidate.track_id,
         "recall_sources": sorted(candidate.sources),
-        "recall_scores": dict(sorted(candidate.recall_scores.items())),
-        "source_ranks": dict(sorted(candidate.source_ranks.items())),
     }
 
 
@@ -48,24 +47,33 @@ def export_candidate_pool(
     source_totals = {name: 0 for name in pipeline.retriever_limits}
 
     def rows() -> Iterator[dict[str, object]]:
-        for query_id in queries:
-            candidates, audit = pipeline.recall(query_id)
-            totals["raw_candidates"] += audit.raw_candidates
-            totals["unique_candidates"] += audit.unique_candidates
-            for name, count in audit.source_counts.items():
-                source_totals[name] += count
-            yield {
-                "query_track_id": query_id,
-                "candidates": [_candidate_payload(candidate) for candidate in candidates],
-                "audit": {
-                    "raw_candidates": audit.raw_candidates,
-                    "unique_candidates": audit.unique_candidates,
-                    "duplicate_candidates": audit.duplicate_candidates,
-                    "source_available": dict(audit.source_available),
-                    "source_counts": dict(audit.source_counts),
-                    "source_shortages": dict(audit.source_shortages),
-                },
-            }
+        for start in range(0, len(queries), CANDIDATE_BATCH_SIZE):
+            batch = queries[start : start + CANDIDATE_BATCH_SIZE]
+            recalled = pipeline.recall_many(batch)
+            for query_id in batch:
+                candidates, audit = recalled[query_id]
+                totals["raw_candidates"] += audit.raw_candidates
+                totals["unique_candidates"] += audit.unique_candidates
+                for name, count in audit.source_counts.items():
+                    source_totals[name] += count
+                yield {
+                    "query_track_id": query_id,
+                    "candidates": [_candidate_payload(candidate) for candidate in candidates],
+                    "audit": {
+                        "raw_candidates": audit.raw_candidates,
+                        "unique_candidates": audit.unique_candidates,
+                        "duplicate_candidates": audit.duplicate_candidates,
+                        "source_available": dict(audit.source_available),
+                        "source_counts": dict(audit.source_counts),
+                        "source_shortages": dict(audit.source_shortages),
+                    },
+                }
+            processed = min(start + len(batch), len(queries))
+            if processed == len(queries) or processed % (10 * CANDIDATE_BATCH_SIZE) == 0:
+                print(
+                    f"candidate_pool_progress queries={processed}/{len(queries)}",
+                    flush=True,
+                )
 
     output = Path(output_path)
     parquet_schema = None
@@ -77,8 +85,6 @@ def export_candidate_pool(
             pa.field("candidates", pa.list_(pa.struct((
                 pa.field("track_id", pa.string(), nullable=False),
                 pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
-                pa.field("recall_scores", pa.map_(pa.string(), pa.float64()), nullable=False),
-                pa.field("source_ranks", pa.map_(pa.string(), pa.int64()), nullable=False),
             ))), nullable=False),
             pa.field("audit", pa.struct((
                 pa.field("raw_candidates", pa.int64(), nullable=False),
@@ -105,10 +111,11 @@ def export_candidate_pool(
         "output_file": output.name,
         "storage_format": "parquet" if output.suffix == ".parquet" else "jsonl_gzip",
         "output_sha256": sha256_path(output),
+        "output_size_bytes": artifact_size_bytes(output),
         "parent_hashes": parents,
         "schema": {
             "query_track_id": "string",
-            "candidates": "ordered array<track_id, recall_sources, recall_scores, source_ranks>",
+            "candidates": "ordered array<track_id, recall_sources>",
         },
     }
     write_json_atomic(manifest, manifest_path)
