@@ -117,31 +117,77 @@ class RankerV2FeatureComputer:
         graph_raw = _finite(self.signals.graph(query_track_id, candidate_id))
         bfs_raw = _finite(self.signals.bfs(query_track_id, candidate_id))
         tags_raw = _finite(self.signals.tags(query_track_id, candidate_id))
-        audio = self._fill("cos_audio", audio_raw)
-        graph = self._fill("cos_graph", graph_raw)
-        bfs = self._fill("bfs_score", bfs_raw)
-        tags = self._fill("tag_tfidf_cosine", tags_raw)
+        return self._raw_values(
+            query_track_id,
+            candidate_id,
+            audio_raw,
+            graph_raw,
+            bfs_raw,
+            tags_raw,
+        )
 
+    def compute_raw_many(
+        self,
+        query_track_id: str,
+        candidates: Sequence[Candidate],
+    ) -> list[Mapping[str, float | None]]:
+        """Compute one query's features with optional batched vector lookups."""
+        candidate_ids = [candidate.track_id for candidate in candidates]
+        audio_values = (
+            self.signals.audio_batch(query_track_id, candidate_ids)
+            if self.signals.audio_batch is not None
+            else [self.signals.audio(query_track_id, candidate_id) for candidate_id in candidate_ids]
+        )
+        graph_values = (
+            self.signals.graph_batch(query_track_id, candidate_ids)
+            if self.signals.graph_batch is not None
+            else [self.signals.graph(query_track_id, candidate_id) for candidate_id in candidate_ids]
+        )
+        if len(audio_values) != len(candidates) or len(graph_values) != len(candidates):
+            raise ValueError("batch pair lookup returned the wrong number of scores")
+        return [
+            self._raw_values(
+                query_track_id,
+                candidate_id,
+                _finite(audio),
+                _finite(graph),
+                _finite(self.signals.bfs(query_track_id, candidate_id)),
+                _finite(self.signals.tags(query_track_id, candidate_id)),
+            )
+            for candidate_id, audio, graph in zip(
+                candidate_ids,
+                audio_values,
+                graph_values,
+                strict=True,
+            )
+        ]
+
+    def _raw_values(
+        self,
+        query_track_id: str,
+        candidate_id: str,
+        audio_raw: float | None,
+        graph_raw: float | None,
+        bfs_raw: float | None,
+        tags_raw: float | None,
+    ) -> Mapping[str, float | None]:
         query = self.tracks.get(query_track_id, TrackMetadataV2())
         other = self.tracks.get(candidate_id, TrackMetadataV2())
         has_release = query.release_id is not None and other.release_id is not None
         has_year = query.year is not None and other.year is not None
         year_gap_raw = float(abs(query.year - other.year)) if has_year else None
-        year_gap = self._fill("year_gap", year_gap_raw)
         return {
-            "cos_audio": audio,
-            "cos_graph": graph,
+            "cos_audio": audio_raw,
+            "cos_graph": graph_raw,
             "has_graph": float(graph_raw is not None),
-            "bfs_score": bfs,
+            "bfs_score": bfs_raw,
             "has_bfs": float(bfs_raw is not None),
-            "tag_tfidf_cosine": tags,
+            "tag_tfidf_cosine": tags_raw,
             "has_tags": float(tags_raw is not None),
             "same_release": float(has_release and query.release_id == other.release_id),
             "has_release": float(has_release),
-            "year_gap": year_gap,
+            "year_gap": year_gap_raw,
             "has_year": float(has_year),
-            "audio_tag_interaction": audio * tags,
-            "graph_bfs_interaction": graph * bfs,
         }
 
     def _fill(self, name: str, value: float | None) -> float:
