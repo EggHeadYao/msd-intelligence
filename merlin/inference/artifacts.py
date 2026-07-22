@@ -40,6 +40,8 @@ def load_inference_artifacts(
         paths.graph_index,
         paths.graph_mapping,
         paths.graph_manifest,
+        paths.graph_encoder_metadata,
+        expected_space="graph",
         expected_contract_key=graph_contract_key,
         expected_contract=graph_contract_version,
     )
