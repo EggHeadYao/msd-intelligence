@@ -20,6 +20,18 @@ Expanded song-level terms are historical v1 data and are not canonical input.
 
 The main pipeline does not apply MMR. It ranks the canonical candidate union by
 the LR raw margin and returns the top 20. MMR is deferred future work.
+
+## Recall-only assembly
+
+Stage-1 can be built and audited before the Ranker artifacts exist. First create
+the frozen policy and Tag-IDF artifacts:
+
+```bash
+python -m merlin.inference.build_recall_artifacts
+```
+
+Then run deterministic four-source recall for a fixed query list:
+
 ```bash
 python -m merlin.inference.validate_recall --queries queries.txt
 ```
