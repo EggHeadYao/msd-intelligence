@@ -6,7 +6,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Sequence
 
 import numpy as np
 
@@ -104,9 +104,25 @@ class FaissTrackIndex:
             results[position] = float(score)
         return results
 
+    def reconstruct_many(self, track_ids: Sequence[str]) -> np.ndarray:
+        """Return a validated float32 matrix for known catalog tracks."""
+        missing = [track_id for track_id in track_ids if not self.contains(track_id)]
+        if missing:
+            raise KeyError(f"track is not in FAISS mapping: {missing[0]}")
+        return self._reconstruct_many(list(track_ids))
+
     def _reconstruct_many(self, track_ids: list[str]) -> np.ndarray:
         rows = [self._track_to_row[track_id] for track_id in track_ids]
-        missing_rows = [row_id for row_id in rows if row_id not in self._vector_cache]
+        output = np.empty((len(rows), self.dimension), dtype=np.float32)
+        missing_positions: dict[int, list[int]] = {}
+        for position, row_id in enumerate(rows):
+            cached = self._vector_cache.get(row_id)
+            if cached is None:
+                missing_positions.setdefault(row_id, []).append(position)
+            else:
+                self._vector_cache.move_to_end(row_id)
+                output[position] = cached
+        missing_rows = list(missing_positions)
         if missing_rows and hasattr(self.index, "reconstruct_batch"):
             matrix = np.asarray(
                 self.index.reconstruct_batch(np.asarray(missing_rows, dtype=np.int64)),
@@ -119,16 +135,21 @@ class FaissTrackIndex:
             norms = np.linalg.norm(matrix, axis=1)
             if np.any(np.abs(norms - 1.0) > 1e-5):
                 raise ValueError("reconstructed FAISS batch is not unit normalized")
-            for row_id, vector in zip(missing_rows, matrix, strict=True):
+            for row_id, reconstructed in zip(missing_rows, matrix, strict=True):
+                vector = np.array(reconstructed, dtype=np.float32, copy=True)
                 vector.setflags(write=False)
                 self._vector_cache[row_id] = vector
                 self._vector_cache.move_to_end(row_id)
+                for position in missing_positions[row_id]:
+                    output[position] = vector
             while len(self._vector_cache) > self._VECTOR_CACHE_SIZE:
                 self._vector_cache.popitem(last=False)
-        return np.stack(
-            [self._reconstruct(self.row_to_track[row_id]) for row_id in rows],
-            axis=0,
-        )
+        elif missing_rows:
+            for row_id, positions in missing_positions.items():
+                vector = self._reconstruct(self.row_to_track[row_id])
+                for position in positions:
+                    output[position] = vector
+        return output
 
     def _reconstruct(self, track_id: str) -> np.ndarray:
         row_id = self._track_to_row[track_id]
@@ -195,6 +216,40 @@ class FaissTrackIndex:
             raise KeyError(f"query track is not in FAISS mapping: {query_track_id}")
         query = self._reconstruct(query_track_id)
         return self.search_vector(query, limit)
+
+    def search_many(
+        self,
+        query_track_ids: Sequence[str],
+        limit: int,
+    ) -> list[list[tuple[str, float]]]:
+        """Search a bounded query batch with one FAISS matrix operation."""
+        if limit <= 0:
+            raise ValueError("FAISS search limit must be positive")
+        missing = [track_id for track_id in query_track_ids if not self.contains(track_id)]
+        if missing:
+            raise KeyError(f"query track is not in FAISS mapping: {missing[0]}")
+        if not query_track_ids:
+            return []
+        queries = self._reconstruct_many(list(query_track_ids))
+        result_limit = min(limit, int(self.index.ntotal))
+        search_engine = os.environ.get("MERLIN_FAISS_SEARCH_ENGINE", "faiss")
+        if search_engine == "faiss":
+            scores, row_ids = self.index.search(queries, result_limit)
+        elif search_engine == "numpy":
+            searched = [self._numpy_exact_search(query, result_limit) for query in queries]
+            scores = np.concatenate([item[0] for item in searched], axis=0)
+            row_ids = np.concatenate([item[1] for item in searched], axis=0)
+        else:
+            raise ValueError("MERLIN_FAISS_SEARCH_ENGINE must be faiss or numpy")
+        results = []
+        for query_scores, query_rows in zip(scores, row_ids, strict=True):
+            neighbors = [
+                (self.row_to_track[int(row_id)], float(score))
+                for row_id, score in zip(query_rows, query_scores, strict=True)
+                if 0 <= int(row_id) < len(self.row_to_track)
+            ]
+            results.append(sorted(neighbors, key=lambda item: (-item[1], item[0])))
+        return results
 
     def search_vector(
         self,
