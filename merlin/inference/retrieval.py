@@ -198,6 +198,8 @@ class TagRetriever(CandidateRetriever):
     )
     artist_tracks: Mapping[str, Sequence[str]]
     same_song: Callable[[str, str], bool] = _different_song
+    pair_similarity: Callable[[str, str], float | None] = _zero_similarity
+    query_available: Callable[[str], bool] | None = None
     per_artist_cap: int = 5
     _name: str = "tag"
 
@@ -214,26 +216,71 @@ class TagRetriever(CandidateRetriever):
         per_artist_cap: int = 5,
     ) -> TagRetriever:
         """Construct lazy TF-IDF shared-tag recall from prepared datasets."""
-        from .tag_data import artist_tag_cosine, find_similar_artists, load_tag_data, load_tag_idf
+        from .tag_data import load_tag_data, load_tag_idf
 
         data = load_tag_data(songs_metadata_path, graph_edges_path)
-        idf_values = load_tag_idf(tag_idf_path) if tag_idf_path else None
+        idf_values = (
+            load_tag_idf(
+                tag_idf_path,
+                expected_graph_edges_path=graph_edges_path,
+            )
+            if tag_idf_path
+            else None
+        )
+        return cls.from_data(
+            data,
+            idf_values=idf_values,
+            same_song=same_song,
+            artist_neighbor_limit=artist_neighbor_limit,
+            max_term_artists=max_term_artists,
+            per_artist_cap=per_artist_cap,
+        )
 
+    @classmethod
+    def from_data(
+        cls,
+        data,
+        *,
+        idf_values: Mapping[str, float] | None = None,
+        same_song: Callable[[str, str], bool] = _different_song,
+        artist_neighbor_limit: int = 100,
+        max_term_artists: int = 5_000,
+        per_artist_cap: int = 5,
+    ) -> TagRetriever:
+        """Construct a retriever from catalog data already loaded by a batch stage."""
+        from .tag_data import artist_tag_cosine, compute_artist_tag_norms, find_similar_artists
+
+        norms = compute_artist_tag_norms(data, idf_values)
+
+        @lru_cache(maxsize=50_000)
         def neighbors(artist_id: str) -> Sequence[tuple[str, float]]:
-            return find_similar_artists(
+            return tuple(find_similar_artists(
                 data,
                 artist_id,
                 artist_neighbor_limit,
                 max_term_artists=max_term_artists,
                 idf_values=idf_values,
-            )
+                norms=norms,
+            ))
+
+        @lru_cache(maxsize=500_000)
+        def canonical_pair_similarity(left: str, right: str) -> float | None:
+            return artist_tag_cosine(data, left, right, idf_values, norms)
+
+        def pair_similarity(left_artist: str, right_artist: str) -> float | None:
+            left, right = sorted((left_artist, right_artist))
+            return canonical_pair_similarity(left, right)
 
         return cls(
             track_to_artist=data.track_to_artist,
             similar_artists=neighbors,
             artist_tracks=data.artist_tracks,
             same_song=same_song,
-            pair_similarity=lambda left, right: artist_tag_cosine(data, left, right, idf_values),
+            pair_similarity=pair_similarity,
+            query_available=lambda track_id: (
+                (artist_id := data.track_to_artist.get(track_id)) is not None
+                and artist_id in data.artist_terms
+            ),
             per_artist_cap=per_artist_cap,
         )
 
@@ -247,6 +294,21 @@ class TagRetriever(CandidateRetriever):
         if left is None or right is None:
             return None
         return self.pair_similarity(left, right)
+
+    def artist_similarity(self, left_artist: str, right_artist: str) -> float:
+        score = self.pair_similarity(left_artist, right_artist)
+        return 0.0 if score is None else float(score)
+
+    def is_available(self, query_track_id: str) -> bool:
+        if self.query_available is not None:
+            return bool(self.query_available(query_track_id))
+        artist = self.track_to_artist.get(query_track_id)
+        return artist is not None and bool(self._artist_terms_available(artist))
+
+    def _artist_terms_available(self, artist_id: str) -> bool:
+        if callable(self.similar_artists):
+            return True
+        return artist_id in self.similar_artists
 
     def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]:
         root = self.track_to_artist.get(query_track_id)
