@@ -1,3 +1,78 @@
+            and float(score) >= tag_threshold
+        ),
+        key=lambda item: (-item[1], item[0]),
+    )
+    source_lists = {
+        "same_artist": same_artist,
+        "tag_derived": [track_id for track_id, _score in tags],
+        "audio_derived": [track_id for track_id, _score in audio],
+    }
+    for source, tracks in source_lists.items():
+        for track_id in tracks:
+            provenance.setdefault(track_id, set()).add(source)
+
+    positions = {source: 0 for source in POSITIVE_SOURCES}
+    selected: list[str] = []
+    selected_set: set[str] = set()
+    while len(selected) < limit:
+        progressed = False
+        for source in POSITIVE_SOURCES:
+            tracks = source_lists[source]
+            while positions[source] < len(tracks):
+                track_id = tracks[positions[source]]
+                positions[source] += 1
+                if track_id in selected_set:
+                    continue
+                selected.append(track_id)
+                selected_set.add(track_id)
+                progressed = True
+                break
+            if len(selected) == limit:
+                break
+        if not progressed:
+            break
+    return [
+        {"track_id": track_id, "positive_sources": sorted(provenance[track_id])}
+        for track_id in selected
+    ]
+
+
+def write_weak_positive_artifacts(
+    records: Iterable[Mapping[str, object]],
+    positives_path: str | Path,
+    manifest_path: str | Path,
+    thresholds_path: str | Path,
+    thresholds: Mapping[str, object],
+    *,
+    parent_paths: Mapping[str, str | Path],
+    scope: str,
+) -> dict[str, object]:
+    if scope not in {"formal", "smoke"}:
+        raise ValueError("weak-positive scope must be formal or smoke")
+    write_json_atomic(thresholds, thresholds_path)
+    query_count = 0
+    positive_count = 0
+    source_counts: Counter[str] = Counter()
+
+    def counted() -> Iterator[Mapping[str, object]]:
+        nonlocal query_count, positive_count
+        for record in records:
+            positives = record.get("positives")
+            if not isinstance(positives, list):
+                raise ValueError("weak-positive record is missing positives")
+            query_count += 1
+            positive_count += len(positives)
+            for positive in positives:
+                for source in positive["positive_sources"]:
+                    source_counts[str(source)] += 1
+            yield record
+
+    output = Path(positives_path)
+    parquet_schema = None
+    if output.suffix == ".parquet":
+        import pyarrow as pa
+
+        parquet_schema = pa.schema((
             pa.field("query_track_id", pa.string(), nullable=False),
             pa.field("split", pa.string(), nullable=False),
             pa.field("positives", pa.list_(pa.struct((
