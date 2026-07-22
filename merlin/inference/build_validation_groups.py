@@ -1,3 +1,78 @@
+                F.col("pre_pca_vector").alias("c_vector"),
+                F.col("pre_pca_norm").alias("c_norm"),
+            )
+
+        q_tracks = q_columns(query_b)
+        c_tracks = c_columns(set_b)
+        valid_q_audio = (
+            q_tracks.where(
+                F.col("q_artist_id").isNotNull()
+                & (F.length("q_artist_id") > 0)
+                & F.col("q_release_id").isNotNull()
+                & (F.col("q_release_id") > 0)
+                & (F.col("q_norm") > 0.0)
+            )
+            .join(
+                tagged_artists.select(F.col("artist_id").alias("q_artist_id")),
+                "q_artist_id",
+                "inner",
+            )
+        )
+        valid_c_audio = (
+            c_tracks.where(
+                F.col("c_artist_id").isNotNull()
+                & (F.length("c_artist_id") > 0)
+                & F.col("c_release_id").isNotNull()
+                & (F.col("c_release_id") > 0)
+                & (F.col("c_norm") > 0.0)
+            )
+            .join(
+                tagged_artists.select(F.col("artist_id").alias("c_artist_id")),
+                "c_artist_id",
+                "inner",
+            )
+        )
+        if args.audio_pair_engine == "numpy":
+            audio_pair_temporary = TemporaryDirectory(prefix="merlin-setb-audio-pairs-")
+            raw_audio_pairs_path = Path(audio_pair_temporary.name) / "pairs.parquet"
+            write_audio_threshold_pairs_numpy(
+                [row.asDict(recursive=True) for row in valid_q_audio.collect()],
+                [row.asDict(recursive=True) for row in valid_c_audio.collect()],
+                raw_audio_pairs_path,
+                threshold=acoustic_p90,
+                block_size=args.audio_block_size,
+            )
+            raw_audio_pairs = spark.read.parquet(_uri(raw_audio_pairs_path))
+        else:
+            raw_audio_pairs = (
+                valid_q_audio.crossJoin(valid_c_audio)
+                .where(F.col("query_track_id") != F.col("candidate_track_id"))
+                .where(not_same_song("q", "c"))
+                .where(
+                    (F.col("q_artist_id") != F.col("c_artist_id"))
+                    & (F.col("q_release_id") != F.col("c_release_id"))
+                )
+                .withColumn(
+                    "pre_pca_cosine",
+                    cosine(
+                        F.col("q_vector"),
+                        F.col("c_vector"),
+                        F.col("q_norm"),
+                        F.col("c_norm"),
+                    ),
+                )
+                .where(F.col("pre_pca_cosine") >= F.lit(acoustic_p90))
+                .select("query_track_id", "candidate_track_id", "q_artist_id", "c_artist_id")
+            )
+        audio_pairs = (
+            raw_audio_pairs.join(tag_scores, ["q_artist_id", "c_artist_id"], "left")
+            .fillna({"tag_tfidf_cosine": 0.0})
+            .where(F.col("tag_tfidf_cosine") < F.lit(tag_positive_threshold))
+            .select(
+                "query_track_id",
+                "candidate_track_id",
+                F.lit("audio_dominant").alias("query_group"),
+                F.array(F.lit("pre_pca_audio")).alias("positive_sources"),
             ).persist(StorageLevel.MEMORY_AND_DISK)
         )
         cached.append(audio_pairs)
