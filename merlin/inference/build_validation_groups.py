@@ -1,3 +1,78 @@
+        ).where(F.col("side_rank") <= F.col("balanced_count")).select(
+            "query_track_id",
+            "candidate_track_id",
+            F.lit("mixed").alias("query_group"),
+            F.array(F.lit("audio_dominant_side")).alias("positive_sources"),
+        )
+        mixed_relation = relation_pairs.withColumn("side_rank", F.row_number().over(relation_window)).join(
+            counts.select("query_track_id", "balanced_count"), "query_track_id"
+        ).where(F.col("side_rank") <= F.col("balanced_count")).select(
+            "query_track_id",
+            "candidate_track_id",
+            F.lit("mixed").alias("query_group"),
+            F.array(F.lit("relation_dominant_side")).alias("positive_sources"),
+        )
+        positives = (
+            audio_pairs.unionByName(relation_pairs).unionByName(mixed_audio).unionByName(mixed_relation)
+            .dropDuplicates(["query_track_id", "candidate_track_id", "query_group"])
+            .persist(StorageLevel.MEMORY_AND_DISK)
+        )
+        cached.append(positives)
+        eligible = positives.groupBy("query_track_id", "query_group").agg(
+            F.count("*").cast("long").alias("eligible_positive_count")
+        ).persist(StorageLevel.MEMORY_AND_DISK)
+        cached.append(eligible)
+        candidate_rows = pool.select(
+            "query_track_id", F.explode("candidates").alias("candidate")
+        ).select(
+            "query_track_id",
+            F.col("candidate.track_id").cast("string").alias("candidate_track_id"),
+            F.col("candidate.recall_sources").alias("recall_sources"),
+        )
+        positive_keys = positives.select(
+            "query_track_id", "candidate_track_id", "query_group"
+        ).withColumn("label", F.lit(1))
+        validation_pairs = (
+            eligible.join(candidate_rows, "query_track_id", "inner")
+            .join(positive_keys, ["query_track_id", "candidate_track_id", "query_group"], "left")
+            .fillna({"label": 0})
+            .select(
+                "query_track_id",
+                "candidate_track_id",
+                F.col("label").cast("int"),
+                "query_group",
+                "eligible_positive_count",
+                "recall_sources",
+            )
+            .persist(StorageLevel.MEMORY_AND_DISK)
+        )
+        cached.append(validation_pairs)
+        missing_candidate_queries = eligible.select("query_track_id", "query_group").join(
+            validation_pairs.select("query_track_id", "query_group").distinct(),
+            ["query_track_id", "query_group"],
+            "left_anti",
+        ).limit(1).count()
+        if missing_candidate_queries:
+            raise ValueError("an eligible Set-B validation query has no canonical candidates")
+
+        positive_stats = {
+            row["query_group"]: row.asDict()
+            for row in positives.groupBy("query_group").agg(
+                F.count("*").alias("positive_count"),
+                F.countDistinct("query_track_id").alias("eligible_query_count"),
+            ).collect()
+        }
+        hit_stats = {
+            row["query_group"]: row.asDict()
+            for row in validation_pairs.where(F.col("label") == 1).groupBy("query_group").agg(
+                F.count("*").alias("candidate_hits"),
+                F.countDistinct("query_track_id").alias("covered_queries"),
+            ).collect()
+        }
+        group_stats = {}
+        for group in VALIDATION_QUERY_GROUPS:
+            positive_count = int(positive_stats.get(group, {}).get("positive_count", 0))
+            eligible_query_count = int(
                 positive_stats.get(group, {}).get("eligible_query_count", 0)
             )
             candidate_hits = int(hit_stats.get(group, {}).get("candidate_hits", 0))
