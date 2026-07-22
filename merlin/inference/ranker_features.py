@@ -117,19 +117,21 @@ def export_raw_pair_features(
                 "recall_sources": list(recall_sources or ()),
             }
 
-    def rows() -> Iterator[dict[str, object]]:
-        for query_id, grouped in groupby(
-            pair_rows(), key=lambda pair: str(pair["query_track_id"])
-        ):
+    def compute(query_id: str, pairs: list[Mapping[str, object]]):
+        candidates = [Candidate(str(pair["candidate_track_id"])) for pair in pairs]
+        compute_many = getattr(computer, "compute_raw_many", None)
+        raw_rows = (
+            compute_many(query_id, candidates)
+            if compute_many is not None
+            else [computer.compute_raw(query_id, candidate) for candidate in candidates]
+        )
+        return zip(pairs, candidates, raw_rows, strict=True)
+
+    def training_rows() -> Iterator[dict[str, object]]:
+        grouped_rows = groupby(pair_rows(), key=lambda pair: str(pair["query_track_id"]))
+        for query_id, grouped in grouped_rows:
             pairs = list(grouped)
-            candidates = [Candidate(str(pair["candidate_track_id"])) for pair in pairs]
-            compute_many = getattr(computer, "compute_raw_many", None)
-            raw_rows = (
-                compute_many(query_id, candidates)
-                if compute_many is not None
-                else [computer.compute_raw(query_id, candidate) for candidate in candidates]
-            )
-            for pair, candidate, raw in zip(pairs, candidates, raw_rows, strict=True):
+            for pair, candidate, raw in compute(query_id, pairs):
                 label = int(pair["label"])
                 if label not in {0, 1}:
                     raise ValueError("training pair label must be binary")
@@ -154,6 +156,46 @@ def export_raw_pair_features(
                     ),
                     **raw,
                 }
+
+    def validation_rows() -> Iterator[dict[str, object]]:
+        grouped_rows = groupby(pair_rows(), key=lambda pair: str(pair["query_track_id"]))
+        for query_id, grouped in grouped_rows:
+            pairs = list(grouped)
+            by_candidate: dict[str, list[Mapping[str, object]]] = {}
+            for pair in pairs:
+                by_candidate.setdefault(str(pair["candidate_track_id"]), []).append(pair)
+            representatives = [values[0] for values in by_candidate.values()]
+            for _pair, candidate, raw in compute(query_id, representatives):
+                group_rows = by_candidate[candidate.track_id]
+                recall_sources = list(group_rows[0].get("recall_sources", []))
+                if any(list(row.get("recall_sources", [])) != recall_sources for row in group_rows):
+                    raise ValueError("validation recall provenance differs across groups")
+                groups = []
+                for row in group_rows:
+                    label = int(row["label"])
+                    if label not in {0, 1}:
+                        raise ValueError("validation pair label must be binary")
+                    groups.append({
+                        "query_group": str(row["query_group"]),
+                        "label": label,
+                        "eligible_positive_count": int(row["eligible_positive_count"]),
+                    })
+                    counts["group_rows"] += 1
+                    counts[f"label_{label}"] += 1
+                counts["rows"] += 1
+                yield {
+                    "query_track_id": query_id,
+                    "candidate_track_id": candidate.track_id,
+                    "recall_sources": recall_sources,
+                    "validation_groups": groups,
+                    **raw,
+                }
+
+    def rows() -> Iterator[dict[str, object]]:
+        if pair_kind == "training":
+            yield from training_rows()
+        else:
+            yield from validation_rows()
 
     output = Path(output_path)
     parquet_schema = None
