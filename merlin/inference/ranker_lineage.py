@@ -9,6 +9,7 @@ from typing import Mapping
 from .artifact_lineage import sha256_path
 from .feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
 from .ranker import LogisticRanker
+from .ranker_artifacts import RANKER_TRAINING_VERSION
 
 
 def load_ranker_bundle(
@@ -18,6 +19,7 @@ def load_ranker_bundle(
     training_manifest_path: str | Path,
     *,
     expected_parent_hashes: Mapping[str, str],
+    expected_scope: str = "formal",
 ) -> LogisticRanker:
     """Validate one inseparable Set-A Ranker bundle and return its scorer."""
     paths = tuple(Path(path) for path in (schema_path, scaler_path, coefficients_path))
@@ -27,6 +29,14 @@ def load_ranker_bundle(
             raise FileNotFoundError(f"ranker artifact does not exist: {path}")
     with manifest_path.open("r", encoding="utf-8") as stream:
         manifest = json.load(stream)
+    if manifest.get("artifact_type") != "ranker_training":
+        raise ValueError("Ranker training manifest artifact type mismatch")
+    if manifest.get("artifact_version") != RANKER_TRAINING_VERSION:
+        raise ValueError("Ranker training manifest version mismatch")
+    if manifest.get("scope") != expected_scope:
+        raise ValueError("Ranker training manifest scope mismatch")
+    if manifest.get("converged") is not True:
+        raise ValueError("Ranker training manifest is not converged")
     if manifest.get("feature_schema_version") != RANKER_V2_SCHEMA_VERSION:
         raise ValueError("Ranker training manifest schema version mismatch")
     if tuple(manifest.get("feature_order", ())) != RANKER_V2_FEATURES:

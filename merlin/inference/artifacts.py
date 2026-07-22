@@ -35,7 +35,12 @@ def load_inference_artifacts(
 ) -> InferenceArtifacts:
     """Load the lineage-bound inputs shared by the full C3 pipeline."""
     policy = load_candidate_policy(paths.candidate_policy)
-    audio = load_audio_index(paths.audio_index, paths.audio_mapping, paths.audio_manifest)
+    audio = load_audio_index(
+        paths.audio_index,
+        paths.audio_mapping,
+        paths.audio_manifest,
+        paths.audio_encoder_metadata,
+    )
     graph = FaissTrackIndex.from_files(
         paths.graph_index,
         paths.graph_mapping,
