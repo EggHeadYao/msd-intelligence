@@ -4,6 +4,18 @@ This package defines the stable boundary between C1/C2 artifacts, Person A's
 ranker output, and the online recommendation pipeline. Importing it does not
 require Spark or FAISS.
 
+## Package layout
+
+- `scripts/recall/` contains recall artifact, export, audit, and validation CLIs.
+- `scripts/ranker/` contains supervised dataset, feature, and Spark training CLIs.
+- `training/` implements weak labels, training pairs, and Set-B validation groups.
+- `ranking/` implements feature artifacts, LR serialization, lineage, and selection.
+- `runtime/` assembles and validates the final online inference pipeline.
+- Top-level modules contain the shared recall path, C1/C2 adapters, contracts, and I/O.
+
+The formal candidate export path and its dependencies intentionally remain at
+their established module locations under `scripts/recall/` and the package root.
+
 ## Flow
 
 1. `CandidateRetriever` implementations nominate Audio, Graph, BFS, and Tag candidates.
