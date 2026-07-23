@@ -113,6 +113,46 @@ def sampled_pair_cosine_quantiles(
     return count, float(p50), float(p90)
 
 
+def _normalized_tag_matrix(
+    artist_terms: Mapping[str, Sequence[str]],
+    idf_values: Mapping[str, float],
+) -> tuple[tuple[str, ...], object]:
+    try:
+        import numpy as np
+        from scipy import sparse
+    except ImportError as error:
+        raise RuntimeError("sparse tag threshold search requires SciPy") from error
+
+    artists = tuple(sorted(artist for artist, terms in artist_terms.items() if terms))
+    if not artists:
+        raise ValueError("tag threshold search requires tagged artists")
+    terms = tuple(sorted({term for artist in artists for term in artist_terms[artist]}))
+    term_positions = {term: index for index, term in enumerate(terms)}
+    row_positions: list[int] = []
+    column_positions: list[int] = []
+    weights: list[float] = []
+    for row_index, artist in enumerate(artists):
+        for term in sorted(set(artist_terms[artist])):
+            try:
+                weight = float(idf_values[term])
+            except KeyError as error:
+                raise ValueError(f"tag IDF artifact is missing term {term!r}") from error
+            if not math.isfinite(weight) or weight <= 0.0:
+                raise ValueError(f"tag IDF weight is invalid for term {term!r}")
+            row_positions.append(row_index)
+            column_positions.append(term_positions[term])
+            weights.append(weight)
+    matrix = sparse.csr_matrix(
+        (weights, (row_positions, column_positions)),
+        shape=(len(artists), len(terms)),
+        dtype=np.float64,
+    )
+    norms = np.sqrt(np.asarray(matrix.multiply(matrix).sum(axis=1)).ravel())
+    if np.any(~np.isfinite(norms)) or np.any(norms <= 0.0):
+        raise ValueError("tag vectors contain an invalid norm")
+    return artists, matrix.multiply((1.0 / norms)[:, None]).tocsr()
+
+
 def write_audio_threshold_pairs_numpy(
     query_rows: Sequence[Mapping[str, object]],
     candidate_rows: Sequence[Mapping[str, object]],
