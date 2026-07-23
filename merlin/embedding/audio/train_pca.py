@@ -431,33 +431,52 @@ def main() -> None:
             "scaler_mean": vector_to_list(scaler_model.mean),
             "scaler_std": vector_to_list(scaler_model.std),
         }
-        write_json_atomic(metadata, staging / "audio_encoder_metadata.json")
+
+        write_json_atomic(
+            metadata,
+            staging / "audio_encoder_metadata.json",
+        )
         manifest = build_c1_manifest(staging, metadata)
         write_json_atomic(manifest, staging / C1_MANIFEST_NAME)
         validate_c1_manifest(staging, metadata)
         publish_directory(staging, args.output, run_id)
+
         print(
             "audio_pca_training_done "
-            f"rows={row_count}, features={len(feature_columns)}, "
-            f"max_components={max_components}, selected_k={selected_k}, "
-            f"explained={cumulative_explained[selected_k - 1]:.6f}, "
-            f"below_90_percent={metadata['pca_128_below_90_percent']}",
+            f"rows={row_count}, "
+            f"features={len(feature_columns)}, "
+            f"selection_mode={selection_mode}, "
+            f"max_components={max_components}, "
+            f"selected_k={selected_k}, "
+            f"selected_explained_variance={selected_explained:.6f}",
+            flush=True,
         )
     finally:
         for frame in reversed(persisted_frames):
             try:
                 frame.unpersist(blocking=False)
             except Exception as error:
-                warnings.warn(f"failed to unpersist Spark frame: {error}", RuntimeWarning)
+                warnings.warn(
+                    f"failed to unpersist Spark frame: {error}",
+                    RuntimeWarning,
+                )
+
         try:
             spark.stop()
         except Exception as error:
-            warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
+            warnings.warn(
+                f"failed to stop Spark cleanly: {error}",
+                RuntimeWarning,
+            )
+
         if staging is not None and staging.exists():
             try:
                 remove_path(staging)
             except OSError as error:
-                warnings.warn(f"failed to remove C1 staging {staging}: {error}", RuntimeWarning)
+                warnings.warn(
+                    f"failed to remove C1 staging {staging}: {error}",
+                    RuntimeWarning,
+                )
 
 
 if __name__ == "__main__":
