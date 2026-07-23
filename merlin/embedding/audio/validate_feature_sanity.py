@@ -46,16 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def array_dot(left: F.Column, right: F.Column) -> F.Column:
-    products = F.zip_with(left, right, lambda x, y: x.cast("double") * y.cast("double"))
-    return F.aggregate(products, F.lit(0.0), lambda total, value: total + value)
-
-
-def cosine(left: F.Column, right: F.Column) -> F.Column:
-    denominator = F.sqrt(array_dot(left, left) * array_dot(right, right))
-    return array_dot(left, right) / denominator
-
-
 def add_coverage(raw: DataFrame, feature_columns: Sequence[str]) -> DataFrame:
     availability = add_scalar_availability(raw)
     coverage_columns = tuple(
