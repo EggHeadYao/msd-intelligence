@@ -197,8 +197,8 @@ def fill_segment_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, flo
     return df.select(*expressions), medians
 
 
-def fill_scalar_missing_values(df: DataFrame) -> tuple[DataFrame, dict[str, float]]:
-    columns = (
+def _scalar_median_columns() -> tuple[str, ...]:
+    return (
         *KEY_CIRCULAR_COLUMNS,
         *LOG_CONTINUOUS_COLUMNS,
         *CLIPPED_CONTINUOUS_COLUMNS,
