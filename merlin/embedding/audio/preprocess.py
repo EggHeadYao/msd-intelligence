@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from pyspark import StorageLevel
 from pyspark.sql import DataFrame
@@ -26,7 +26,7 @@ from columns import (
 )
 
 NEAR_ZERO_RANGE_EPSILON = 1e-12
-SEGMENT_MEDIAN_BATCH_SIZE = 32
+SEGMENT_MEDIAN_BATCH_SIZE = 64
 
 
 def _finite(column: str) -> Column:
@@ -114,15 +114,44 @@ def add_time_signature_one_hot(
     return df, values, (*columns, TIME_SIGNATURE_UNKNOWN_COLUMN)
 
 
-def _bounds(df: DataFrame, column: str) -> tuple[float, float]:
-    quantiles = df.approxQuantile(column, [0.01, 0.99], 0.001)
-    if len(quantiles) < 2:
-        return 0.0, 0.0
-    low, high = float(quantiles[0]), float(quantiles[1])
-    if not math.isfinite(low) or not math.isfinite(high):
-        return 0.0, 0.0
-    return low, high
+def _bounds(
+    df: DataFrame,
+    availability: Mapping[str, str],
+) -> dict[str, tuple[float, float]]:
+    columns = tuple(availability)
 
+    eligible = df.select(
+        *(
+            F.when(
+                F.col(availability[column]) == 1.0,
+                F.col(column).cast("double"),
+            ).alias(column)
+            for column in columns
+        )
+    )
+
+    results = eligible.approxQuantile(
+        list(columns),
+        [0.01, 0.99],
+        0.001,
+    )
+
+    thresholds: dict[str, tuple[float, float]] = {}
+
+    for column, quantiles in zip(columns, results, strict=True):
+        if len(quantiles) < 2:
+            thresholds[column] = (0.0, 0.0)
+            continue
+
+        low, high = float(quantiles[0]), float(quantiles[1])
+
+        thresholds[column] = (
+            (low, high)
+            if math.isfinite(low) and math.isfinite(high)
+            else (0.0, 0.0)
+        )
+
+    return thresholds
 
 def _clip(column: str, low: float, high: float) -> Column:
     return F.least(F.greatest(F.col(column).cast("double"), F.lit(low)), F.lit(high))
@@ -130,10 +159,7 @@ def _clip(column: str, low: float, high: float) -> Column:
 
 def add_log_clipped_features(df: DataFrame) -> tuple[DataFrame, dict[str, tuple[float, float]]]:
     availability = {"loudness": "has_loudness", "tempo": "has_tempo", "duration": "has_duration"}
-    thresholds = {
-        column: _bounds(df.where(F.col(availability[column]) == 1.0), column)
-        for column in availability
-    }
+    thresholds = _bounds(df, availability)
     for source, target in zip(("tempo", "duration"), LOG_CONTINUOUS_COLUMNS):
         low, high = thresholds[source]
         transformed = F.log1p(F.greatest(_clip(source, low, high), F.lit(0.0)))
