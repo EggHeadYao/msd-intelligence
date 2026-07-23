@@ -781,6 +781,80 @@ def validate_c1_artifacts(
     print("MERLIN audio PCA validation passed.")
 
 
+def validate_l1_feature_sanity(
+    spark: SparkSession,
+    args: argparse.Namespace,
+    encoder_metadata_path: Path,
+    encoder_metadata: dict[str, Any],
+    selected_k: int,
+    scaler_model: StandardScalerModel,
+    pca_model: PCAModel,
+    saved_embeddings: DataFrame,
+) -> None:
+    feature_columns = tuple(encoder_metadata["feature_columns"])
+    persisted_frames: list[DataFrame] = []
+    try:
+        raw, base, output_rows, base_rows = load_l1_inputs(
+            spark,
+            args,
+            encoder_metadata,
+            feature_columns,
+            saved_embeddings,
+            persisted_frames,
+        )
+        pairs, pair_counts, total_pairs = prepare_pairs(base, args, persisted_frames)
+        compared, selected_count, selected_ids = recompute_embeddings(
+            raw,
+            saved_embeddings,
+            pairs,
+            encoder_metadata,
+            feature_columns,
+            selected_k,
+            scaler_model,
+            pca_model,
+            persisted_frames,
+        )
+        vectors, maximum_difference = validate_reproduction(
+            compared, selected_count, args.reproduction_tolerance
+        )
+        release_frame(selected_ids, persisted_frames)
+        score_rows, scored_count = collect_scores(pairs, vectors, total_pairs)
+        release_frame(pairs, persisted_frames)
+        release_frame(compared, persisted_frames)
+        distributions, effects, diagnostics = summarize_scores(
+            score_rows, args.bootstrap_samples, args.seed
+        )
+        report = build_report(
+            args,
+            encoder_metadata_path,
+            encoder_metadata,
+            pair_counts,
+            distributions,
+            effects,
+            diagnostics,
+            output_rows,
+            base_rows,
+            selected_count,
+            scored_count,
+            maximum_difference,
+        )
+        report_path = args.report or args.output / "validation_report.json"
+        write_json(report, report_path)
+        require(
+            report["validation_status"] != "FAIL",
+            f"{report['conclusion']['statement']} Report: {report_path}",
+        )
+        print(
+            "c1_l1_feature_sanity_passed "
+            f"status={report['validation_status']}, pairs={pair_counts}, "
+            f"selected_tracks={selected_count}, reproduction_error={maximum_difference:.3g}, "
+            f"report={report_path}"
+        )
+    finally:
+        for frame in reversed(persisted_frames.copy()):
+            release_frame(frame, persisted_frames)
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
