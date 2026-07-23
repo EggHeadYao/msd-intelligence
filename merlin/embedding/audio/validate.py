@@ -664,6 +664,25 @@ def recompute_embeddings(
     return persist_frame(compared, persisted_frames), selected_count, selected_ids
 
 
+def validate_reproduction(
+    compared: DataFrame,
+    selected_count: int,
+    tolerance: float,
+) -> tuple[DataFrame, float]:
+    stats = compared.agg(
+        F.count("*").alias("rows"),
+        F.max("maximum_difference").alias("maximum_difference"),
+    ).first()
+    require(int(stats["rows"]) == selected_count, "selected vectors are incomplete")
+    maximum_difference = float(stats["maximum_difference"])
+    require(
+        math.isfinite(maximum_difference) and maximum_difference <= tolerance,
+        "frozen preprocessing/PCA does not reproduce saved embeddings",
+    )
+    vectors = compared.select(TRACK_ID_COLUMN, "pre_pca_vector", "final_embedding")
+    return vectors, maximum_difference
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
