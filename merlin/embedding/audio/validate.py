@@ -330,6 +330,11 @@ def release_frame(df: DataFrame, persisted_frames: list[DataFrame]) -> None:
             break
 
 
+def require_columns(df: DataFrame, columns: Sequence[str], name: str) -> None:
+    missing = sorted(set(columns) - set(df.columns))
+    require(not missing, f"{name} is missing columns: {missing}")
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
