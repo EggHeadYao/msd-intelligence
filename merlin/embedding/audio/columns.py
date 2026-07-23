@@ -68,14 +68,75 @@ LEGACY_FEATURE_COLUMNS = (
     *LEGACY_MASK_COLUMNS,
 )
 
+GLOBAL_Q50_COLUMNS = (
+    *(f"pitch_q50_{index}" for index in range(12)),
+    *(f"timbre_q50_{index}" for index in range(12)),
+    *(f"{signal}_q50" for signal in LOUDNESS_SIGNALS),
+)
+HALF_COLUMNS = tuple(
+    column
+    for half in range(2)
+    for column in (
+        *(f"half_{half}_pitch_mean_{index}" for index in range(12)),
+        *(f"half_{half}_timbre_mean_{index}" for index in range(12)),
+        f"half_{half}_loudness_max_mean",
+    )
+)
+T90_COLUMNS = (
+    *(f"t90_timbre_mean_{index}" for index in range(12)),
+    *(f"t90_timbre_cov_{index}_{index + offset}"
+      for offset in range(12) for index in range(12 - offset)),
+)
+KEY_RELATIVE_GLOBAL_COLUMNS = _indexed(
+    "key_relative_pitch", ("mean", "std", "q10", "q50", "q90"),
+)
+KEY_RELATIVE_HALF_COLUMNS = tuple(
+    f"key_relative_half_{half}_pitch_mean_{index}"
+    for half in range(2) for index in range(12)
+)
+KEY_RELATIVE_QUARTER_COLUMNS = tuple(
+    f"key_relative_quarter_{quarter}_pitch_mean_{index}"
+    for quarter in range(4) for index in range(12)
+)
+PITCH_PROFILE_COLUMNS = ("pitch_profile_entropy", "pitch_profile_concentration")
+NEW_MASK_COLUMNS = (
+    "has_half_0", "has_half_1", "has_t90", "has_pitch_profile",
+    "has_key_relative_pitch",
+)
+INTERVAL_EXTENSION_COLUMNS = (
+    *(f"{event}_interval_{quantile}" for event in ("beat", "bar", "tatum")
+      for quantile in ("q10", "q90")),
+    "beat_local_bpm_q10", "beat_local_bpm_q90", "beat_local_bpm_iqr",
+    "section_duration_iqr",
+    "has_beat_intervals", "has_bar_intervals", "has_tatum_intervals",
+)
+APPENDED_FEATURE_COLUMNS = (
+    *GLOBAL_Q50_COLUMNS, *HALF_COLUMNS, *T90_COLUMNS,
+    *KEY_RELATIVE_GLOBAL_COLUMNS, *KEY_RELATIVE_HALF_COLUMNS,
+    *KEY_RELATIVE_QUARTER_COLUMNS, *PITCH_PROFILE_COLUMNS, *NEW_MASK_COLUMNS,
+    *INTERVAL_EXTENSION_COLUMNS,
+)
+SHARED_FEATURE_COLUMNS = (*LEGACY_FEATURE_COLUMNS, *APPENDED_FEATURE_COLUMNS)
+MERLIN_EXCLUDED_COLUMNS = frozenset((
+    *HALF_COLUMNS, *KEY_RELATIVE_HALF_COLUMNS, "has_half_0", "has_half_1",
+))
+MERLIN_ARRAY_FEATURE_COLUMNS = tuple(
+    column for column in SHARED_FEATURE_COLUMNS if column not in MERLIN_EXCLUDED_COLUMNS
+)
+
+assert len(LEGACY_FEATURE_COLUMNS) == LEGACY_FEATURE_COUNT
+assert len(APPENDED_FEATURE_COLUMNS) == 320
+assert len(SHARED_FEATURE_COLUMNS) == SHARED_FEATURE_COUNT
+assert len(MERLIN_EXCLUDED_COLUMNS) == 76
+assert len(MERLIN_ARRAY_FEATURE_COLUMNS) == 552
+assert len(set(SHARED_FEATURE_COLUMNS)) == SHARED_FEATURE_COUNT
+
 TRACK_ID_COLUMN = "track_id"  # Stable song key across MERLIN artifacts.
 KEY_COLUMN = "key"  # Raw 0-11 musical key; circular-encoded later.
 MODE_COLUMN = "mode"  # Raw major/minor mode flag.
 TIME_SIGNATURE_COLUMN = "time_signature"  # Raw meter category; one-hot later.
 HAS_SEGMENTS_COLUMN = "has_segments"  # Raw mask for available segment arrays.
 
-PITCH_DIMS = 12  # Pitch-class dimensions per Echo Nest segment.
-TIMBRE_DIMS = 12  # Timbre coefficient dimensions per Echo Nest segment.
 SEGMENT_STATS = ("mean", "std", "min", "max")  # Stats for pitch/timbre columns.
 LOUDNESS_STATS = ("mean", "std", "min", "max")  # Stats for segment loudness.
 
