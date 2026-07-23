@@ -46,47 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def load_inputs(
-    spark: SparkSession,
-    args: argparse.Namespace,
-    encoder_metadata: dict[str, Any],
-    feature_columns: Sequence[str],
-    persisted_frames: list[DataFrame],
-) -> tuple[DataFrame, DataFrame, DataFrame, int, int]:
-    raw = spark.read.parquet(spark_path(args.raw_input))
-    require(tuple(raw.columns) == PREPARED_AUDIO_COLUMNS, "raw input contract mismatch")
-    songs_metadata = spark.read.parquet(spark_path(args.songs_metadata))
-    require_columns(songs_metadata, METADATA_COLUMNS, "songs metadata")
-    saved_embeddings = spark.read.parquet(
-        spark_path(args.output / "song_embeddings_audio.parquet")
-    ).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
-    output_ids = persist_frame(
-        saved_embeddings.select(TRACK_ID_COLUMN),
-        persisted_frames,
-    )
-    output_rows = output_ids.count()
-    require(output_rows == int(encoder_metadata["row_count"]), "embedding row count mismatch")
-
-    id_lookup = F.broadcast(output_ids) if output_rows <= 100_000 else output_ids
-    coverage = add_coverage(raw.join(id_lookup, TRACK_ID_COLUMN, "inner"), feature_columns)
-    base = persist_frame(
-        songs_metadata.select(*METADATA_COLUMNS)
-        .join(id_lookup, TRACK_ID_COLUMN, "inner")
-        .join(coverage, TRACK_ID_COLUMN, "inner")
-        .withColumn(
-            "year_key",
-            F.when(
-                (F.col("has_year") == 1) & F.col("year").isNotNull(), F.col("year")
-            ).otherwise(F.lit(0)),
-        ),
-        persisted_frames,
-    )
-    base_rows = base.count()
-    require(base_rows == output_rows, "songs metadata/raw coverage does not cover C1 output")
-    release_frame(output_ids, persisted_frames)
-    return raw, saved_embeddings, base, output_rows, base_rows
-
-
 def prepare_pairs(
     base: DataFrame,
     args: argparse.Namespace,
