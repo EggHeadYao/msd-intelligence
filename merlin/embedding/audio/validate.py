@@ -217,6 +217,35 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     return selected_k
 
 
+def load_and_validate_models(
+    output: Path,
+    metadata: dict[str, Any],
+) -> tuple[StandardScalerModel, PCAModel]:
+    scaler = StandardScalerModel.load(spark_path(output / "scaler_model"))
+    pca = PCAModel.load(spark_path(output / "pca_model"))
+    comparisons = (
+        (list(scaler.mean), metadata["scaler_mean"], "scaler mean"),
+        (list(scaler.std), metadata["scaler_std"], "scaler std"),
+        (list(pca.explainedVariance), metadata["explained_variance"], "PCA variance"),
+    )
+    for actual, expected, name in comparisons:
+        require(len(actual) == len(expected), f"{name} length mismatch")
+        difference = max(
+            (abs(float(left) - float(right)) for left, right in zip(actual, expected)),
+            default=0.0,
+        )
+        require(difference <= 1e-12, f"{name} does not match metadata")
+    require(scaler.getWithMean() and scaler.getWithStd(), "wrong scaler configuration")
+    require(scaler.getInputCol() == "features", "wrong scaler input column")
+    require(scaler.getOutputCol() == "scaled_features", "wrong scaler output column")
+    require(pca.getK() == 128, "wrong PCA component count")
+    require(pca.getInputCol() == "scaled_features", "wrong PCA input column")
+    require(pca.getOutputCol() == "pca_features", "wrong PCA output column")
+    require(pca.pc.numRows == int(metadata["feature_count"]), "PCA row count mismatch")
+    require(pca.pc.numCols == int(metadata["selected_k"]), "PCA column count mismatch")
+    return scaler, pca
+
+
 def validate_models(output: Path, metadata: dict[str, Any]) -> None:
     scaler = StandardScalerModel.load(spark_path(output / "scaler_model"))
     pca = PCAModel.load(spark_path(output / "pca_model"))
