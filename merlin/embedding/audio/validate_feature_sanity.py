@@ -46,33 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run MERLIN C1 L1-1 feature sanity validation.")
-    parser.add_argument(
-        "--raw-input",
-        type=Path,
-        default=Path("parquets_new/prepared/song_audio_features_raw.parquet"),
-    )
-    parser.add_argument(
-        "--songs-metadata",
-        type=Path,
-        default=Path("parquets_new/prepared/songs_metadata.parquet"),
-    )
-    parser.add_argument("--output", type=Path, default=Path("parquets_new/merlin/audio"))
-    parser.add_argument("--report", type=Path)
-    parser.add_argument("--pair-count", type=int, default=10_000)
-    parser.add_argument("--bootstrap-samples", type=int, default=2_000)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--shuffle-partitions", type=int, default=64)
-    parser.add_argument("--reproduction-tolerance", type=float, default=1e-5)
-    parser.add_argument(
-        "--allow-partial-pairs",
-        action="store_true",
-        help="Smoke-only mode: report fewer than the required pairs instead of failing.",
-    )
-    return parser.parse_args()
-
-
 def create_spark(shuffle_partitions: int) -> SparkSession:
     return (
         SparkSession.builder.appName("MerlinValidateC1FeatureSanity")
