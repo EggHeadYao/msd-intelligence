@@ -78,38 +78,126 @@ spark-submit --master 'local[6]' --driver-memory 5g \
 This checks the pipeline on a smaller input. It does not establish the final
 explained-variance or retrieval-quality result for the full dataset.
 
-Validate the full output:
-
-```bash
-spark-submit --master 'local[6]' --driver-memory 5g \
-  merlin/embedding/audio/validate.py \
-  --output parquets_new/merlin/audio \
-  --expected-rows 1000000 \
-  --shuffle-partitions 64
-```
-
-- Checks that the embedding table, metadata file, scaler model, and PCA model exist.
-- Checks row count and distinct `track_id` count.
-- Checks that every embedding has the selected dimension.
-- Checks that embeddings contain no null, NaN, or infinite values.
-- Checks that embeddings are L2-normalized.
-- Loads the saved scaler and PCA models and compares them with encoder metadata.
-- Validates all embedding properties in one aggregate scan.
-
-## Build FAISS
-
-Build the audio nearest-neighbor index:
+Because the encoder already contains only 10,000 rows, build its complete smoke
+index without passing another `--limit`:
 
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/build_faiss.py \
-  --input parquets_new/merlin/audio/song_embeddings_audio.parquet \
-  --output parquets_new/merlin/audio \
+  --input parquets_new/merlin/audio-smoke/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio-smoke \
   --shuffle-partitions 64
 ```
 
-- `index_audio.faiss`: Stores the FAISS inner-product index over normalized audio embeddings.
-- `index_audio_track_ids.parquet`: Stores `row_id` and `track_id`; `row_id` matches the FAISS vector order.
+For a partial-index smoke run, all three FAISS artifact names must be separate
+from the production names. This prevents a limited or non-128-dimensional test
+index from replacing the formal index or its manifest:
+
+```bash
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/build_faiss.py \
+  --input parquets_new/merlin/audio-smoke/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio-smoke \
+  --limit 1000 \
+  --index-name index_audio_smoke_partial.faiss \
+  --track-ids-name index_audio_smoke_partial_track_ids.parquet \
+  --manifest-name index_audio_smoke_partial_manifest.json \
+  --shuffle-partitions 64
+```
+
+## Explained-variance experiments
+
+### 90% cumulative explained variance
+
+```bash
+JAVA_TOOL_OPTIONS='-XX:UseAVX=0 -XX:UseSSE=2 -XX:-TieredCompilation' \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  merlin/embedding/audio/train_pca.py \
+  --input parquets_new/prepared/song_audio_features_raw.parquet \
+  --parent-manifest parquets_new/prepared/prepared_manifest.json \
+  --output parquets_new/merlin/audio-var90 \
+  --target-variance 0.90 \
+  --max-components 256 \
+  --shuffle-partitions 64
+```
+
+### 95% cumulative explained variance
+
+```bash
+JAVA_TOOL_OPTIONS='-XX:UseAVX=0 -XX:UseSSE=2 -XX:-TieredCompilation' \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  merlin/embedding/audio/train_pca.py \
+  --input parquets_new/prepared/song_audio_features_raw.parquet \
+  --parent-manifest parquets_new/prepared/prepared_manifest.json \
+  --output parquets_new/merlin/audio-var95 \
+  --target-variance 0.95 \
+  --max-components 256 \
+  --shuffle-partitions 64
+```
+
+If 256 components do not reach the requested target, increase the limit, for
+example:
+
+```bash
+--max-components 384
+```
+
+Inspect these fields in `audio_encoder_metadata.json`:
+
+```json
+{
+  "selection_mode": "target_variance",
+  "target_variance": 0.9,
+  "fixed_k": null,
+  "requested_max_components": 256,
+  "max_components": 256,
+  "selected_k": 91,
+  "selected_cumulative_explained_variance": 0.9003,
+  "target_variance_reached": true
+}
+```
+
+The numbers above are illustrative.
+
+## Validate an encoder
+
+```bash
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/validate.py \
+  --output parquets_new/merlin/audio-var90 \
+  --expected-rows 1000000 \
+  --shuffle-partitions 64
+```
+
+The validator must read the expected embedding dimension from
+`audio_encoder_metadata.json["selected_k"]`. It must not assume dimension 128.
+
+It should check:
+
+* Output files and Spark success markers exist.
+* Row count and distinct `track_id` count are correct.
+* Every embedding has length `selected_k`.
+* Embeddings contain no null, NaN, or infinite values.
+* Embeddings are L2-normalized.
+* The fitted PCA model dimension equals `max_components`.
+* The final embedding dimension equals `selected_k`.
+
+## Build FAISS
+
+```bash
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/build_faiss.py \
+  --input parquets_new/merlin/audio-var90/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio-var90 \
+  --shuffle-partitions 64
+```
+
+`build_faiss.py` reads the vector dimension from
+`audio_encoder_metadata.json["selected_k"]`.
 
 It writes:
 
@@ -153,39 +241,75 @@ Do not treat a partial index as a production artifact.
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/validate_faiss.py \
-  --embeddings parquets_new/merlin/audio/song_embeddings_audio.parquet \
-  --output parquets_new/merlin/audio \
+  --embeddings parquets_new/merlin/audio-var90/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio-var90 \
   --expected-rows 1000000 \
   --shuffle-partitions 64
 ```
 
-- Checks that the FAISS index and track-id mapping exist.
-- Checks index size, embedding dimension, mapping size, and mapping uniqueness.
-- Runs sample top-K searches and verifies that query tracks retrieve themselves.
-- Uses inner product because embeddings are L2-normalized, so scores equal cosine similarity.
+The validator should verify:
 
-## Validate L1-1 Feature Sanity
+* The index and mapping exist.
+* Index size, mapping size, and mapping uniqueness agree.
+* `index.d` equals the FAISS manifest dimension.
+* The FAISS dimension equals encoder metadata `selected_k`.
+* Sample top-K searches retrieve the query track itself.
 
-Compare cleaned and scaled pre-PCA cosine with final PCA-128 cosine on the exact
-same same-artist, same-release, and matched-random pairs:
+The validator must not hard-code dimension 128.
+
+## Validate L1-1 feature sanity
+
+Compare cleaned and scaled pre-PCA cosine similarity with the final selected-PCA
+cosine similarity on the same same-artist, same-release, and matched-random
+pairs:
 
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/validate_feature_sanity.py \
   --raw-input parquets_new/prepared/song_audio_features_raw.parquet \
   --songs-metadata parquets_new/prepared/songs_metadata.parquet \
-  --output parquets_new/merlin/audio \
+  --output parquets_new/merlin/audio-var90 \
   --pair-count 10000 \
   --bootstrap-samples 2000 \
   --seed 42 \
   --shuffle-partitions 64
 ```
 
-The validator applies only the medians, clipping bounds, feature order, scaler,
-and PCA model saved during training. It does not fit a second model. It writes
-`validation_report.json` with similarity distributions, Hedges' g versus random,
-bootstrap 95% confidence intervals, pairwise pre/post-PCA diagnostics, and exact
-embedding-reproduction error.
+The validator must use the saved preprocessing parameters, scaler, PCA model,
+and `selected_k`. It must not fit another model.
 
-`--allow-partial-pairs` is for small smoke artifacts only. Such a run is marked
+`validation_report.json` should include:
+
+* `selection_mode`, `target_variance`, and `selected_k`.
+* Similarity distributions.
+* Hedges' g against matched-random pairs.
+* Bootstrap 95% confidence intervals.
+* Pre-/post-PCA preservation diagnostics.
+* Exact embedding-reproduction error.
+
+`--allow-partial-pairs` is for smoke artifacts only. Such a run is marked
 `SMOKE_PASS` and cannot support the formal L1-1 conclusion.
+
+## Recommended layout
+
+```text
+parquets_new/merlin/
+├── audio-fixed128/
+├── audio-var90/
+├── audio-var95/
+└── audio-smoke/
+```
+
+Do not reuse an output directory for different configurations. Training
+publishes the encoder as a complete directory and replaces an existing artifact
+at that path.
+
+Compare at least:
+
+* Selected dimension.
+* Cumulative explained variance.
+* Same-artist and same-release similarities.
+* Separation from matched-random pairs.
+* Hedges' g and confidence intervals.
+* Retrieval recall or top-K neighbor preservation.
+* FAISS index size and query latency.
