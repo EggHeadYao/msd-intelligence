@@ -328,16 +328,47 @@ def main() -> None:
 
         require(row_count > 0, "input embedding table is empty")
         require(null_rows == 0, "input embedding table contains null rows")
-        print(f"audio_faiss_input_ready rows={row_count}", flush=True)
+        require(
+            unique_ids == row_count,
+            "input embedding table contains duplicate track_id values",
+        )
+
+        if args.limit == 0:
+            require(
+                row_count == encoder_row_count,
+                "embedding row count does not match encoder metadata",
+            )
+
+        print(
+            f"audio_faiss_input_ready rows={row_count}, "
+            f"dimension={expected_dim}",
+            flush=True,
+        )
 
         staged_mapping = staging / args.track_ids_name
         write_track_id_mapping(embeddings, staged_mapping)
-        print(f"audio_faiss_mapping_ready path={staged_mapping}", flush=True)
-        index = build_index(embeddings, args.batch_size, expected_dim)
-        print(f"audio_faiss_index_ready rows={index.ntotal}, dimension={index.d}", flush=True)
+        print(
+            f"audio_faiss_mapping_ready path={staged_mapping}",
+            flush=True,
+        )
+
+        index = build_index(
+            embeddings,
+            args.batch_size,
+            expected_dim,
+        )
+        print(
+            f"audio_faiss_index_ready rows={index.ntotal}, "
+            f"dimension={index.d}",
+            flush=True,
+        )
+
         staged_index = staging / args.index_name
         faiss.write_index(index, str(staged_index))
-        encoder_metadata_path = args.output / "audio_encoder_metadata.json"
+
+        encoder_metadata_path = (
+            args.output / "audio_encoder_metadata.json"
+        )
         manifest = {
             "artifact_type": "merlin_faiss_index",
             "manifest_version": FAISS_MANIFEST_VERSION,
