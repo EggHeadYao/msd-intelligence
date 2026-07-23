@@ -1,8 +1,46 @@
 # MERLIN Audio Embeddings
 
-This module trains and validates the PCA-based audio encoder.
+This module trains and validates the PCA-based MERLIN audio encoder and builds a
+FAISS nearest-neighbor index over the resulting embeddings.
 
-## Train
+## PCA dimension selection
+
+Training supports two mutually exclusive selection modes:
+
+* `--fixed-k K`: use exactly the first `K` principal components.
+* `--target-variance T`: use the smallest number of principal components whose
+  cumulative explained variance reaches `T`.
+
+If neither option is supplied, training preserves the previous behavior and
+uses a fixed 128-dimensional embedding.
+
+`--max-components K` controls how many PCA components are fitted before the
+final dimension is selected.
+
+* In fixed-dimension mode, it defaults to `--fixed-k`.
+* In target-variance mode, it defaults to `256`.
+* `--fixed-k` cannot exceed `--max-components`.
+* If the target variance is not reached, training fails and asks for a larger
+  `--max-components`.
+
+Each training invocation produces one encoder configuration. Use separate
+output directories for fixed-128, 90%, 95%, and smoke runs.
+
+## Outputs
+
+A successful training run publishes:
+
+* `song_embeddings_audio.parquet`: `track_id` and the L2-normalized embedding.
+* `audio_encoder_metadata.json`: selection mode, selected dimension, explained
+  variance, feature order, preprocessing parameters, and lineage.
+* `scaler_model`: fitted Spark `StandardScalerModel`.
+* `pca_model`: fitted Spark `PCAModel`.
+* `c1_manifest.json`: commit marker for the complete encoder artifact.
+
+Training writes a sibling staging directory and publishes the output directory
+only after all files and Spark success markers are present.
+
+## Train a fixed 128-dimensional encoder
 
 Run from the repository root:
 
