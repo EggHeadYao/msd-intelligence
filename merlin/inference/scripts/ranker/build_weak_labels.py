@@ -14,7 +14,7 @@ from ...retrieval import TagRetriever
 from ...scratch import prepare_scratch_root
 from ...split import load_split_assignments, load_split_manifest
 from ...tag_data import load_tag_idf
-from ...weak_labels import (
+from ...training.weak_labels import (
     MAX_POSITIVES_PER_QUERY,
     fit_weak_label_thresholds,
     select_weak_positives,

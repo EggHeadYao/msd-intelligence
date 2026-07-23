@@ -15,8 +15,8 @@ from ...retrieval import TagRetriever
 from ...scratch import prepare_scratch_root
 from ...split import load_split_assignments
 from ...tag_data import load_tag_idf
-from ...training_pairs import write_training_pair_artifacts
-from ...weak_labels import load_weak_positive_manifest, load_weak_positives
+from ...training.pairs import write_training_pair_artifacts
+from ...training.weak_labels import load_weak_positive_manifest, load_weak_positives
 
 
 def parse_args() -> argparse.Namespace:

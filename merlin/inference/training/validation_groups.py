@@ -8,8 +8,8 @@ import math
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from .artifact_lineage import artifact_size_bytes, sha256_path
-from .jsonl_artifact import write_json_atomic
+from ..artifact_lineage import artifact_size_bytes, sha256_path
+from ..jsonl_artifact import write_json_atomic
 
 
 VALIDATION_GROUP_VERSION = "merlin_validation_groups_v1"

@@ -10,7 +10,7 @@ from typing import Mapping
 from .artifact_lineage import sha256_path
 from .candidate_pool import iter_candidate_pool
 from .jsonl_artifact import write_json_atomic
-from .weak_labels import POSITIVE_SOURCES
+from .training.weak_labels import POSITIVE_SOURCES
 
 
 CANDIDATE_AUDIT_VERSION = "merlin_candidate_audit_v1"

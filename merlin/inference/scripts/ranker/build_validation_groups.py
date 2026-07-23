@@ -19,7 +19,7 @@ from merlin.inference.jsonl_artifact import write_json_atomic
 from merlin.inference.scratch import prepare_scratch_root
 from merlin.inference.split import load_split_manifest
 from merlin.inference.tag_data import load_tag_idf
-from merlin.inference.validation_groups import (
+from merlin.inference.training.validation_groups import (
     VALIDATION_GROUP_SEED,
     VALIDATION_QUERY_GROUPS,
     write_audio_threshold_pairs_numpy,

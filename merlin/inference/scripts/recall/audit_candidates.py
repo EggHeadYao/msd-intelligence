@@ -15,7 +15,7 @@ from ...artifact_paths import (
 )
 from ...candidate_pool import load_candidate_pool_manifest
 from ...candidate_audit import audit_candidate_pool, write_candidate_audit
-from ...weak_labels import load_weak_positive_manifest, load_weak_positives
+from ...training.weak_labels import load_weak_positive_manifest, load_weak_positives
 
 
 def parse_args() -> argparse.Namespace:
