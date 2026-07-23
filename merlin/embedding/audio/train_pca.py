@@ -405,16 +405,28 @@ def main() -> None:
             "permanent_dropped_fields": ["danceability", "energy"],
             "embedding_column": EMBEDDING_COLUMN,
             "embedding_format": "array<float32>",
+            "selection_mode": selection_mode,
             "target_variance": args.target_variance,
             "fixed_k": args.fixed_k,
             "limit": args.limit,
+            "requested_max_components": args.max_components,
             "max_components": max_components,
             "shuffle_partitions": args.shuffle_partitions,
             "segment_median_batch_size": SEGMENT_MEDIAN_BATCH_SIZE,
             "selected_k": selected_k,
+            "selected_cumulative_explained_variance": selected_explained,
+            "target_variance_reached": (
+                args.target_variance is None
+                or selected_explained >= args.target_variance
+            ),
             "explained_variance": explained,
             "cumulative_explained_variance": cumulative_explained,
-            "pca_128_below_90_percent": cumulative_explained[PCA_DIMENSION - 1] < 0.90,
+            "pca_128_cumulative_explained_variance": pca_128_cumulative,
+            "pca_128_below_90_percent": (
+                pca_128_cumulative < 0.90
+                if pca_128_cumulative is not None
+                else None
+            ),
             "preprocess": preprocess_metadata,
             "scaler_mean": vector_to_list(scaler_model.mean),
             "scaler_std": vector_to_list(scaler_model.std),
