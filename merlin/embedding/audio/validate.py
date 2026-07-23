@@ -769,6 +769,18 @@ def build_report(
     }
 
 
+def validate_c1_artifacts(
+    args: argparse.Namespace,
+    metadata: dict[str, Any],
+    selected_k: int,
+    embeddings: DataFrame,
+) -> None:
+    require(int(metadata["row_count"]) == args.expected_rows, "metadata row_count mismatch")
+    validate_c1_manifest(args.output, metadata)
+    validate_embeddings(embeddings, args.expected_rows, selected_k, args.norm_tolerance)
+    print("MERLIN audio PCA validation passed.")
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
