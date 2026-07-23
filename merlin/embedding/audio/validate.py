@@ -581,6 +581,32 @@ def load_l1_inputs(
     return raw, base, output_rows, base_rows
 
 
+def prepare_pairs(
+    base: DataFrame,
+    args: argparse.Namespace,
+    persisted_frames: list[DataFrame],
+) -> tuple[DataFrame, dict[str, int], int]:
+    pair_frames = {
+        name: persist_frame(frame, persisted_frames)
+        for name, frame in build_pairs(base, args.pair_count, args.seed).items()
+    }
+    pair_counts = {name: frame.count() for name, frame in pair_frames.items()}
+    for name, count in pair_counts.items():
+        require(count > 0, f"no eligible {name} pairs")
+        if not args.allow_partial_pairs:
+            require(count == args.pair_count, f"{name} has {count}, expected {args.pair_count} pairs")
+    pairs = pair_frames[PAIR_TYPES[0]]
+    for pair_type in PAIR_TYPES[1:]:
+        pairs = pairs.unionByName(pair_frames[pair_type])
+    pairs = persist_frame(pairs, persisted_frames)
+    total_pairs = pairs.count()
+    require(total_pairs == sum(pair_counts.values()), "pair union count mismatch")
+    for frame in pair_frames.values():
+        release_frame(frame, persisted_frames)
+    release_frame(base, persisted_frames)
+    return pairs, pair_counts, total_pairs
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
