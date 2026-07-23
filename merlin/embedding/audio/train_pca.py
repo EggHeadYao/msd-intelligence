@@ -184,12 +184,14 @@ def validate_raw_input(df: DataFrame) -> int:
     invalid_id = F.col(TRACK_ID_COLUMN).isNull() | (
         ~F.col(TRACK_ID_COLUMN).rlike(r"^TR.{16}$")
     )
+
     stats = df.agg(
         F.count("*").alias("rows"),
         F.countDistinct(TRACK_ID_COLUMN).alias("unique_ids"),
         F.max(F.when(has_non_finite, 1).otherwise(0)).alias("has_non_finite"),
         F.max(F.when(invalid_id, 1).otherwise(0)).alias("has_invalid_id"),
     ).first()
+
     if stats["has_non_finite"]:
         raise ValueError("C1 raw input contains NaN or infinite feature values")
 
@@ -200,12 +202,13 @@ def validate_raw_input(df: DataFrame) -> int:
         raise ValueError("C1 raw input contains an invalid track_id")
     if int(stats["unique_ids"]) != row_count:
         raise ValueError("C1 raw input contains duplicate track_id values")
+
     return row_count
 
 
 def cumulative(values: list[float]) -> list[float]:
     total = 0.0
-    result = []
+    result: list[float] = []
     for value in values:
         total += float(value)
         result.append(total)
@@ -250,17 +253,27 @@ def add_normalized_embedding(df: DataFrame, k: int) -> DataFrame:
     values_col = "_embedding_values"
     norm_col = "_embedding_norm"
     values = F.slice(vector_to_array(F.col(PCA_FEATURES_COLUMN)), 1, k)
+
     return (
         df.withColumn(values_col, values)
         .withColumn(
             norm_col,
-            F.sqrt(F.aggregate(F.col(values_col), F.lit(0.0), lambda acc, x: acc + x * x)),
+            F.sqrt(
+                F.aggregate(
+                    F.col(values_col),
+                    F.lit(0.0),
+                    lambda acc, x: acc + x * x,
+                )
+            ),
         )
         .withColumn(
             EMBEDDING_COLUMN,
             F.when(
                 F.col(norm_col) > 0.0,
-                F.transform(F.col(values_col), lambda x: (x / F.col(norm_col)).cast("float")),
+                F.transform(
+                    F.col(values_col),
+                    lambda x: (x / F.col(norm_col)).cast("float"),
+                ),
             ),
         )
         .drop(values_col, norm_col)
@@ -269,10 +282,19 @@ def add_normalized_embedding(df: DataFrame, k: int) -> DataFrame:
 
 def require_valid_embeddings(df: DataFrame) -> None:
     values = F.col(EMBEDDING_COLUMN)
-    invalid = df.where(
-        values.isNull()
-        | F.exists(values, lambda x: x.isNull() | F.isnan(x) | (F.abs(x) == float("inf")))
-    ).limit(1).count()
+    invalid = (
+        df.where(
+            values.isNull()
+            | F.exists(
+                values,
+                lambda x: x.isNull()
+                | F.isnan(x)
+                | (F.abs(x) == float("inf")),
+            )
+        )
+        .limit(1)
+        .count()
+    )
     if invalid:
         raise ValueError("C1 PCA produced a zero-norm or non-finite embedding")
 
@@ -302,18 +324,28 @@ def main() -> None:
 
     try:
         staging = staging_directory(args.output, run_id)
+
         raw = spark.read.parquet(spark_path(args.input))
         input_schema_hash = sha256_text(raw.schema.json())
         if args.limit > 0:
             raw = raw.limit(args.limit)
+
         row_count = validate_raw_input(raw)
+
         processed, feature_columns, preprocess_metadata = preprocess_audio_features(
-            raw, StorageLevel.DISK_ONLY
+            raw,
+            StorageLevel.DISK_ONLY,
         )
         persisted_frames.append(processed)
 
-        assembler = VectorAssembler(inputCols=list(feature_columns), outputCol=FEATURES_COLUMN)
-        assembled = assembler.transform(processed).select(TRACK_ID_COLUMN, FEATURES_COLUMN)
+        assembler = VectorAssembler(
+            inputCols=list(feature_columns),
+            outputCol=FEATURES_COLUMN,
+        )
+        assembled = assembler.transform(processed).select(
+            TRACK_ID_COLUMN,
+            FEATURES_COLUMN,
+        )
 
         scaler = StandardScaler(
             inputCol=FEATURES_COLUMN,
@@ -322,7 +354,10 @@ def main() -> None:
             withStd=True,
         )
         scaler_model = scaler.fit(assembled)
-        scaled = scaler_model.transform(assembled).select(TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN)
+        scaled = scaler_model.transform(assembled).select(
+            TRACK_ID_COLUMN,
+            SCALED_FEATURES_COLUMN,
+        )
         scaled = scaled.persist(StorageLevel.DISK_ONLY)
         persisted_frames.append(scaled)
 
