@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from ..artifact_lineage import artifact_size_bytes, sha256_path
 from ..jsonl_artifact import write_json_atomic
@@ -44,6 +44,43 @@ def estimate_validation_scratch_gb(
     )
     gib = projected_bytes / (1024**3)
     return max(4.0, math.ceil(gib * 4) / 4)
+
+
+def collect_normalized_vector_matrix(
+    rows: Iterable[Mapping[str, object]],
+    *,
+    capacity: int,
+    dimension: int,
+) -> tuple[dict[str, int], object]:
+    """Collect valid vectors once without retaining Python copies of every array."""
+    if capacity <= 0 or dimension <= 0:
+        raise ValueError("vector capacity and dimension must be positive")
+    try:
+        import numpy as np
+    except ImportError as error:
+        raise RuntimeError("vector threshold fitting requires NumPy") from error
+
+    positions: dict[str, int] = {}
+    matrix = np.empty((capacity, dimension), dtype=np.float64)
+    count = 0
+    for row in rows:
+        norm = float(row["pre_pca_norm"])
+        if not math.isfinite(norm) or norm <= 0.0:
+            continue
+        track_id = str(row["track_id"])
+        if not track_id or track_id in positions:
+            raise ValueError("threshold vectors require unique non-empty track IDs")
+        vector = np.asarray(row["pre_pca_vector"], dtype=np.float64)
+        if vector.shape != (dimension,) or not np.all(np.isfinite(vector)):
+            raise ValueError(f"threshold vector is invalid for track {track_id!r}")
+        if count >= capacity:
+            raise ValueError("threshold vector input exceeds its declared capacity")
+        positions[track_id] = count
+        matrix[count] = vector / norm
+        count += 1
+    if not count:
+        raise ValueError("threshold vector input contains no valid rows")
+    return positions, matrix[:count]
 
 
 def write_audio_threshold_pairs_numpy(
