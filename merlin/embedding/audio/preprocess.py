@@ -261,24 +261,58 @@ def collect_scalar_medians_and_feature_ranges(
 
 def fill_scalar_missing_values(
     df: DataFrame,
+    medians: Mapping[str, float],
+) -> DataFrame:
+    expressions = []
+
+    for column in df.columns:
+        if column not in medians:
+            expressions.append(F.col(column))
+            continue
+
+        current = F.col(column).cast("double")
+
+        valid = (
+            current.isNotNull()
+            & ~F.isnan(current)
+            & (F.abs(current) != float("inf"))
+        )
+
+        expressions.append(
+            F.when(
+                valid,
+                current,
+            ).otherwise(
+                F.lit(medians[column])
+            ).alias(column)
+        )
+
+    return df.select(*expressions)
+
+
+def select_non_constant_features(
+    ranges: Mapping[str, tuple[float | None, float | None]],
     columns: Sequence[str],
     eps: float = NEAR_ZERO_RANGE_EPSILON,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    aggregates = [
-        item
+    kept = tuple(
+        column
         for column in columns
-        for item in (F.min(column).alias(f"{column}__min"), F.max(column).alias(f"{column}__max"))
-    ]
-    stats = df.agg(*aggregates).first()
-    kept = []
-    for column in columns:
-        low, high = stats[f"{column}__min"], stats[f"{column}__max"]
-        if low is not None and high is not None and abs(float(high) - float(low)) > eps:
-            kept.append(column)
-    kept = tuple(kept)
-    dropped = tuple(column for column in columns if column not in kept)
-    return kept, dropped
+        if ranges[column][0] is not None
+        and ranges[column][1] is not None
+        and abs(
+            float(ranges[column][1])
+            - float(ranges[column][0])
+        ) > eps
+    )
 
+    dropped = tuple(
+        column
+        for column in columns
+        if column not in kept
+    )
+
+    return kept, dropped
 
 def preprocess_audio_features(
     df: DataFrame,
