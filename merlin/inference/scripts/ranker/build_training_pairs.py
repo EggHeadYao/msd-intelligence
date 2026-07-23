@@ -15,7 +15,7 @@ from ...scratch import prepare_scratch_root
 from ...split import load_split_assignments
 from ...tag_data import load_tag_idf
 from ...training.pairs import write_training_pair_artifacts
-from ...training.weak_labels import load_weak_positive_manifest, load_weak_positives
+from ...training.weak_labels import load_weak_positive_manifest
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,15 +43,16 @@ def main() -> None:
         args.candidate_pool,
         expected_scope=args.scope,
     )
-    load_weak_positive_manifest(
+    weak_positive_manifest = load_weak_positive_manifest(
         args.weak_positives_manifest,
         args.weak_positives,
         args.thresholds,
         expected_scope=args.scope,
     )
     assignments = load_split_assignments(args.split_assignments)
-    positives = load_weak_positives(args.weak_positives)
-    positive_count = sum(len(values) for values in positives.values())
+    positive_count = int(weak_positive_manifest.get("positive_count", 0))
+    if positive_count <= 0:
+        raise ValueError("weak-positive manifest has no positive rows")
     projected_gb = positive_count * 4 * 80 / (1024 ** 3)
     prepare_scratch_root(
         args.output.parent,
@@ -127,7 +128,7 @@ def main() -> None:
 
     manifest = write_training_pair_artifacts(
         args.candidate_pool,
-        positives,
+        args.weak_positives,
         assignments,
         args.output,
         args.manifest,
