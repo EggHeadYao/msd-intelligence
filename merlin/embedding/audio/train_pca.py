@@ -375,6 +375,15 @@ def main() -> None:
         scaler_model.write().save(spark_path(staging / "scaler_model"))
         pca_model.write().save(spark_path(staging / "pca_model"))
 
+        selection_mode = (
+            "fixed_k" if args.fixed_k is not None else "target_variance"
+        )
+        pca_128_cumulative = (
+            cumulative_explained[DEFAULT_FIXED_K - 1]
+            if len(cumulative_explained) >= DEFAULT_FIXED_K
+            else None
+        )
+
         metadata = {
             "run_id": run_id,
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
