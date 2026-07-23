@@ -14,12 +14,12 @@ from pyspark.sql.types import ArrayType, FloatType
 
 from artifacts import C1_MANIFEST_NAME, validate_c1_manifest
 from columns import (
+    CONTRACT_VERSION,
     TIME_SIGNATURE_UNKNOWN_COLUMN,
     TIME_SIGNATURE_VALUES,
     build_feature_columns,
     time_signature_one_hot_column,
 )
-from shared_contract import CONTRACT_VERSION
 from lineage import sha256_path
 from preprocess import SEGMENT_MEDIAN_BATCH_SIZE
 

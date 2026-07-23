@@ -20,8 +20,8 @@ from artifacts import (
     validate_c1_manifest,
     write_json_atomic,
 )
+from columns import CONTRACT_VERSION
 from lineage import sha256_path
-from shared_contract import CONTRACT_VERSION
 
 
 TRACK_ID_COLUMN = "track_id"

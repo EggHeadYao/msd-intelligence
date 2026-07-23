@@ -6,8 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Sequence
 
-from columns import PREPARED_AUDIO_COLUMNS
-from shared_contract import CONTRACT_VERSION, SHARED_FEATURE_COLUMNS
+from columns import CONTRACT_VERSION, PREPARED_AUDIO_COLUMNS, SHARED_FEATURE_COLUMNS
 
 
 def require(condition: bool, message: str) -> None:
