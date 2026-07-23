@@ -16,6 +16,7 @@ from .types import Candidate
 
 CANDIDATE_POOL_VERSION = "merlin_candidate_pool_v2"
 CANDIDATE_BATCH_SIZE = 256
+CANDIDATE_READ_BATCH_SIZE = 64
 
 
 def _candidate_payload(candidate: Candidate) -> dict[str, object]:
@@ -153,5 +154,9 @@ def load_candidate_pool_manifest(
     return manifest
 
 
-def iter_candidate_pool(path: str | Path) -> Iterator[dict[str, object]]:
-    yield from read_row_artifact(path)
+def iter_candidate_pool(
+    path: str | Path,
+    *,
+    batch_size: int = CANDIDATE_READ_BATCH_SIZE,
+) -> Iterator[dict[str, object]]:
+    yield from read_row_artifact(path, batch_size=batch_size)
