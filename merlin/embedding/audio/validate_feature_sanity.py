@@ -46,11 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def require_columns(df: DataFrame, columns: Sequence[str], name: str) -> None:
-    missing = sorted(set(columns) - set(df.columns))
-    require(not missing, f"{name} is missing columns: {missing}")
-
-
 def array_dot(left: F.Column, right: F.Column) -> F.Column:
     products = F.zip_with(left, right, lambda x, y: x.cast("double") * y.cast("double"))
     return F.aggregate(products, F.lit(0.0), lambda total, value: total + value)
