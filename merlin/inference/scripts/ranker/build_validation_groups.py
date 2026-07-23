@@ -177,6 +177,7 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
     cached = []
     audio_pair_temporary = None
+    tag_pair_temporary = None
     try:
         def release(frame) -> None:
             frame.unpersist(blocking=True)
@@ -382,9 +383,6 @@ def main() -> None:
             block_size=args.audio_block_size,
         )
         high_tag_pairs = spark.read.parquet(_uri(high_tag_pairs_path))
-        tag_scores = high_tag_pairs.withColumn(
-            "tag_tfidf_cosine", F.lit(tag_positive_threshold)
-        )
         tagged_artists = spark.createDataFrame(
             ((artist_id,) for artist_id in sorted(artist_terms)),
             ("artist_id",),
@@ -421,7 +419,7 @@ def main() -> None:
                 & (F.col("q_norm") > 0.0)
             )
             .join(
-                tagged_artists.select(F.col("artist_id").alias("q_artist_id")),
+                F.broadcast(tagged_artists.select(F.col("artist_id").alias("q_artist_id"))),
                 "q_artist_id",
                 "inner",
             )
@@ -435,7 +433,7 @@ def main() -> None:
                 & (F.col("c_norm") > 0.0)
             )
             .join(
-                tagged_artists.select(F.col("artist_id").alias("c_artist_id")),
+                F.broadcast(tagged_artists.select(F.col("artist_id").alias("c_artist_id"))),
                 "c_artist_id",
                 "inner",
             )
@@ -475,9 +473,9 @@ def main() -> None:
                 .select("query_track_id", "candidate_track_id", "q_artist_id", "c_artist_id")
             )
         audio_pairs = (
-            raw_audio_pairs.join(tag_scores, ["q_artist_id", "c_artist_id"], "left")
-            .fillna({"tag_tfidf_cosine": 0.0})
-            .where(F.col("tag_tfidf_cosine") < F.lit(tag_positive_threshold))
+            raw_audio_pairs.join(
+                high_tag_pairs, ["q_artist_id", "c_artist_id"], "left_anti"
+            )
             .select(
                 "query_track_id",
                 "candidate_track_id",
@@ -510,9 +508,9 @@ def main() -> None:
         directed = q_meta.join(directed_edges, "q_artist_id", "inner").join(
             c_meta, "c_artist_id", "inner"
         ).select("query_track_id", "candidate_track_id", F.lit("directed_artist_similarity").alias("relation_source"))
-        high_tag = tag_scores.where(
-            F.col("tag_tfidf_cosine") >= F.lit(tag_positive_threshold)
-        ).join(q_meta, "q_artist_id", "inner").join(c_meta, "c_artist_id", "inner").select(
+        high_tag = high_tag_pairs.join(
+            q_meta, "q_artist_id", "inner"
+        ).join(c_meta, "c_artist_id", "inner").select(
             "query_track_id", "candidate_track_id", F.lit("high_artist_term").alias("relation_source")
         )
         relation_candidates = (
@@ -523,6 +521,8 @@ def main() -> None:
             .localCheckpoint(eager=True)
         )
         cached.append(relation_candidates)
+        tag_pair_temporary.cleanup()
+        tag_pair_temporary = None
         relation_pairs = (
             relation_candidates.join(q_tracks, "query_track_id", "inner")
             .join(c_tracks, "candidate_track_id", "inner")
@@ -543,8 +543,6 @@ def main() -> None:
         cached.append(relation_pairs)
         relation_pairs.count()
         release(relation_candidates)
-        release(tag_scores)
-        release(tagged_artists)
         release(set_b)
         release(pool_queries)
 
@@ -724,6 +722,8 @@ def main() -> None:
         spark.stop()
         if audio_pair_temporary is not None:
             audio_pair_temporary.cleanup()
+        if tag_pair_temporary is not None:
+            tag_pair_temporary.cleanup()
         spark_local_temporary.cleanup()
 
 
