@@ -326,24 +326,52 @@ def main() -> None:
         scaled = scaled.persist(StorageLevel.DISK_ONLY)
         persisted_frames.append(scaled)
 
-        max_components = PCA_DIMENSION
-        if len(feature_columns) < PCA_DIMENSION:
-            raise ValueError("C1 requires at least 128 non-constant input features")
-        pca = PCA(k=max_components, inputCol=SCALED_FEATURES_COLUMN, outputCol=PCA_FEATURES_COLUMN)
+        max_components = min(args.max_components, len(feature_columns))
+        if max_components <= 0:
+            raise ValueError(
+                "C1 has no non-constant input features available for PCA"
+            )
+
+        if args.fixed_k is not None and args.fixed_k > max_components:
+            raise ValueError(
+                f"fixed k {args.fixed_k} exceeds the available PCA dimension "
+                f"{max_components}"
+            )
+
+        pca = PCA(
+            k=max_components,
+            inputCol=SCALED_FEATURES_COLUMN,
+            outputCol=PCA_FEATURES_COLUMN,
+        )
         pca_model = pca.fit(scaled)
+
         processed.unpersist(blocking=True)
         persisted_frames.remove(processed)
+
         explained = vector_to_list(pca_model.explainedVariance)
         cumulative_explained = cumulative(explained)
-        selected_k = PCA_DIMENSION
+        selected_k = choose_k(
+            explained=explained,
+            target_variance=args.target_variance,
+            fixed_k=args.fixed_k,
+        )
+        selected_explained = cumulative_explained[selected_k - 1]
 
-        projected = pca_model.transform(scaled).select(TRACK_ID_COLUMN, PCA_FEATURES_COLUMN)
-        embeddings = add_normalized_embedding(projected, selected_k).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+        projected = pca_model.transform(scaled).select(
+            TRACK_ID_COLUMN,
+            PCA_FEATURES_COLUMN,
+        )
+        embeddings = add_normalized_embedding(projected, selected_k).select(
+            TRACK_ID_COLUMN,
+            EMBEDDING_COLUMN,
+        )
         embeddings = embeddings.persist(StorageLevel.DISK_ONLY)
         persisted_frames.append(embeddings)
         require_valid_embeddings(embeddings)
 
-        embeddings.write.mode("errorifexists").parquet(spark_path(staging / "song_embeddings_audio.parquet"))
+        embeddings.write.mode("errorifexists").parquet(
+            spark_path(staging / "song_embeddings_audio.parquet")
+        )
         scaler_model.write().save(spark_path(staging / "scaler_model"))
         pca_model.write().save(spark_path(staging / "pca_model"))
 
