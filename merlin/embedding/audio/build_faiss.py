@@ -228,32 +228,60 @@ def build_index(
     expected_dim: int,
 ) -> faiss.IndexFlatIP:
     require(batch_size > 0, "batch size must be positive")
+    require(expected_dim > 0, "expected embedding dimension must be positive")
+
     index: faiss.IndexFlatIP | None = None
     batch: list[np.ndarray] = []
     rows = 0
 
     for row in embeddings.toLocalIterator():
         vector = np.asarray(row[EMBEDDING_COLUMN], dtype=np.float32)
-        require(vector.ndim == 1, "embedding must be a one-dimensional array")
-        require(np.all(np.isfinite(vector)), "embedding contains NaN or infinite values")
+        require(
+            vector.ndim == 1,
+            "embedding must be a one-dimensional array",
+        )
+        require(
+            np.all(np.isfinite(vector)),
+            "embedding contains NaN or infinite values",
+        )
+        require(
+            vector.shape[0] == expected_dim,
+            "embedding dimension does not match metadata",
+        )
+
         norm = float(np.linalg.norm(vector))
-        require(np.isfinite(norm) and abs(norm - 1.0) <= 1e-5, "embedding is not unit normalized")
-        require(vector.shape[0] == expected_dim, "embedding dimension does not match metadata")
+        require(
+            np.isfinite(norm) and abs(norm - 1.0) <= 1e-5,
+            "embedding is not unit normalized",
+        )
+
         if index is None:
-            index = faiss.IndexFlatIP(int(vector.shape[0]))
+            index = faiss.IndexFlatIP(expected_dim)
         else:
-            require(vector.shape[0] == index.d, "embedding dimension changed while building index")
+            require(
+                vector.shape[0] == index.d,
+                "embedding dimension changed while building index",
+            )
+
         batch.append(vector.reshape(1, -1))
         rows += 1
+
         if len(batch) >= batch_size:
             flush_batch(index, batch)
             batch.clear()
+
         if rows % 100_000 == 0:
-            print(f"audio_faiss_index_progress rows={rows}", flush=True)
+            print(
+                f"audio_faiss_index_progress rows={rows}",
+                flush=True,
+            )
 
     require(index is not None, "no embeddings found")
     flush_batch(index, batch)
-    require(index.ntotal == rows, "FAISS index size does not match processed rows")
+    require(
+        index.ntotal == rows,
+        "FAISS index size does not match processed rows",
+    )
     return index
 
 
