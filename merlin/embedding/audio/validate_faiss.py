@@ -4,15 +4,15 @@ import argparse
 import json
 import warnings
 from pathlib import Path
+from typing import Any, Sequence
 
 import faiss
 import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from faiss_checks import validate_source_mapping
-from lineage import sha256_path
-from shared_contract import CONTRACT_VERSION
+from artifacts import sha256_path
+from columns import CONTRACT_VERSION
 
 
 TRACK_ID_COLUMN = "track_id"
@@ -20,6 +20,29 @@ EMBEDDING_COLUMN = "embedding"
 DEFAULT_AUDIO_DIR = Path("parquets_new/merlin/audio")
 FAISS_MANIFEST_NAME = "index_audio_manifest.json"
 FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
+
+
+def validate_source_mapping(
+    index: Any,
+    queries: Sequence[tuple[int, str, Sequence[float]]],
+    tolerance: float = 1e-5,
+) -> tuple[np.ndarray, float]:
+    if not queries:
+        raise AssertionError("no query embeddings found")
+    matrix = np.vstack(
+        [np.asarray(row[2], dtype=np.float32).reshape(1, -1) for row in queries]
+    )
+    if matrix.shape[1] != index.d:
+        raise AssertionError("query embedding dimension does not match FAISS index")
+    if not np.all(np.isfinite(matrix)):
+        raise AssertionError("query embedding contains NaN or infinite values")
+    if not np.all(np.abs(np.linalg.norm(matrix, axis=1) - 1.0) <= tolerance):
+        raise AssertionError("query embedding is not unit normalized")
+    reconstructed = np.vstack([index.reconstruct(row[0]) for row in queries])
+    error = float(np.max(np.abs(matrix - reconstructed)))
+    if not np.isfinite(error) or error > tolerance:
+        raise AssertionError("FAISS row mapping does not match source embeddings")
+    return matrix, error
 
 
 def parse_args() -> argparse.Namespace:
