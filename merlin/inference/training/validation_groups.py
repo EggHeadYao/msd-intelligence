@@ -17,6 +17,31 @@ VALIDATION_GROUP_SEED = 42
 VALIDATION_QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
 
 
+def load_selected_artist_terms(
+    graph_edges_path: str | Path,
+    artist_ids: Iterable[str],
+    idf_values: Mapping[str, float],
+) -> dict[str, set[str]]:
+    """Load normalized tag sets only for selected artists."""
+    from ..parquet_io import parquet_rows
+
+    selected = {str(artist_id) for artist_id in artist_ids}
+    artist_terms: dict[str, set[str]] = {artist_id: set() for artist_id in selected}
+    for artist_id, term in parquet_rows(
+        graph_edges_path,
+        ("src_id", "dst_id"),
+        edge_type="artist_term",
+        engine="pyarrow",
+    ):
+        artist = str(artist_id)
+        normalized_term = str(term).strip().lower()
+        if artist in selected and normalized_term in idf_values:
+            artist_terms[artist].add(normalized_term)
+    return {
+        artist_id: terms for artist_id, terms in artist_terms.items() if terms
+    }
+
+
 def estimate_validation_scratch_gb(
     *,
     set_a_tracks: int,
