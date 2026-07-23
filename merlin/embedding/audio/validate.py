@@ -607,6 +607,63 @@ def prepare_pairs(
     return pairs, pair_counts, total_pairs
 
 
+def recompute_embeddings(
+    raw: DataFrame,
+    saved_embeddings: DataFrame,
+    pairs: DataFrame,
+    encoder_metadata: dict[str, Any],
+    feature_columns: Sequence[str],
+    selected_k: int,
+    scaler_model: StandardScalerModel,
+    pca_model: PCAModel,
+    persisted_frames: list[DataFrame],
+) -> tuple[DataFrame, int, DataFrame]:
+    selected_ids = persist_frame(
+        pairs.select(F.col("query_track_id").alias(TRACK_ID_COLUMN)).union(
+            pairs.select(F.col("candidate_track_id").alias(TRACK_ID_COLUMN))
+        ).distinct(),
+        persisted_frames,
+    )
+    selected_count = selected_ids.count()
+    selected_raw = raw.join(F.broadcast(selected_ids), TRACK_ID_COLUMN, "inner")
+    processed = apply_frozen_preprocess(
+        selected_raw, feature_columns, encoder_metadata["preprocess"]
+    )
+    assembled = VectorAssembler(
+        inputCols=list(feature_columns), outputCol=FEATURES_COLUMN
+    ).transform(processed).select(TRACK_ID_COLUMN, FEATURES_COLUMN)
+    scaled = scaler_model.transform(assembled).select(
+        TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN
+    )
+    projected = pca_model.transform(scaled).select(
+        TRACK_ID_COLUMN, SCALED_FEATURES_COLUMN, PCA_FEATURES_COLUMN
+    )
+    recomputed = add_normalized_embedding(projected, selected_k).select(
+        TRACK_ID_COLUMN,
+        vector_to_array(F.col(SCALED_FEATURES_COLUMN)).alias("pre_pca_vector"),
+        F.col(EMBEDDING_COLUMN).alias("recomputed_embedding"),
+    )
+    selected_saved = saved_embeddings.join(
+        F.broadcast(selected_ids), TRACK_ID_COLUMN, "inner"
+    ).select(TRACK_ID_COLUMN, F.col(EMBEDDING_COLUMN).alias("final_embedding"))
+    compared = recomputed.join(selected_saved, TRACK_ID_COLUMN, "inner").withColumn(
+        "maximum_difference",
+        F.array_max(
+            F.zip_with(
+                "recomputed_embedding",
+                "final_embedding",
+                lambda left, right: F.abs(left.cast("double") - right.cast("double")),
+            )
+        ),
+    ).select(
+        TRACK_ID_COLUMN,
+        "pre_pca_vector",
+        "final_embedding",
+        "maximum_difference",
+    )
+    return persist_frame(compared, persisted_frames), selected_count, selected_ids
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
