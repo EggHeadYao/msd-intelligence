@@ -113,16 +113,23 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def encoder_contract(output_dir: Path) -> tuple[int, str]:
+def encoder_contract(output_dir: Path) -> tuple[int, str, int]:
     metadata_path = output_dir / "audio_encoder_metadata.json"
-    require(metadata_path.exists(), f"missing C1 encoder metadata: {metadata_path}")
+    require(
+        metadata_path.exists(),
+        f"missing C1 encoder metadata: {metadata_path}",
+    )
+
     with metadata_path.open("r", encoding="utf-8") as handle:
         metadata = json.load(handle)
+
     required = (
+        "run_id",
         "shared_audio_contract_version",
         "c1_feature_version",
         "selected_k",
         "embedding_format",
+        "row_count",
     )
     missing = [key for key in required if key not in metadata]
     require(not missing, f"C1 encoder metadata missing keys: {missing}")
@@ -131,29 +138,49 @@ def encoder_contract(output_dir: Path) -> tuple[int, str]:
     require(int(metadata["selected_k"]) == 128, "C1 FAISS dimension must be 128")
     require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
     validate_c1_manifest(output_dir, metadata)
-    return 128, str(metadata["run_id"])
+    return selected_k, str(metadata["run_id"]), expected_rows
 
 
-def read_embeddings(spark: SparkSession, path: Path, limit: int) -> DataFrame:
-    embeddings = spark.read.parquet(spark_path(path)).select(TRACK_ID_COLUMN, EMBEDDING_COLUMN)
+def read_embeddings(
+    spark: SparkSession,
+    path: Path,
+    limit: int,
+) -> DataFrame:
+    embeddings = spark.read.parquet(spark_path(path)).select(
+        TRACK_ID_COLUMN,
+        EMBEDDING_COLUMN,
+    )
+
     if limit > 0:
         embeddings = embeddings.orderBy(TRACK_ID_COLUMN).limit(limit)
     else:
         embeddings = embeddings.orderBy(TRACK_ID_COLUMN)
+
     return embeddings.persist(StorageLevel.DISK_ONLY)
 
 
-def write_track_id_mapping(embeddings: DataFrame, output_path: Path) -> None:
+def write_track_id_mapping(
+    embeddings: DataFrame,
+    output_path: Path,
+) -> None:
     schema = StructType(
         (
             StructField("row_id", LongType(), nullable=False),
             StructField(TRACK_ID_COLUMN, StringType(), nullable=False),
-        ),
+        )
     )
-    mapping = embeddings.select(TRACK_ID_COLUMN).rdd.map(lambda row: row[0]).zipWithIndex()
-    mapping = mapping.map(lambda item: (int(item[1]), item[0]))
-    embeddings.sparkSession.createDataFrame(mapping, schema).write.mode("overwrite").parquet(
-        spark_path(output_path),
+
+    mapping = (
+        embeddings.select(TRACK_ID_COLUMN)
+        .rdd.map(lambda row: row[0])
+        .zipWithIndex()
+        .map(lambda item: (int(item[1]), item[0]))
+    )
+
+    (
+        embeddings.sparkSession.createDataFrame(mapping, schema)
+        .write.mode("overwrite")
+        .parquet(spark_path(output_path))
     )
 
 
