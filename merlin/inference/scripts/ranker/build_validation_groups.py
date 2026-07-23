@@ -191,13 +191,9 @@ def main() -> None:
             F.col("track_id").cast("string"), F.col("split").cast("string")
         ).persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(assignments)
-        pool = read_rows(args.candidate_pool).select(
-            F.col("query_track_id").cast("string"), "candidates"
-        ).persist(StorageLevel.MEMORY_AND_DISK)
-        cached.append(pool)
-        pool_queries = pool.select(F.col("query_track_id").alias("track_id")).distinct().persist(
-            StorageLevel.MEMORY_AND_DISK
-        )
+        pool_queries = read_rows(args.candidate_pool).select(
+            F.col("query_track_id").cast("string").alias("track_id")
+        ).distinct().persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(pool_queries)
         invalid_pool_queries = (
             pool_queries.join(assignments, "track_id", "left")
@@ -607,6 +603,9 @@ def main() -> None:
             F.count("*").cast("long").alias("eligible_positive_count")
         ).persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(eligible)
+        pool = read_rows(args.candidate_pool).select(
+            F.col("query_track_id").cast("string"), "candidates"
+        )
         candidate_rows = pool.select(
             "query_track_id", F.explode("candidates").alias("candidate")
         ).select(
@@ -634,7 +633,6 @@ def main() -> None:
         cached.append(validation_pairs)
         if validation_pairs.count() == 0:
             raise ValueError("Set-B validation pairs are empty")
-        release(pool)
         missing_candidate_queries = eligible.select("query_track_id", "query_group").join(
             validation_pairs.select("query_track_id", "query_group").distinct(),
             ["query_track_id", "query_group"],
