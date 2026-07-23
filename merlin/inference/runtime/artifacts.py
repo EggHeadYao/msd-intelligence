@@ -10,8 +10,8 @@ from ..candidate_policy import load_candidate_policy
 from ..faiss_index import FaissTrackIndex
 from ..features_v2 import FeatureFillValues, TrackMetadataV2, load_track_metadata_v2
 from ..loaders import load_audio_index
-from ..ranker import LogisticRanker
-from ..ranker_lineage import load_ranker_bundle
+from ..ranking.lineage import load_ranker_bundle
+from ..ranking.model import LogisticRanker
 from ..track_identity import SameSongFilter, load_same_song_filter
 
 

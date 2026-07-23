@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from .artifact_lineage import sha256_path
-from .feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
-from .jsonl_artifact import write_json_atomic
+from ..artifact_lineage import sha256_path
+from ..feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
+from ..jsonl_artifact import write_json_atomic
 
 
 RANKER_TRAINING_VERSION = "merlin_ranker_training_v1"

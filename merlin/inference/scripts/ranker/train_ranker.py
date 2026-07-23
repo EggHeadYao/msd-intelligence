@@ -10,10 +10,10 @@ from typing import Any
 
 from ...artifact_lineage import artifact_size_bytes
 from ...feature_schema import RANKER_V2_FEATURES
-from ...ranker_artifacts import write_ranker_artifacts
-from ...ranker_features import FILL_FEATURES, RAW_BASE_FEATURES
-from ...ranker_features import load_raw_feature_manifest
-from ...ranker_selection import REG_PARAMS, select_reg_param
+from ...ranking.artifacts import write_ranker_artifacts
+from ...ranking.features import FILL_FEATURES, RAW_BASE_FEATURES
+from ...ranking.features import load_raw_feature_manifest
+from ...ranking.selection import REG_PARAMS, select_reg_param
 from ...scratch import prepare_scratch_root
 
 

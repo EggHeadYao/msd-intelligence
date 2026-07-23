@@ -6,10 +6,10 @@ import json
 from pathlib import Path
 from typing import Mapping
 
-from .artifact_lineage import sha256_path
-from .feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
-from .ranker import LogisticRanker
-from .ranker_artifacts import RANKER_TRAINING_VERSION
+from ..artifact_lineage import sha256_path
+from ..feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
+from .artifacts import RANKER_TRAINING_VERSION
+from .model import LogisticRanker
 
 
 def load_ranker_bundle(

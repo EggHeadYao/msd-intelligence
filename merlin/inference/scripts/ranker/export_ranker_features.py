@@ -13,7 +13,7 @@ from ...catalog_data import load_catalog_context
 from ...faiss_index import FaissTrackIndex
 from ...features_v2 import PairSignalLookups, RankerV2FeatureComputer
 from ...loaders import load_audio_index
-from ...ranker_features import export_raw_pair_features
+from ...ranking.features import export_raw_pair_features
 from ...training_pairs import load_training_pair_manifest
 from ...validation_groups import load_validation_group_manifest
 from ...recall_factory import build_canonical_retrievers

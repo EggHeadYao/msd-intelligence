@@ -9,12 +9,12 @@ import json
 from pathlib import Path
 from typing import Iterator, Mapping
 
-from .artifact_lineage import artifact_size_bytes, sha256_path
-from .feature_schema import RANKER_V2_SCHEMA_VERSION
-from .features_v2 import RankerV2FeatureComputer
-from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
-from .parquet_io import parquet_rows
-from .types import Candidate
+from ..artifact_lineage import artifact_size_bytes, sha256_path
+from ..feature_schema import RANKER_V2_SCHEMA_VERSION
+from ..features_v2 import RankerV2FeatureComputer
+from ..jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
+from ..parquet_io import parquet_rows
+from ..types import Candidate
 
 
 RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v2"

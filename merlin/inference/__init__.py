@@ -3,7 +3,7 @@
 from .faiss_index import FaissTrackIndex
 from .feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
 from .features_v2 import RankerV2FeatureComputer
-from .ranker import LogisticRanker
+from .ranking.model import LogisticRanker
 from .recall import RecallPipeline, validate_recall_pipeline, write_recall_report
 from .recall_factory import load_recall_pipeline
 from .runtime.cold_audio import ColdAudioAudit, ColdAudioPipeline
