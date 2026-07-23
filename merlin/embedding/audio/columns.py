@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-from shared_contract import (
-    CONTRACT_VERSION,
-    MERLIN_ARRAY_FEATURE_COLUMNS,
-    SHARED_FEATURE_COUNT,
-)
-
 CONTRACT_VERSION = "shared_audio_628_v1"
 LEGACY_FEATURE_COUNT = 308
 SHARED_FEATURE_COUNT = 628
