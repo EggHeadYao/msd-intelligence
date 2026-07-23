@@ -299,7 +299,7 @@ class TagRetriever(CandidateRetriever):
 
         norms = compute_artist_tag_norms(data, idf_values)
 
-        @lru_cache(maxsize=50_000)
+        @lru_cache(maxsize=4_096)
         def neighbors(artist_id: str) -> Sequence[tuple[str, float]]:
             return tuple(find_similar_artists(
                 data,
@@ -310,7 +310,10 @@ class TagRetriever(CandidateRetriever):
                 norms=norms,
             ))
 
-        @lru_cache(maxsize=500_000)
+        # Pair scores are queried repeatedly during recall, but an unbounded
+        # large cache retains Python tuple/dict overhead for the whole corpus.
+        # A bounded cache preserves locality without exhausting small VMs.
+        @lru_cache(maxsize=8_192)
         def canonical_pair_similarity(left: str, right: str) -> float | None:
             return artist_tag_cosine(data, left, right, idf_values, norms)
 

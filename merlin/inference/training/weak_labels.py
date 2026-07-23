@@ -281,6 +281,10 @@ def write_weak_positive_artifacts(
 
 
 def load_weak_positives(path: str | Path) -> dict[str, dict[str, frozenset[str]]]:
+    # Provenance is drawn from the small POSITIVE_SOURCES vocabulary.  Reuse
+    # identical frozensets instead of allocating one object per positive row;
+    # formal artifacts can contain millions of positive entries.
+    source_cache: dict[tuple[str, ...], frozenset[str]] = {}
     result: dict[str, dict[str, frozenset[str]]] = {}
     for row in read_row_artifact(path):
         query_id = str(row["query_track_id"])
@@ -289,7 +293,11 @@ def load_weak_positives(path: str | Path) -> dict[str, dict[str, frozenset[str]]
         positives: dict[str, frozenset[str]] = {}
         for positive in row["positives"]:
             track_id = str(positive["track_id"])
-            sources = frozenset(str(value) for value in positive["positive_sources"])
+            source_values = tuple(sorted(str(value) for value in positive["positive_sources"]))
+            sources = source_cache.get(source_values)
+            if sources is None:
+                sources = frozenset(source_values)
+                source_cache[source_values] = sources
             if not sources or not sources.issubset(POSITIVE_SOURCES):
                 raise ValueError("weak positive contains invalid provenance")
             if track_id in positives:
