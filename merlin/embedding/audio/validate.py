@@ -12,7 +12,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, FloatType
 
-from artifacts import C1_MANIFEST_NAME, validate_c1_manifest
+from artifacts import C1_MANIFEST_NAME, sha256_path, validate_c1_manifest
 from columns import (
     CONTRACT_VERSION,
     TIME_SIGNATURE_UNKNOWN_COLUMN,
@@ -20,7 +20,6 @@ from columns import (
     build_feature_columns,
     time_signature_one_hot_column,
 )
-from lineage import sha256_path
 from preprocess import SEGMENT_MEDIAN_BATCH_SIZE
 
 

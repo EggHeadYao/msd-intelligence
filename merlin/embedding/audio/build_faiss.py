@@ -17,11 +17,11 @@ from pyspark.sql.types import LongType, StringType, StructField, StructType
 from artifacts import (
     remove_path,
     replace_artifact,
+    sha256_path,
     validate_c1_manifest,
     write_json_atomic,
 )
 from columns import CONTRACT_VERSION
-from lineage import sha256_path
 
 
 TRACK_ID_COLUMN = "track_id"

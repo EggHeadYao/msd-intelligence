@@ -18,6 +18,9 @@ from pyspark.sql.types import NumericType, StringType
 from artifacts import (
     C1_MANIFEST_NAME,
     build_c1_manifest,
+    code_provenance,
+    load_prepared_manifest,
+    parent_lineage,
     publish_directory,
     remove_path,
     staging_directory,
@@ -33,7 +36,6 @@ from columns import (
     SHARED_FEATURE_COUNT,
     TRACK_ID_COLUMN,
 )
-from lineage import code_provenance, load_prepared_manifest, parent_lineage
 from preprocess import SEGMENT_MEDIAN_BATCH_SIZE, preprocess_audio_features
 
 
