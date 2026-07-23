@@ -46,28 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def verify_model_metadata(
-    encoder_metadata: dict[str, Any],
-    scaler_model: StandardScalerModel,
-    pca_model: PCAModel,
-) -> None:
-    comparisons = (
-        (list(scaler_model.mean), encoder_metadata["scaler_mean"], "scaler mean"),
-        (list(scaler_model.std), encoder_metadata["scaler_std"], "scaler std"),
-        (
-            list(pca_model.explainedVariance),
-            encoder_metadata["explained_variance"],
-            "PCA explained variance",
-        ),
-    )
-    for actual, expected, name in comparisons:
-        require(len(actual) == len(expected), f"{name} length mismatch")
-        maximum = max((abs(float(a) - float(b)) for a, b in zip(actual, expected)), default=0.0)
-        require(maximum <= 1e-12, f"{name} does not match encoder metadata")
-    require(pca_model.pc.numRows == int(encoder_metadata["feature_count"]), "PCA row mismatch")
-    require(pca_model.pc.numCols == int(encoder_metadata["selected_k"]), "PCA column mismatch")
-
-
 def score_pairs(pairs: DataFrame, vectors: DataFrame) -> DataFrame:
     query = vectors.select(
         F.col(TRACK_ID_COLUMN).alias("query_track_id"),
