@@ -14,8 +14,8 @@ from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
+from artifacts import sha256_path
 from columns import PREPARED_AUDIO_COLUMNS, TRACK_ID_COLUMN
-from frozen_preprocess import apply_frozen_preprocess
 from l1_stats import (
     bootstrap_hedges_g_ci,
     classify_validation,
@@ -23,8 +23,7 @@ from l1_stats import (
     hedges_g,
     preservation_summary,
 )
-from lineage import sha256_path
-from preprocess import add_scalar_availability
+from preprocess import add_scalar_availability, apply_frozen_preprocess
 from train_pca import (
     EMBEDDING_COLUMN,
     FEATURES_COLUMN,

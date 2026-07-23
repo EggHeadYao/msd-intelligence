@@ -134,7 +134,7 @@ def main() -> None:
     sys.path.insert(0, str(audio_module))
     try:
         from columns import TRACK_ID_COLUMN
-        from frozen_preprocess import apply_frozen_preprocess
+        from preprocess import apply_frozen_preprocess
         from train_pca import FEATURES_COLUMN, SCALED_FEATURES_COLUMN
     finally:
         sys.path.pop(0)
