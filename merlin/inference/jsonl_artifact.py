@@ -93,8 +93,14 @@ def write_row_artifact(
     return count
 
 
-def read_row_artifact(path: str | Path) -> Iterator[dict[str, object]]:
+def read_row_artifact(
+    path: str | Path,
+    *,
+    batch_size: int = 100_000,
+) -> Iterator[dict[str, object]]:
     """Read either a Parquet row artifact or the historical gzip JSONL form."""
+    if batch_size <= 0:
+        raise ValueError("row artifact read batch size must be positive")
     source = Path(path)
     if source.suffix != ".parquet":
         yield from read_jsonl_gzip(source)
@@ -106,7 +112,7 @@ def read_row_artifact(path: str | Path) -> Iterator[dict[str, object]]:
     except ImportError as error:
         raise RuntimeError("reading Parquet row artifacts requires pyarrow") from error
     parquet = pq.ParquetFile(source)
-    for batch in parquet.iter_batches(batch_size=100_000):
+    for batch in parquet.iter_batches(batch_size=batch_size):
         for row in batch.to_pylist(maps_as_pydicts="strict"):
             yield row
 
