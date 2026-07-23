@@ -96,6 +96,40 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_args(args: argparse.Namespace) -> argparse.Namespace:
+    # Preserve the old production behavior when no selection option is given.
+    if args.target_variance is None and args.fixed_k is None:
+        args.fixed_k = DEFAULT_FIXED_K
+
+    if args.target_variance is not None:
+        if not 0.0 < args.target_variance <= 1.0:
+            raise ValueError("target variance must be in the interval (0, 1]")
+
+    if args.fixed_k is not None and args.fixed_k <= 0:
+        raise ValueError("fixed k must be positive")
+
+    if args.max_components is None:
+        args.max_components = (
+            args.fixed_k
+            if args.fixed_k is not None
+            else DEFAULT_TARGET_MAX_COMPONENTS
+        )
+
+    if args.max_components <= 0:
+        raise ValueError("max components must be positive")
+
+    if args.fixed_k is not None and args.fixed_k > args.max_components:
+        raise ValueError("fixed k cannot exceed max components")
+
+    if args.limit < 0:
+        raise ValueError("limit cannot be negative")
+
+    if args.shuffle_partitions <= 0:
+        raise ValueError("shuffle partitions must be positive")
+
+    return args
+
+
 def create_spark(shuffle_partitions: int) -> SparkSession:
     return (
         SparkSession.builder.appName("MerlinTrainAudioPCA")
