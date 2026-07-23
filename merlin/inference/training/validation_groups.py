@@ -153,6 +153,63 @@ def _normalized_tag_matrix(
     return artists, matrix.multiply((1.0 / norms)[:, None]).tocsr()
 
 
+def write_high_tag_pairs_sparse(
+    artist_terms: Mapping[str, Sequence[str]],
+    idf_values: Mapping[str, float],
+    output_path: str | Path,
+    *,
+    threshold: float,
+    block_size: int = 256,
+) -> int:
+    """Write directed artist pairs whose binary TF-IDF cosine meets a threshold."""
+    if block_size <= 0 or not math.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("tag threshold and block size must be positive")
+    try:
+        import numpy as np
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError as error:
+        raise RuntimeError("sparse tag threshold search requires NumPy and PyArrow") from error
+
+    artists, normalized = _normalized_tag_matrix(artist_terms, idf_values)
+    schema = pa.schema((
+        pa.field("q_artist_id", pa.string(), nullable=False),
+        pa.field("c_artist_id", pa.string(), nullable=False),
+    ))
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    writer = pq.ParquetWriter(temporary, schema, compression="zstd", use_dictionary=True)
+    count = 0
+    try:
+        for start in range(0, len(artists), block_size):
+            similarities = (normalized[start : start + block_size] @ normalized.T).tocoo()
+            query_positions = similarities.row + start
+            selected = (
+                (similarities.data >= threshold)
+                & (query_positions != similarities.col)
+            )
+            query_positions = query_positions[selected]
+            candidate_positions = similarities.col[selected]
+            if not len(query_positions):
+                continue
+            order = np.lexsort((candidate_positions, query_positions))
+            query_positions = query_positions[order]
+            candidate_positions = candidate_positions[order]
+            writer.write_table(pa.Table.from_arrays(
+                (
+                    pa.array([artists[index] for index in query_positions]),
+                    pa.array([artists[index] for index in candidate_positions]),
+                ),
+                schema=schema,
+            ))
+            count += len(query_positions)
+    finally:
+        writer.close()
+    temporary.replace(output)
+    return count
+
+
 def write_audio_threshold_pairs_numpy(
     query_rows: Sequence[Mapping[str, object]],
     candidate_rows: Sequence[Mapping[str, object]],
