@@ -380,41 +380,71 @@ def main() -> None:
             "metric": "inner_product",
             "dimension": index.d,
             "row_count": index.ntotal,
+            "partial_index": args.limit > 0,
+            "requested_limit": args.limit,
             "index_file": args.index_name,
             "mapping_path": args.track_ids_name,
             "index_sha256": sha256_path(staged_index),
             "mapping_sha256": sha256_path(staged_mapping),
-            "encoder_metadata_sha256": sha256_path(encoder_metadata_path),
+            "encoder_metadata_sha256": sha256_path(
+                encoder_metadata_path
+            ),
             "encoder_run_id": encoder_run_id,
         }
-        staged_manifest = staging / FAISS_MANIFEST_NAME
+
+        staged_manifest = staging / args.manifest_name
         write_json_atomic(manifest, staged_manifest)
-        published_manifest = args.output / FAISS_MANIFEST_NAME
+
+        published_manifest = args.output / args.manifest_name
         published_manifest.unlink(missing_ok=True)
-        replace_artifact(staged_mapping, args.output / args.track_ids_name, run_id)
-        replace_artifact(staged_index, args.output / args.index_name, run_id)
+
+        replace_artifact(
+            staged_mapping,
+            args.output / args.track_ids_name,
+            run_id,
+        )
+        replace_artifact(
+            staged_index,
+            args.output / args.index_name,
+            run_id,
+        )
         staged_manifest.replace(published_manifest)
+
         print(
             "audio_faiss_build_done "
-            f"rows={row_count}, dimension={index.d}, index_size={index.ntotal}, "
+            f"rows={row_count}, "
+            f"dimension={index.d}, "
+            f"index_size={index.ntotal}, "
             f"index={args.output / args.index_name}, "
             f"track_ids={args.output / args.track_ids_name}",
+            flush=True,
         )
     finally:
         if embeddings is not None:
             try:
                 embeddings.unpersist(blocking=False)
             except Exception as error:
-                warnings.warn(f"failed to unpersist FAISS input: {error}", RuntimeWarning)
+                warnings.warn(
+                    f"failed to unpersist FAISS input: {error}",
+                    RuntimeWarning,
+                )
+
         try:
             spark.stop()
         except Exception as error:
-            warnings.warn(f"failed to stop Spark cleanly: {error}", RuntimeWarning)
+            warnings.warn(
+                f"failed to stop Spark cleanly: {error}",
+                RuntimeWarning,
+            )
+
         if staging is not None and staging.exists():
             try:
                 remove_path(staging)
             except OSError as error:
-                warnings.warn(f"failed to remove FAISS staging: {error}", RuntimeWarning)
+                warnings.warn(
+                    f"failed to remove FAISS staging: {error}",
+                    RuntimeWarning,
+                )
 
 
 if __name__ == "__main__":
