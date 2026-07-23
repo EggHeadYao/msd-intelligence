@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from .candidate_policy import validate_canonical_policy
-from .interfaces import CandidateRetriever, PairFeatureComputer, Ranker
-from .recall import recall_candidates
-from .types import Candidate, RecallAudit, Recommendation
+from ..candidate_policy import validate_canonical_policy
+from ..interfaces import CandidateRetriever, PairFeatureComputer, Ranker
+from ..recall import recall_candidates
+from ..types import Candidate, RecallAudit, Recommendation
 
 
 @dataclass(slots=True)

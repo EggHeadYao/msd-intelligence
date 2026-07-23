@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from .artifact_paths import InferenceArtifactPaths
+from ..artifact_paths import InferenceArtifactPaths
+from ..candidate_policy import CANONICAL_RETRIEVER_LIMITS
+from ..features_v2 import PairSignalLookups, RankerV2FeatureComputer
+from ..recall_factory import build_canonical_retrievers
 from .artifacts import InferenceArtifacts, load_inference_artifacts
-from .candidate_policy import CANONICAL_RETRIEVER_LIMITS
-from .features_v2 import PairSignalLookups, RankerV2FeatureComputer
 from .pipeline import MerlinPipeline
-from .recall_factory import build_canonical_retrievers
 
 
 def load_inference_pipeline(

@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from .faiss_index import FaissTrackIndex
-from .types import Recommendation
+from ..faiss_index import FaissTrackIndex
+from ..types import Recommendation
 
 
 @dataclass(frozen=True, slots=True)

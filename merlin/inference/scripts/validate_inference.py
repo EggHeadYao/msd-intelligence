@@ -6,8 +6,8 @@ import argparse
 from pathlib import Path
 
 from ..artifact_paths import INFERENCE_VALIDATION_PATH
-from ..factory import load_inference_pipeline
-from ..validation import validate_pipeline, write_validation_report
+from ..runtime.factory import load_inference_pipeline
+from ..runtime.validation import validate_pipeline, write_validation_report
 
 
 def parse_args() -> argparse.Namespace:
