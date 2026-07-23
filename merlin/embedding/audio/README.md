@@ -125,7 +125,30 @@ discoverable by the standard C2 loader when it uses a custom manifest name.
 
 Inner product equals cosine similarity because embeddings are L2-normalized.
 
-Validate the saved audio index:
+### Partial FAISS index
+
+Using (with isolated output names):
+
+```bash
+--limit 10000
+```
+
+The command must also provide non-default `--index-name`, `--track-ids-name`,
+and `--manifest-name` values when writing into the production audio directory.
+
+builds an index over only the first 10,000 embeddings after sorting by
+`track_id`. The manifest records:
+
+```json
+{
+  "partial_index": true,
+  "requested_limit": 10000
+}
+```
+
+Do not treat a partial index as a production artifact.
+
+## Validate FAISS
 
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
