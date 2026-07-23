@@ -19,6 +19,7 @@ WEAK_LABEL_VERSION = "merlin_weak_labels_v1"
 WEAK_LABEL_SEED = 42
 MAX_THRESHOLD_PAIRS = 1_000_000
 MAX_POSITIVES_PER_QUERY = 50
+WEAK_POSITIVE_READ_BATCH_SIZE = 256
 POSITIVE_SOURCES = ("same_artist", "tag_derived", "audio_derived")
 PairSimilarity = Callable[[str, str], float | None]
 PairBatchSimilarity = Callable[[Sequence[tuple[str, str]]], Sequence[float | None]]
@@ -280,20 +281,27 @@ def write_weak_positive_artifacts(
     return manifest
 
 
-def load_weak_positives(path: str | Path) -> dict[str, dict[str, frozenset[str]]]:
+def iter_weak_positives(
+    path: str | Path,
+    *,
+    batch_size: int = WEAK_POSITIVE_READ_BATCH_SIZE,
+) -> Iterator[tuple[str, dict[str, frozenset[str]]]]:
     # Provenance is drawn from the small POSITIVE_SOURCES vocabulary.  Reuse
     # identical frozensets instead of allocating one object per positive row;
     # formal artifacts can contain millions of positive entries.
     source_cache: dict[tuple[str, ...], frozenset[str]] = {}
-    result: dict[str, dict[str, frozenset[str]]] = {}
-    for row in read_row_artifact(path):
+    seen_queries: set[str] = set()
+    for row in read_row_artifact(path, batch_size=batch_size):
         query_id = str(row["query_track_id"])
-        if query_id in result:
+        if query_id in seen_queries:
             raise ValueError("weak positives contain a duplicate query")
+        seen_queries.add(query_id)
         positives: dict[str, frozenset[str]] = {}
         for positive in row["positives"]:
             track_id = str(positive["track_id"])
-            source_values = tuple(sorted(str(value) for value in positive["positive_sources"]))
+            source_values = tuple(
+                sorted(str(value) for value in positive["positive_sources"])
+            )
             sources = source_cache.get(source_values)
             if sources is None:
                 sources = frozenset(source_values)
@@ -303,8 +311,11 @@ def load_weak_positives(path: str | Path) -> dict[str, dict[str, frozenset[str]]
             if track_id in positives:
                 raise ValueError("weak positive record contains a duplicate track")
             positives[track_id] = sources
-        result[query_id] = positives
-    return result
+        yield query_id, positives
+
+
+def load_weak_positives(path: str | Path) -> dict[str, dict[str, frozenset[str]]]:
+    return dict(iter_weak_positives(path))
 
 
 def load_weak_positive_manifest(
