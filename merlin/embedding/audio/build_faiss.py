@@ -286,31 +286,46 @@ def build_index(
 
 
 def main() -> None:
-    args = parse_args()
+    args = validate_args(parse_args())
     run_id = str(uuid4())
     args.output.mkdir(parents=True, exist_ok=True)
-    expected_dim, encoder_run_id = encoder_contract(args.output)
+
+    expected_dim, encoder_run_id, encoder_row_count = encoder_contract(
+        args.output
+    )
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     embeddings: DataFrame | None = None
     staging: Path | None = None
+
     try:
         staging = args.output / f".faiss-staging-{run_id}"
         staging.mkdir()
-        print(f"audio_faiss_build_started input={args.input}, output={args.output}", flush=True)
+
+        print(
+            f"audio_faiss_build_started input={args.input}, "
+            f"output={args.output}, expected_dim={expected_dim}",
+            flush=True,
+        )
+
         embeddings = read_embeddings(spark, args.input, args.limit)
         stats = embeddings.agg(
             F.count("*").alias("rows"),
+            F.countDistinct(TRACK_ID_COLUMN).alias("unique_ids"),
             F.sum(
                 F.when(
-                    F.col(TRACK_ID_COLUMN).isNull() | F.col(EMBEDDING_COLUMN).isNull(),
+                    F.col(TRACK_ID_COLUMN).isNull()
+                    | F.col(EMBEDDING_COLUMN).isNull(),
                     1,
-                ).otherwise(0),
+                ).otherwise(0)
             ).alias("null_rows"),
         ).first()
+
         row_count = int(stats["rows"])
+        unique_ids = int(stats["unique_ids"])
         null_rows = int(stats["null_rows"] or 0)
+
         require(row_count > 0, "input embedding table is empty")
         require(null_rows == 0, "input embedding table contains null rows")
         print(f"audio_faiss_input_ready rows={row_count}", flush=True)
