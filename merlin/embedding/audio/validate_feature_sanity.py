@@ -46,54 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def _partner_columns(df: DataFrame, window: Window) -> DataFrame:
-    result = df
-    for column in METADATA_COLUMNS:
-        result = result.withColumn(f"candidate_{column}", F.lead(F.col(column)).over(window))
-    result = result.withColumn(
-        "candidate_feature_coverage",
-        F.lead(F.col("feature_coverage")).over(window),
-    )
-    result = result.withColumn(
-        "candidate_year_key",
-        F.lead(F.col("year_key")).over(window),
-    )
-    return result
-
-
-def select_pairs(
-    base: DataFrame,
-    pair_type: str,
-    partition_columns: Sequence[str],
-    pair_count: int,
-    seed: int,
-) -> DataFrame:
-    ordering = F.xxhash64(F.col(TRACK_ID_COLUMN), F.lit(seed))
-    window = Window.partitionBy(*partition_columns).orderBy(ordering, F.col(TRACK_ID_COLUMN))
-    paired = _partner_columns(base, window)
-    different_song = F.col("candidate_song_id").isNotNull() & (
-        F.col("song_id") != F.col("candidate_song_id")
-    )
-    paired = paired.where(F.col(f"candidate_{TRACK_ID_COLUMN}").isNotNull() & different_song)
-    return (
-        paired.select(
-            F.lit(pair_type).alias("pair_type"),
-            F.col(TRACK_ID_COLUMN).alias("query_track_id"),
-            F.col(f"candidate_{TRACK_ID_COLUMN}").alias("candidate_track_id"),
-            (F.col("year_key") == F.col("candidate_year_key")).alias("year_matched"),
-            (F.col("feature_coverage") == F.col("candidate_feature_coverage")).alias(
-                "coverage_matched"
-            ),
-            (F.col("artist_id") == F.col("candidate_artist_id")).alias("artist_matched"),
-            (F.col("release_7digitalid") == F.col("candidate_release_7digitalid")).alias(
-                "release_matched"
-            ),
-        )
-        .orderBy(F.xxhash64("query_track_id", "candidate_track_id", F.lit(seed)))
-        .limit(pair_count)
-    )
-
-
 def build_pairs(base: DataFrame, pair_count: int, seed: int) -> dict[str, DataFrame]:
     same_artist = base.where(F.col("artist_id").isNotNull() & (F.length("artist_id") > 0))
     same_release = base.where(
