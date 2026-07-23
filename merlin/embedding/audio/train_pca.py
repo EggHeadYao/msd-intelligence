@@ -216,13 +216,34 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def choose_k(explained: list[float], target_variance: float, fixed_k: int) -> int:
-    if fixed_k > 0:
-        return min(fixed_k, len(explained))
-    for index, value in enumerate(cumulative(explained), start=1):
+def choose_k(
+    explained: list[float],
+    target_variance: float | None,
+    fixed_k: int | None,
+) -> int:
+    if not explained:
+        raise ValueError("PCA returned no explained-variance values")
+
+    if fixed_k is not None:
+        if fixed_k > len(explained):
+            raise ValueError(
+                f"fixed k {fixed_k} exceeds fitted PCA dimension {len(explained)}"
+            )
+        return fixed_k
+
+    if target_variance is None:
+        raise ValueError("either target variance or fixed k must be specified")
+
+    cumulative_explained = cumulative(explained)
+    for index, value in enumerate(cumulative_explained, start=1):
         if value >= target_variance:
             return index
-    return len(explained)
+
+    raise ValueError(
+        f"target variance {target_variance:.6f} was not reached within "
+        f"{len(explained)} components; maximum cumulative variance was "
+        f"{cumulative_explained[-1]:.6f}. Increase --max-components."
+    )
 
 
 def add_normalized_embedding(df: DataFrame, k: int) -> DataFrame:
