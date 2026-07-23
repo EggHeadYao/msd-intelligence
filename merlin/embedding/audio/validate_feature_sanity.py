@@ -46,19 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def add_coverage(raw: DataFrame, feature_columns: Sequence[str]) -> DataFrame:
-    availability = add_scalar_availability(raw)
-    coverage_columns = tuple(
-        column for column in feature_columns
-        if column.startswith("has_") and column in availability.columns
-    )
-    require(bool(coverage_columns), "C1 feature coverage columns are unavailable")
-    score = F.lit(0)
-    for column in coverage_columns:
-        score = score + F.when(F.col(column).cast("double") == 1.0, F.lit(1)).otherwise(F.lit(0))
-    return availability.select(TRACK_ID_COLUMN, score.cast("int").alias("feature_coverage"))
-
-
 def _partner_columns(df: DataFrame, window: Window) -> DataFrame:
     result = df
     for column in METADATA_COLUMNS:
