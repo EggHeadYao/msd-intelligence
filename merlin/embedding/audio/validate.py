@@ -246,10 +246,6 @@ def load_and_validate_models(
     return scaler, pca
 
 
-def validate_models(output: Path, metadata: dict[str, Any]) -> None:
-    load_and_validate_models(output, metadata)
-
-
 def validate_embeddings(
     embeddings: DataFrame,
     expected_rows: int,
@@ -857,19 +853,36 @@ def validate_l1_feature_sanity(
 
 def main() -> None:
     args = parse_args()
+    require(args.expected_rows > 0, "expected rows must be positive")
+    require(args.shuffle_partitions > 0, "shuffle partitions must be positive")
+    require(args.norm_tolerance > 0.0, "norm tolerance must be positive")
+    if args.mode in {"l1", "all"}:
+        require(args.pair_count > 0, "pair_count must be positive")
+        require(args.bootstrap_samples > 0, "bootstrap_samples must be positive")
+        require(args.reproduction_tolerance > 0.0, "reproduction_tolerance must be positive")
     validate_layout(args.output)
-    metadata = read_metadata(args.output / "audio_encoder_metadata.json")
+    encoder_metadata_path = args.output / "audio_encoder_metadata.json"
+    metadata = read_metadata(encoder_metadata_path)
     selected_k = validate_metadata(metadata)
-    require(int(metadata["row_count"]) == args.expected_rows, "metadata row_count mismatch")
-    validate_c1_manifest(args.output, metadata)
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     try:
-        validate_models(args.output, metadata)
+        scaler_model, pca_model = load_and_validate_models(args.output, metadata)
         embeddings = spark.read.parquet(spark_path(args.output / "song_embeddings_audio.parquet"))
-        validate_embeddings(embeddings, args.expected_rows, selected_k, args.norm_tolerance)
-        print("MERLIN audio PCA validation passed.")
+        if args.mode in {"artifact", "all"}:
+            validate_c1_artifacts(args, metadata, selected_k, embeddings)
+        if args.mode in {"l1", "all"}:
+            validate_l1_feature_sanity(
+                spark,
+                args,
+                encoder_metadata_path,
+                metadata,
+                selected_k,
+                scaler_model,
+                pca_model,
+                embeddings.select(TRACK_ID_COLUMN, EMBEDDING_COLUMN),
+            )
     finally:
         try:
             spark.stop()
