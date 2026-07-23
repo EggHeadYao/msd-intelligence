@@ -132,11 +132,41 @@ def encoder_contract(output_dir: Path) -> tuple[int, str, int]:
         "row_count",
     )
     missing = [key for key in required if key not in metadata]
-    require(not missing, f"C1 encoder metadata missing keys: {missing}")
-    require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")
-    require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
-    require(int(metadata["selected_k"]) == 128, "C1 FAISS dimension must be 128")
-    require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
+    require(
+        not missing,
+        f"C1 encoder metadata missing keys: {missing}",
+    )
+
+    require(
+        metadata["shared_audio_contract_version"] == CONTRACT_VERSION,
+        "wrong audio contract",
+    )
+    require(
+        int(metadata["c1_feature_version"]) == 2,
+        "wrong C1 feature version",
+    )
+
+    selected_k = int(metadata["selected_k"])
+    require(
+        selected_k > 0,
+        "C1 selected PCA dimension must be positive",
+    )
+
+    max_components = metadata.get("max_components")
+    if max_components is not None:
+        require(
+            selected_k <= int(max_components),
+            "C1 selected dimension exceeds fitted PCA dimension",
+        )
+
+    require(
+        metadata["embedding_format"] == "array<float32>",
+        "wrong embedding format",
+    )
+
+    expected_rows = int(metadata["row_count"])
+    require(expected_rows > 0, "C1 metadata row count must be positive")
+
     validate_c1_manifest(output_dir, metadata)
     return selected_k, str(metadata["run_id"]), expected_rows
 
@@ -184,7 +214,10 @@ def write_track_id_mapping(
     )
 
 
-def flush_batch(index: faiss.IndexFlatIP, batch: list[np.ndarray]) -> None:
+def flush_batch(
+    index: faiss.IndexFlatIP,
+    batch: list[np.ndarray],
+) -> None:
     if batch:
         index.add(np.vstack(batch))
 
