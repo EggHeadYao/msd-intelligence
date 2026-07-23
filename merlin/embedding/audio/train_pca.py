@@ -282,17 +282,24 @@ def vector_to_list(vector: Vector) -> list[float]:
 
 
 def main() -> None:
-    args = parse_args()
+    args = validate_args(parse_args())
     run_id = str(uuid4())
     repo_root = Path(__file__).resolve().parents[3]
     producer = code_provenance(repo_root, "merlin/embedding/audio/*.py")
+
     parent_path = args.parent_manifest or args.input.parent / "prepared_manifest.json"
     parent_manifest, parent_digest = load_prepared_manifest(parent_path)
-    prepared_lineage = parent_lineage(parent_manifest, parent_path, parent_digest)
+    prepared_lineage = parent_lineage(
+        parent_manifest,
+        parent_path,
+        parent_digest,
+    )
+
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
     persisted_frames: list[DataFrame] = []
     staging: Path | None = None
+
     try:
         staging = staging_directory(args.output, run_id)
         raw = spark.read.parquet(spark_path(args.input))
