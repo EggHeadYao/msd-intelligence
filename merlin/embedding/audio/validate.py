@@ -683,6 +683,25 @@ def validate_reproduction(
     return vectors, maximum_difference
 
 
+def collect_scores(
+    pairs: DataFrame,
+    vectors: DataFrame,
+    total_pairs: int,
+) -> tuple[list[Any], int]:
+    rows = score_pairs(pairs, vectors).collect()
+    scored_count = len(rows)
+    require(scored_count == total_pairs, "not every selected pair was scored")
+    require(
+        all(
+            row[name] is not None and math.isfinite(float(row[name]))
+            for row in rows
+            for name in ("pre_pca_cosine", "pca_128_cosine")
+        ),
+        "L1-1 produced a non-finite cosine",
+    )
+    return rows, scored_count
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
