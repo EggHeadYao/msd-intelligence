@@ -22,7 +22,9 @@ from merlin.inference.tag_data import load_tag_idf
 from merlin.inference.training.validation_groups import (
     VALIDATION_GROUP_SEED,
     VALIDATION_QUERY_GROUPS,
+    collect_normalized_vector_matrix,
     estimate_validation_scratch_gb,
+    sampled_pair_cosine_quantiles,
     write_audio_threshold_pairs_numpy,
     write_validation_group_manifest,
 )
@@ -260,9 +262,12 @@ def main() -> None:
         if set_a_count < 2:
             raise ValueError("Set A has too few C1 vectors for threshold fitting")
         slots = max(1, math.ceil(2 * args.max_threshold_pairs / set_a_count) + 4)
-        indexed_schema = set_a.schema.add("sample_row_id", "long", nullable=False)
+        indexed_source = set_a.select(
+            TRACK_ID_COLUMN, "song_id", "artist_id", "pre_pca_norm"
+        )
+        indexed_schema = indexed_source.schema.add("sample_row_id", "long", nullable=False)
         indexed = spark.createDataFrame(
-            set_a.orderBy(TRACK_ID_COLUMN).rdd.zipWithIndex().map(
+            indexed_source.orderBy(TRACK_ID_COLUMN).rdd.zipWithIndex().map(
                 lambda row_and_index: (*row_and_index[0], int(row_and_index[1]))
             ),
             schema=indexed_schema,
@@ -272,7 +277,6 @@ def main() -> None:
             F.col(TRACK_ID_COLUMN).alias("q_track_id"),
             F.col("song_id").alias("q_song_id"),
             F.col("artist_id").alias("q_artist_id"),
-            F.col("pre_pca_vector").alias("q_vector"),
             F.col("pre_pca_norm").alias("q_norm"),
         ).withColumn("sample_slot", F.explode(F.sequence(F.lit(0), F.lit(slots - 1))))
         queries = queries.withColumn(
@@ -287,10 +291,9 @@ def main() -> None:
             F.col(TRACK_ID_COLUMN).alias("c_track_id"),
             F.col("song_id").alias("c_song_id"),
             F.col("artist_id").alias("c_artist_id"),
-            F.col("pre_pca_vector").alias("c_vector"),
             F.col("pre_pca_norm").alias("c_norm"),
         )
-        threshold_sample = (
+        threshold_pair_ids = (
             queries.join(candidates, "candidate_row_id", "inner")
             .where(F.col("q_track_id") < F.col("c_track_id"))
             .where(not_same_song("q", "c"))
@@ -301,36 +304,50 @@ def main() -> None:
                 & (F.length("c_artist_id") > 0)
                 & (F.col("q_artist_id") != F.col("c_artist_id"))
             )
-            .dropDuplicates(["q_track_id", "c_track_id"])
-            .withColumn(
-                "pre_pca_cosine",
-                cosine(F.col("q_vector"), F.col("c_vector"), F.col("q_norm"), F.col("c_norm")),
+            .where(
+                F.col("q_norm").isNotNull()
+                & F.col("c_norm").isNotNull()
+                & ~F.isnan("q_norm")
+                & ~F.isnan("c_norm")
+                & (F.col("q_norm") > 0.0)
+                & (F.col("c_norm") > 0.0)
             )
-            .where(F.col("pre_pca_cosine").isNotNull() & ~F.isnan("pre_pca_cosine"))
+            .dropDuplicates(["q_track_id", "c_track_id"])
             .select(
-                "pre_pca_cosine",
+                "q_track_id",
+                "c_track_id",
                 F.xxhash64(
                     "q_track_id", "c_track_id", F.lit(VALIDATION_GROUP_SEED)
                 ).alias("sample_hash"),
             )
             .orderBy("sample_hash")
             .limit(args.max_threshold_pairs)
-            .select("pre_pca_cosine")
+            .select("q_track_id", "c_track_id")
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
-        cached.append(threshold_sample)
-        threshold_sample_count = threshold_sample.count()
+        cached.append(threshold_pair_ids)
+        threshold_sample_count = threshold_pair_ids.count()
         if threshold_sample_count == 0:
             raise ValueError("Set-A pre-PCA threshold sample is empty")
-        percentiles = threshold_sample.select(
-            F.percentile_approx("pre_pca_cosine", [0.5, 0.9], 1_000_000).alias("values")
-        ).first()["values"]
-        acoustic_p50, acoustic_p90 = (float(value) for value in percentiles)
+        vector_positions, normalized_vectors = collect_normalized_vector_matrix(
+            set_a.select(
+                TRACK_ID_COLUMN, "pre_pca_vector", "pre_pca_norm"
+            ).toLocalIterator(),
+            capacity=set_a_count,
+            dimension=len(feature_columns),
+        )
+        threshold_sample_count, acoustic_p50, acoustic_p90 = sampled_pair_cosine_quantiles(
+            threshold_pair_ids.toLocalIterator(),
+            vector_positions,
+            normalized_vectors,
+            expected_pairs=threshold_sample_count,
+        )
+        del normalized_vectors, vector_positions
         if not math.isfinite(acoustic_p50) or not math.isfinite(acoustic_p90):
             raise ValueError("Set-A pre-PCA thresholds are not finite")
         if acoustic_p90 < acoustic_p50:
             raise ValueError("Set-A pre-PCA thresholds are not monotonic")
-        release(threshold_sample)
+        release(threshold_pair_ids)
         release(indexed)
 
         set_b = vectors.where(F.col("split") == "set_b").drop("split").persist(
@@ -668,7 +685,7 @@ def main() -> None:
             "fit_split": "set_a",
             "seed": VALIDATION_GROUP_SEED,
             "sample_method": "deterministic_hash_sampled_cross_artist_pairs",
-            "quantile_method": "percentile_approx_accuracy_1000000",
+            "quantile_method": "numpy_linear_exact",
             "max_sample_pairs": args.max_threshold_pairs,
             "sampled_cross_artist_pairs": threshold_sample_count,
             "pre_pca_acoustic_cosine_p50": acoustic_p50,
