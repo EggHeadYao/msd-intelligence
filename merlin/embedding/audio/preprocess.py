@@ -324,16 +324,25 @@ def preprocess_audio_features(
     df = add_key_circular_features(df)
     df, time_values, time_columns = add_time_signature_one_hot(df)
     df, clip_bounds = add_log_clipped_features(df)
-    df, scalar_medians = fill_scalar_missing_values(df)
     candidates = build_feature_columns(time_columns)
+    scalar_medians, feature_ranges = (
+        collect_scalar_medians_and_feature_ranges(
+            df,
+            candidates,
+        )
+    )
+    df = fill_scalar_missing_values(
+        df,
+        scalar_medians,
+    )
+    features, dropped = select_non_constant_features(
+        feature_ranges,
+        candidates,
+    )
+
     if storage_level is not None:
         df = df.persist(storage_level)
-    try:
-        features, dropped = drop_zero_variance_features(df, candidates)
-    except Exception:
-        if storage_level is not None:
-            df.unpersist(blocking=False)
-        raise
+
     metadata = {
         "clip_bounds": clip_bounds,
         "dropped_features": dropped,
