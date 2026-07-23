@@ -511,6 +511,38 @@ def summarize_scores(
     }
 
 
+def conclusion(effects: dict[str, Any], formal: bool) -> dict[str, Any]:
+    criterion = (
+        "For same_artist and same_release, the pre-PCA and PCA-128 Hedges' g "
+        "bootstrap 95% CI lower bounds must all be greater than zero."
+    )
+    if not formal:
+        return {
+            "eligible": False,
+            "supported": None,
+            "criterion": criterion,
+            "statement": "Smoke data validates execution logic only; it is not formal L1-1 evidence.",
+        }
+    intervals = [
+        effects[representation][relation]["bootstrap_95_ci"]
+        for representation in ("pre_pca", "pca_128")
+        for relation in ("same_artist", "same_release")
+    ]
+    supported = all(interval is not None and interval[0] > 0.0 for interval in intervals)
+    statement = (
+        "C1 preserves metadata-correlated acoustic structure after deterministic "
+        "preprocessing and PCA."
+        if supported
+        else "The formal L1-1 measurements do not support the permitted C1 conclusion."
+    )
+    return {
+        "eligible": True,
+        "supported": supported,
+        "criterion": criterion,
+        "statement": statement,
+    }
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
