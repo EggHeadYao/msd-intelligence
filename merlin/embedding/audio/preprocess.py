@@ -206,22 +206,60 @@ def _scalar_median_columns() -> tuple[str, ...]:
         *FADE_RATIO_COLUMNS,
         *PASSTHROUGH_BINARY_COLUMNS,
     )
-    medians_row = df.agg(
-        *(F.percentile_approx(F.col(column).cast("double"), 0.5, 10_000).alias(column)
-          for column in columns)
-    ).first()
-    medians = {}
-    for column in columns:
-        value = medians_row[column]
+
+
+def collect_scalar_medians_and_feature_ranges(
+    df: DataFrame,
+    feature_columns: Sequence[str],
+) -> tuple[
+    dict[str, float],
+    dict[str, tuple[float | None, float | None]],
+]:
+    scalar_columns = _scalar_median_columns()
+
+    aggregates = [
+        F.percentile_approx(
+            F.col(column).cast("double"),
+            0.5,
+            10_000,
+        ).alias(f"{column}__median")
+        for column in scalar_columns
+    ]
+
+    aggregates.extend(
+        item
+        for column in feature_columns
+        for item in (
+            F.min(
+                F.when(_finite(column), F.col(column).cast("double"))
+            ).alias(f"{column}__min"),
+            F.max(
+                F.when(_finite(column), F.col(column).cast("double"))
+            ).alias(f"{column}__max"),
+        )
+    )
+
+    stats = df.agg(*aggregates).first()
+
+    medians: dict[str, float] = {}
+
+    for column in scalar_columns:
+        value = stats[f"{column}__median"]
         median = float(value) if value is not None else 0.0
         medians[column] = median if math.isfinite(median) else 0.0
-        current = F.col(column).cast("double")
-        valid = current.isNotNull() & ~F.isnan(current) & (F.abs(current) != float("inf"))
-        df = df.withColumn(column, F.when(valid, current).otherwise(F.lit(medians[column])))
-    return df, medians
+
+    ranges = {
+        column: (
+            stats[f"{column}__min"],
+            stats[f"{column}__max"],
+        )
+        for column in feature_columns
+    }
+
+    return medians, ranges
 
 
-def drop_zero_variance_features(
+def fill_scalar_missing_values(
     df: DataFrame,
     columns: Sequence[str],
     eps: float = NEAR_ZERO_RANGE_EPSILON,
