@@ -52,21 +52,31 @@ spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/train_pca.py \
   --input parquets_new/prepared/song_audio_features_raw.parquet \
   --parent-manifest parquets_new/prepared/prepared_manifest.json \
-  --output parquets_new/merlin/audio \
+  --output parquets_new/merlin/audio-fixed128 \
+  --fixed-k 128 \
   --shuffle-partitions 64
 ```
 
-- `song_embeddings_audio.parquet`: Stores `track_id` and the normalized audio embedding.
-- `audio_encoder_metadata.json`: Stores feature columns, selected dimension, explained variance, and preprocessing metadata.
-- `scaler_model`: Stores the fitted Spark `StandardScalerModel`.
-- `pca_model`: Stores the fitted Spark `PCAModel`.
-- `c1_manifest.json`: Commit marker binding the C1 run, input schema, and output paths.
+## Smoke test
 
-Training writes a sibling staging directory and publishes the complete directory only
-after every Spark output and success marker is present. Large artifact content hashes
-are intentionally omitted to avoid an extra full read of the input and outputs.
+Use a separate output directory:
 
-## Validate
+```bash
+JAVA_TOOL_OPTIONS='-XX:UseAVX=0 -XX:UseSSE=2 -XX:-TieredCompilation' \
+spark-submit --master 'local[6]' --driver-memory 5g \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  merlin/embedding/audio/train_pca.py \
+  --input parquets_new/prepared/song_audio_features_raw.parquet \
+  --parent-manifest parquets_new/prepared/prepared_manifest.json \
+  --output parquets_new/merlin/audio-smoke \
+  --fixed-k 128 \
+  --limit 10000 \
+  --shuffle-partitions 64
+```
+
+This checks the pipeline on a smaller input. It does not establish the final
+explained-variance or retrieval-quality result for the full dataset.
 
 Validate the full output:
 
@@ -101,7 +111,19 @@ spark-submit --master 'local[6]' --driver-memory 5g \
 - `index_audio.faiss`: Stores the FAISS inner-product index over normalized audio embeddings.
 - `index_audio_track_ids.parquet`: Stores `row_id` and `track_id`; `row_id` matches the FAISS vector order.
 
-## Validate FAISS
+It writes:
+
+* `index_audio.faiss`: FAISS `IndexFlatIP` index.
+* `index_audio_track_ids.parquet`: `row_id` to `track_id` mapping.
+* `index_audio_manifest.json`: dimension, row count, hashes, encoder run ID, and
+  partial-index status.
+
+The default names are reserved for a complete production build. When using
+`--limit` or custom index names in `parquets_new/merlin/audio`, pass non-default
+names for the index, mapping, and manifest together. A partial index is not
+discoverable by the standard C2 loader when it uses a custom manifest name.
+
+Inner product equals cosine similarity because embeddings are L2-normalized.
 
 Validate the saved audio index:
 
