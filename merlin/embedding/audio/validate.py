@@ -304,6 +304,15 @@ def validate_embeddings(
     require(bad_values == 0, "audio embeddings contain NaN/Inf or non-normalized rows")
 
 
+def write_json(data: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    temporary.replace(path)
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
