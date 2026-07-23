@@ -46,28 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def build_pairs(base: DataFrame, pair_count: int, seed: int) -> dict[str, DataFrame]:
-    same_artist = base.where(F.col("artist_id").isNotNull() & (F.length("artist_id") > 0))
-    same_release = base.where(
-        F.col("release_7digitalid").isNotNull() & (F.col("release_7digitalid") > 0)
-    )
-    return {
-        "same_artist": select_pairs(
-            same_artist, "same_artist", ("artist_id",), pair_count, seed
-        ),
-        "same_release": select_pairs(
-            same_release, "same_release", ("release_7digitalid",), pair_count, seed + 1
-        ),
-        "random": select_pairs(
-            base,
-            "random",
-            ("year_key", "feature_coverage"),
-            pair_count,
-            seed + 2,
-        ),
-    }
-
-
 def verify_model_metadata(
     encoder_metadata: dict[str, Any],
     scaler_model: StandardScalerModel,
