@@ -144,27 +144,38 @@ def spark_path(path: Path) -> str:
 
 def validate_raw_input(df: DataFrame) -> int:
     if tuple(df.columns) != PREPARED_AUDIO_COLUMNS:
-        raise ValueError("C1 raw input column order does not match the frozen Prepared contract")
+        raise ValueError(
+            "C1 raw input column order does not match the frozen Prepared contract"
+        )
+
     missing = sorted(set(RAW_AUDIO_COLUMNS) - set(df.columns))
     if missing:
         preview = ", ".join(missing[:10])
-        raise ValueError(f"C1 raw input is missing {len(missing)} columns: {preview}")
+        raise ValueError(
+            f"C1 raw input is missing {len(missing)} columns: {preview}"
+        )
 
     fields = {field.name: field.dataType for field in df.schema.fields}
     if not isinstance(fields[TRACK_ID_COLUMN], StringType):
         raise TypeError("C1 track_id must use Spark string type")
+
     non_numeric = [
-        column for column in RAW_AUDIO_COLUMNS
-        if column != TRACK_ID_COLUMN and not isinstance(fields[column], NumericType)
+        column
+        for column in RAW_AUDIO_COLUMNS
+        if column != TRACK_ID_COLUMN
+        and not isinstance(fields[column], NumericType)
     ]
     if non_numeric:
         preview = ", ".join(non_numeric[:10])
         raise TypeError(f"C1 raw features must be numeric: {preview}")
 
-    numeric_values = F.array(*(
-        F.col(column).cast("double") for column in RAW_AUDIO_COLUMNS
-        if column != TRACK_ID_COLUMN
-    ))
+    numeric_values = F.array(
+        *(
+            F.col(column).cast("double")
+            for column in RAW_AUDIO_COLUMNS
+            if column != TRACK_ID_COLUMN
+        )
+    )
     has_non_finite = F.exists(
         numeric_values,
         lambda value: value.isNotNull()
