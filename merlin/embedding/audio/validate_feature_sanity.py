@@ -46,18 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def create_spark(shuffle_partitions: int) -> SparkSession:
-    return (
-        SparkSession.builder.appName("MerlinValidateC1FeatureSanity")
-        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
-        .getOrCreate()
-    )
-
-
-def spark_path(path: Path) -> str:
-    return path.resolve().as_uri()
-
-
 def write_json(data: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
