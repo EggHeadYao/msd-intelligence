@@ -25,6 +25,6 @@ def prepare_scratch_root(
     if free_gb < required_gb:
         raise OSError(
             f"C3 storage has {free_gb:.2f} GiB free; {required_gb:.2f} GiB required "
-            f"({minimum:.2f} GiB reserve + {projected_gb:.2f} GiB projected output)"
+            f"({minimum:.2f} GiB reserve + {projected_gb:.2f} GiB projected work)"
         )
     return path

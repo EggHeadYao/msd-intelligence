@@ -22,6 +22,7 @@ from merlin.inference.tag_data import load_tag_idf
 from merlin.inference.training.validation_groups import (
     VALIDATION_GROUP_SEED,
     VALIDATION_QUERY_GROUPS,
+    estimate_validation_scratch_gb,
     write_audio_threshold_pairs_numpy,
     write_validation_group_manifest,
 )
@@ -80,18 +81,6 @@ def main() -> None:
     if args.shuffle_partitions <= 0 or args.audio_block_size <= 0:
         raise ValueError("shuffle partitions and audio block size must be positive")
     _require_new_outputs((args.thresholds, args.positives, args.validation_pairs, args.manifest))
-    prepare_scratch_root(
-        args.validation_pairs.parent,
-        scope=args.scope,
-        min_free_gb=args.min_free_gb,
-        projected_gb=4.0 if args.scope == "formal" else 0.0,
-    )
-    scratch_root = prepare_scratch_root(
-        args.scratch_root or args.validation_pairs.parent / ".c3-scratch",
-        scope=args.scope,
-        min_free_gb=args.min_free_gb,
-        projected_gb=4.0 if args.scope == "formal" else 0.0,
-    )
     split_manifest = load_split_manifest(args.split_manifest, args.split_assignments)
     if args.scope == "formal" and split_manifest.get("scope") != "formal":
         raise ValueError("formal validation groups require a formal split artifact")
@@ -123,6 +112,29 @@ def main() -> None:
     if encoder_metadata.get("model_ready_schema_version") != "c1_model_ready_v2":
         raise ValueError("unsupported C1 model-ready schema")
     feature_columns = tuple(str(value) for value in encoder_metadata["feature_columns"])
+    split_counts = split_manifest.get("track_counts", {})
+    candidate_totals = candidate_manifest.get("totals", {})
+    projected_scratch_gb = 0.0
+    if args.scope == "formal":
+        projected_scratch_gb = estimate_validation_scratch_gb(
+            set_a_tracks=int(split_counts.get("set_a", 0)),
+            set_b_tracks=int(split_counts.get("set_b", 0)),
+            feature_dimension=len(feature_columns),
+            unique_candidates=int(candidate_totals.get("unique_candidates", 0)),
+            max_sample_pairs=args.max_threshold_pairs,
+        )
+    prepare_scratch_root(
+        args.validation_pairs.parent,
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_scratch_gb,
+    )
+    scratch_root = prepare_scratch_root(
+        args.scratch_root or args.validation_pairs.parent / ".c3-scratch",
+        scope=args.scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_scratch_gb,
+    )
 
     from pyspark import StorageLevel
     from pyspark.ml.feature import StandardScalerModel, VectorAssembler
