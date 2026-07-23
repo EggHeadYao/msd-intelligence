@@ -83,6 +83,36 @@ def collect_normalized_vector_matrix(
     return positions, matrix[:count]
 
 
+def sampled_pair_cosine_quantiles(
+    pair_rows: Iterable[Mapping[str, object]],
+    positions: Mapping[str, int],
+    normalized_vectors: object,
+    *,
+    expected_pairs: int,
+) -> tuple[int, float, float]:
+    """Compute exact p50/p90 after deterministic ID-only pair sampling."""
+    if expected_pairs <= 0:
+        raise ValueError("expected pair count must be positive")
+    import numpy as np
+
+    values = np.empty(expected_pairs, dtype=np.float64)
+    count = 0
+    for row in pair_rows:
+        if count >= expected_pairs:
+            raise ValueError("sampled pair input exceeds its declared count")
+        try:
+            query = positions[str(row["q_track_id"])]
+            candidate = positions[str(row["c_track_id"])]
+        except KeyError as error:
+            raise ValueError(f"sampled pair is missing a threshold vector: {error}") from error
+        values[count] = np.dot(normalized_vectors[query], normalized_vectors[candidate])
+        count += 1
+    if count != expected_pairs or np.any(~np.isfinite(values)):
+        raise ValueError("sampled pair cosine input is incomplete or invalid")
+    p50, p90 = np.quantile(values, (0.5, 0.9), method="linear")
+    return count, float(p50), float(p90)
+
+
 def write_audio_threshold_pairs_numpy(
     query_rows: Sequence[Mapping[str, object]],
     candidate_rows: Sequence[Mapping[str, object]],
