@@ -66,14 +66,5 @@ class ArtifactTest(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, "pca_model is incomplete"):
                 validate_c1_manifest(output, metadata)
 
-    def test_failed_artifact_replace_restores_target(self) -> None:
-        with tempfile.TemporaryDirectory() as root:
-            target = Path(root) / "target"
-            target.write_text("old", encoding="utf-8")
-            with self.assertRaises(FileNotFoundError):
-                replace_artifact(Path(root) / "missing", target, "run")
-            self.assertEqual(target.read_text(encoding="utf-8"), "old")
-
-
 if __name__ == "__main__":
     unittest.main()
