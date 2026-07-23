@@ -43,18 +43,54 @@ FEATURES_COLUMN = "features"
 SCALED_FEATURES_COLUMN = "scaled_features"
 PCA_FEATURES_COLUMN = "pca_features"
 EMBEDDING_COLUMN = "embedding"
-PCA_DIMENSION = 128
+DEFAULT_FIXED_K = 128
+DEFAULT_TARGET_MAX_COMPONENTS = 256
 MODEL_READY_SCHEMA_VERSION = "c1_model_ready_v2"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the MERLIN C1 PCA audio encoder.")
-    parser.add_argument("--input", type=Path, default=Path("parquets_new/prepared/song_audio_features_raw.parquet"))
+    parser = argparse.ArgumentParser(
+        description="Train the MERLIN C1 PCA audio encoder."
+    )
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=Path("parquets_new/prepared/song_audio_features_raw.parquet"),
+    )
     parser.add_argument("--parent-manifest", type=Path)
-    parser.add_argument("--output", type=Path, default=Path("parquets_new/merlin/audio"))
-    parser.add_argument("--target-variance", type=float, default=0.95)
-    parser.add_argument("--fixed-k", type=int, choices=(PCA_DIMENSION,), default=PCA_DIMENSION)
-    parser.add_argument("--max-components", type=int, choices=(PCA_DIMENSION,), default=PCA_DIMENSION)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("parquets_new/merlin/audio"),
+    )
+
+    selection_group = parser.add_mutually_exclusive_group()
+    selection_group.add_argument(
+        "--target-variance",
+        type=float,
+        default=None,
+        help=(
+            "Select the smallest PCA dimension whose cumulative explained "
+            "variance reaches this value. Must be in (0, 1]."
+        ),
+    )
+    selection_group.add_argument(
+        "--fixed-k",
+        type=int,
+        default=None,
+        help="Use exactly this many PCA components.",
+    )
+
+    parser.add_argument(
+        "--max-components",
+        type=int,
+        default=None,
+        help=(
+            "Maximum number of PCA components to fit. If omitted, fixed-k mode "
+            "fits exactly fixed-k components; target-variance mode fits up to "
+            f"{DEFAULT_TARGET_MAX_COMPONENTS} components."
+        ),
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     return parser.parse_args()
