@@ -24,8 +24,10 @@ from merlin.inference.training.validation_groups import (
     VALIDATION_QUERY_GROUPS,
     collect_normalized_vector_matrix,
     estimate_validation_scratch_gb,
+    load_selected_artist_terms,
     sampled_pair_cosine_quantiles,
     write_audio_threshold_pairs_numpy,
+    write_high_tag_pairs_sparse,
     write_validation_group_manifest,
 )
 
@@ -361,43 +363,32 @@ def main() -> None:
         b_artists = set_b.where(
             F.col("artist_id").isNotNull() & (F.length("artist_id") > 0)
         ).select("artist_id").distinct()
-        idf_rows = [(term, float(value) ** 2) for term, value in sorted(tag_idf.items())]
-        idf = spark.createDataFrame(idf_rows, ("term", "idf_squared"))
-        terms = (
-            spark.read.parquet(_uri(args.graph_edges / "edge_type=artist_term"))
-            .select(F.col("src_id").cast("string").alias("artist_id"), F.col("dst_id").cast("string").alias("term"))
-            .distinct()
-            .join(F.broadcast(b_artists), "artist_id", "inner")
-            .join(F.broadcast(idf), "term", "inner")
-            .persist(StorageLevel.MEMORY_AND_DISK)
+        artist_terms = load_selected_artist_terms(
+            args.graph_edges,
+            (row["artist_id"] for row in b_artists.collect()),
+            tag_idf,
         )
-        cached.append(terms)
-        norms = terms.groupBy("artist_id").agg(
-            F.sqrt(F.sum("idf_squared")).alias("tag_norm")
-        ).persist(StorageLevel.MEMORY_AND_DISK)
-        cached.append(norms)
-        left_terms = terms.select(
-            F.col("artist_id").alias("q_artist_id"), "term", "idf_squared"
+        if not artist_terms:
+            raise ValueError("Set B has no artist-term vectors")
+        tag_pair_temporary = TemporaryDirectory(
+            prefix="merlin-setb-tag-pairs-", dir=scratch_root
         )
-        right_terms = terms.select(
-            F.col("artist_id").alias("c_artist_id"), "term"
+        high_tag_pairs_path = Path(tag_pair_temporary.name) / "pairs.parquet"
+        write_high_tag_pairs_sparse(
+            artist_terms,
+            tag_idf,
+            high_tag_pairs_path,
+            threshold=tag_positive_threshold,
+            block_size=args.audio_block_size,
         )
-        tag_scores = (
-            left_terms.join(right_terms, "term", "inner")
-            .where(F.col("q_artist_id") != F.col("c_artist_id"))
-            .groupBy("q_artist_id", "c_artist_id")
-            .agg(F.sum("idf_squared").alias("tag_numerator"))
-            .join(norms.select(F.col("artist_id").alias("q_artist_id"), F.col("tag_norm").alias("q_norm")), "q_artist_id")
-            .join(norms.select(F.col("artist_id").alias("c_artist_id"), F.col("tag_norm").alias("c_norm")), "c_artist_id")
-            .withColumn("tag_tfidf_cosine", F.col("tag_numerator") / (F.col("q_norm") * F.col("c_norm")))
-            .select("q_artist_id", "c_artist_id", "tag_tfidf_cosine")
-            .localCheckpoint(eager=True)
+        high_tag_pairs = spark.read.parquet(_uri(high_tag_pairs_path))
+        tag_scores = high_tag_pairs.withColumn(
+            "tag_tfidf_cosine", F.lit(tag_positive_threshold)
         )
-        cached.append(tag_scores)
-        tagged_artists = norms.select("artist_id").localCheckpoint(eager=True)
-        cached.append(tagged_artists)
-        release(terms)
-        release(norms)
+        tagged_artists = spark.createDataFrame(
+            ((artist_id,) for artist_id in sorted(artist_terms)),
+            ("artist_id",),
+        )
 
         def q_columns(frame):
             return frame.select(
