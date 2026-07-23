@@ -444,6 +444,73 @@ def score_pairs(pairs: DataFrame, vectors: DataFrame) -> DataFrame:
     )
 
 
+def summarize_scores(
+    rows: list[Any],
+    bootstrap_samples: int,
+    seed: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    samples: dict[str, dict[str, list[float]]] = {
+        representation: {pair_type: [] for pair_type in PAIR_TYPES}
+        for representation in ("pre_pca", "pca_128")
+    }
+    matching: dict[str, dict[str, int]] = {
+        pair_type: {
+            "year_matched": 0,
+            "coverage_matched": 0,
+            "artist_matched": 0,
+            "release_matched": 0,
+        }
+        for pair_type in PAIR_TYPES
+    }
+    for row in rows:
+        pair_type = row["pair_type"]
+        samples["pre_pca"][pair_type].append(float(row["pre_pca_cosine"]))
+        samples["pca_128"][pair_type].append(float(row["pca_128_cosine"]))
+        for name in matching[pair_type]:
+            matching[pair_type][name] += int(bool(row[name]))
+
+    distributions = {
+        representation: {
+            pair_type: distribution(samples[representation][pair_type])
+            for pair_type in PAIR_TYPES
+        }
+        for representation in samples
+    }
+    effects: dict[str, Any] = {}
+    for representation_index, representation in enumerate(("pre_pca", "pca_128")):
+        effects[representation] = {}
+        random_sample = samples[representation]["random"]
+        for relation_index, relation in enumerate(("same_artist", "same_release")):
+            value = hedges_g(samples[representation][relation], random_sample)
+            interval = bootstrap_hedges_g_ci(
+                samples[representation][relation],
+                random_sample,
+                bootstrap_samples,
+                seed + representation_index * 100 + relation_index,
+            )
+            effects[representation][relation] = {
+                "hedges_g": value,
+                "bootstrap_95_ci": interval,
+            }
+    preservation = {
+        pair_type: preservation_summary(
+            samples["pre_pca"][pair_type], samples["pca_128"][pair_type]
+        )
+        for pair_type in PAIR_TYPES
+    }
+    matching_rates = {
+        pair_type: {
+            name: count / len(samples["pre_pca"][pair_type])
+            for name, count in values.items()
+        }
+        for pair_type, values in matching.items()
+    }
+    return distributions, effects, {
+        "pairwise_preservation": preservation,
+        "matching_rates": matching_rates,
+    }
+
+
 def main() -> None:
     args = parse_args()
     validate_layout(args.output)
