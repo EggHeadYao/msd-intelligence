@@ -12,6 +12,7 @@ from typing import Callable, Iterable, Iterator, Mapping, Sequence
 from ..artifact_lineage import artifact_size_bytes, sha256_path
 from ..candidate_pool import iter_candidate_pool
 from ..jsonl_artifact import write_json_atomic, write_row_artifact
+from .weak_labels import iter_weak_positives
 
 
 TRAINING_PAIR_VERSION = "merlin_training_pairs_v1"
@@ -21,6 +22,8 @@ CANDIDATE_AWARE_FRACTION = 0.75
 IsPositive = Callable[[str, str], bool]
 IsPositiveBatch = Callable[[str, Sequence[str]], Sequence[bool]]
 SameSong = Callable[[str, str], bool]
+WeakPositiveMap = Mapping[str, Mapping[str, frozenset[str]]]
+WeakPositiveSource = str | Path | WeakPositiveMap
 
 
 def allowed_training_tracks(
@@ -215,9 +218,57 @@ def construct_query_pairs(
     }
 
 
+def iter_candidate_positives(
+    candidate_pool_path: str | Path,
+    positives: WeakPositiveSource,
+) -> Iterator[tuple[dict[str, object], Mapping[str, frozenset[str]] | None]]:
+    if isinstance(positives, Mapping):
+        for record in iter_candidate_pool(candidate_pool_path):
+            query_id = str(record["query_track_id"])
+            yield record, positives.get(query_id)
+        return
+
+    positive_records = iter(iter_weak_positives(positives))
+    current_positive = next(positive_records, None)
+    previous_candidate_id: str | None = None
+    previous_positive_id: str | None = None
+
+    def advance_positive() -> tuple[str, dict[str, frozenset[str]]] | None:
+        nonlocal previous_positive_id
+        record = next(positive_records, None)
+        if record is None:
+            return None
+        query_id = record[0]
+        if previous_positive_id is not None and query_id <= previous_positive_id:
+            raise ValueError("weak-positive queries must be strictly sorted")
+        previous_positive_id = query_id
+        return record
+
+    if current_positive is not None:
+        previous_positive_id = current_positive[0]
+    for candidate_record in iter_candidate_pool(candidate_pool_path):
+        candidate_query_id = str(candidate_record["query_track_id"])
+        if (
+            previous_candidate_id is not None
+            and candidate_query_id <= previous_candidate_id
+        ):
+            raise ValueError("candidate-pool queries must be strictly sorted")
+        previous_candidate_id = candidate_query_id
+        while (
+            current_positive is not None
+            and current_positive[0] < candidate_query_id
+        ):
+            current_positive = advance_positive()
+        if current_positive is None or current_positive[0] != candidate_query_id:
+            yield candidate_record, None
+            continue
+        yield candidate_record, current_positive[1]
+        current_positive = advance_positive()
+
+
 def write_training_pair_artifacts(
     candidate_pool_path: str | Path,
-    positives: Mapping[str, Mapping[str, frozenset[str]]],
+    positives: WeakPositiveSource,
     assignments: Mapping[str, str],
     output_path: str | Path,
     manifest_path: str | Path,
@@ -239,13 +290,15 @@ def write_training_pair_artifacts(
 
     def pair_rows() -> Iterator[dict[str, object]]:
         nonlocal query_count
-        for record in iter_candidate_pool(candidate_pool_path):
+        for record, query_positives in iter_candidate_positives(
+            candidate_pool_path, positives
+        ):
             query_id = str(record["query_track_id"])
-            if query_id not in positives or query_id not in allowed:
+            if query_positives is None or query_id not in allowed:
                 continue
             rows, audit = construct_query_pairs(
                 query_id,
-                positives[query_id],
+                query_positives,
                 record["candidates"],
                 allowed,
                 universe,
