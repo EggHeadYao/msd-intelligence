@@ -46,23 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def persist_frame(df: DataFrame, persisted_frames: list[DataFrame]) -> DataFrame:
-    cached = df.persist(StorageLevel.MEMORY_AND_DISK)
-    persisted_frames.append(cached)
-    return cached
-
-
-def release_frame(df: DataFrame, persisted_frames: list[DataFrame]) -> None:
-    try:
-        df.unpersist(blocking=False)
-    except Exception as error:
-        warnings.warn(f"failed to unpersist L1-1 Spark frame: {error}", RuntimeWarning)
-    for index, cached in enumerate(persisted_frames):
-        if cached is df:
-            del persisted_frames[index]
-            break
-
-
 def require_columns(df: DataFrame, columns: Sequence[str], name: str) -> None:
     missing = sorted(set(columns) - set(df.columns))
     require(not missing, f"{name} is missing columns: {missing}")
