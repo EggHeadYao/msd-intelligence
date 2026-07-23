@@ -17,6 +17,35 @@ VALIDATION_GROUP_SEED = 42
 VALIDATION_QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
 
 
+def estimate_validation_scratch_gb(
+    *,
+    set_a_tracks: int,
+    set_b_tracks: int,
+    feature_dimension: int,
+    unique_candidates: int,
+    max_sample_pairs: int,
+) -> float:
+    """Estimate peak local Spark data for formal validation-group construction."""
+    values = (
+        set_a_tracks,
+        set_b_tracks,
+        feature_dimension,
+        unique_candidates,
+        max_sample_pairs,
+    )
+    if any(value <= 0 for value in values):
+        raise ValueError("validation scratch estimate inputs must be positive")
+    vector_checkpoint = (set_a_tracks + set_b_tracks) * feature_dimension * 8 * 1.5
+    sample_sort = max_sample_pairs * 48 * 2
+    validation_expansion = unique_candidates * len(VALIDATION_QUERY_GROUPS) * 64 * 2
+    threshold_pairs = set_b_tracks * set_b_tracks * 0.15 * 48 * 2
+    projected_bytes = (
+        vector_checkpoint + sample_sort + validation_expansion + threshold_pairs
+    )
+    gib = projected_bytes / (1024**3)
+    return max(4.0, math.ceil(gib * 4) / 4)
+
+
 def write_audio_threshold_pairs_numpy(
     query_rows: Sequence[Mapping[str, object]],
     candidate_rows: Sequence[Mapping[str, object]],
