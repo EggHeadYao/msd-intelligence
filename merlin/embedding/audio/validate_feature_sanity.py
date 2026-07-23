@@ -46,25 +46,6 @@ METADATA_COLUMNS = (
 )
 
 
-def validate_reproduction(
-    compared: DataFrame,
-    selected_count: int,
-    tolerance: float,
-) -> tuple[DataFrame, float]:
-    stats = compared.agg(
-        F.count("*").alias("rows"),
-        F.max("maximum_difference").alias("maximum_difference"),
-    ).first()
-    require(int(stats["rows"]) == selected_count, "selected vectors are incomplete")
-    maximum_difference = float(stats["maximum_difference"])
-    require(
-        math.isfinite(maximum_difference) and maximum_difference <= tolerance,
-        "frozen preprocessing/PCA does not reproduce saved embeddings",
-    )
-    vectors = compared.select(TRACK_ID_COLUMN, "pre_pca_vector", "final_embedding")
-    return vectors, maximum_difference
-
-
 def collect_scores(pairs: DataFrame, vectors: DataFrame, total_pairs: int) -> tuple[list[Any], int]:
     rows = score_pairs(pairs, vectors).collect()
     scored_count = len(rows)
