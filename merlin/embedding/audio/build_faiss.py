@@ -32,7 +32,9 @@ FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build the MERLIN C1 audio FAISS index.")
+    parser = argparse.ArgumentParser(
+        description="Build the MERLIN C1 audio FAISS index."
+    )
     parser.add_argument(
         "--input",
         type=Path,
@@ -40,11 +42,58 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_AUDIO_DIR)
     parser.add_argument("--index-name", default="index_audio.faiss")
-    parser.add_argument("--track-ids-name", default="index_audio_track_ids.parquet")
+    parser.add_argument(
+        "--track-ids-name",
+        default="index_audio_track_ids.parquet",
+    )
+    parser.add_argument("--manifest-name", default=FAISS_MANIFEST_NAME)
     parser.add_argument("--batch-size", type=int, default=10_000)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     return parser.parse_args()
+
+
+def validate_args(args: argparse.Namespace) -> argparse.Namespace:
+    if args.batch_size <= 0:
+        raise ValueError("batch size must be positive")
+    if args.limit < 0:
+        raise ValueError("limit cannot be negative")
+    if args.shuffle_partitions <= 0:
+        raise ValueError("shuffle partitions must be positive")
+    if not args.index_name:
+        raise ValueError("index name cannot be empty")
+    if not args.track_ids_name:
+        raise ValueError("track-ids name cannot be empty")
+    if not args.manifest_name:
+        raise ValueError("manifest name cannot be empty")
+    for option, value in (
+        ("index", args.index_name),
+        ("track-ids", args.track_ids_name),
+        ("manifest", args.manifest_name),
+    ):
+        if Path(value).name != value:
+            raise ValueError(f"{option} name must be a file name, not a path")
+    default_names = (
+        "index_audio.faiss",
+        "index_audio_track_ids.parquet",
+        FAISS_MANIFEST_NAME,
+    )
+    requested_names = (
+        args.index_name,
+        args.track_ids_name,
+        args.manifest_name,
+    )
+    uses_nonproduction_names = requested_names != default_names
+    if (
+        args.output.resolve() == DEFAULT_AUDIO_DIR.resolve()
+        and (args.limit > 0 or uses_nonproduction_names)
+        and any(name in default_names for name in requested_names)
+    ):
+        raise ValueError(
+            "test or custom FAISS builds in the production directory require "
+            "non-default names for index, mapping, and manifest"
+        )
+    return args
 
 
 def create_spark(shuffle_partitions: int) -> SparkSession:
