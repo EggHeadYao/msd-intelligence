@@ -168,6 +168,7 @@ The numbers above are illustrative.
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/validate.py \
+  --mode artifact \
   --output parquets_new/merlin/audio-var90 \
   --expected-rows 1000000 \
   --shuffle-partitions 64
@@ -265,7 +266,8 @@ pairs:
 
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
-  merlin/embedding/audio/validate_feature_sanity.py \
+  merlin/embedding/audio/validate.py \
+  --mode l1 \
   --raw-input parquets_new/prepared/song_audio_features_raw.parquet \
   --songs-metadata parquets_new/prepared/songs_metadata.parquet \
   --output parquets_new/merlin/audio-var90 \
@@ -274,6 +276,10 @@ spark-submit --master 'local[6]' --driver-memory 5g \
   --seed 42 \
   --shuffle-partitions 64
 ```
+
+Use `--mode all` to run artifact integrity checks first and L1-1 in the same
+Spark session. The default `--mode artifact` preserves the fast standalone
+encoder-validation workflow.
 
 The validator must use the saved preprocessing parameters, scaler, PCA model,
 and `selected_k`. It must not fit another model.
