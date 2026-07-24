@@ -38,15 +38,32 @@ def parse_args() -> argparse.Namespace:
     defaults = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-pool", type=Path, default=defaults.candidate_pool)
-    parser.add_argument("--candidate-pool-manifest", type=Path, default=defaults.candidate_pool_manifest)
+    parser.add_argument(
+        "--candidate-pool-manifest",
+        type=Path,
+        default=defaults.candidate_pool_manifest,
+    )
     parser.add_argument("--weak-positives", type=Path, default=defaults.weak_positives)
-    parser.add_argument("--weak-positives-manifest", type=Path, default=defaults.weak_positives_manifest)
+    parser.add_argument(
+        "--weak-positives-manifest",
+        type=Path,
+        default=defaults.weak_positives_manifest,
+    )
     parser.add_argument("--thresholds", type=Path, default=defaults.weak_label_thresholds)
     parser.add_argument("--split-assignments", type=Path, default=defaults.split_assignments)
+    parser.add_argument("--split-manifest", type=Path, default=defaults.split_manifest)
     parser.add_argument("--output", type=Path, default=defaults.training_pairs)
     parser.add_argument("--manifest", type=Path, default=defaults.training_pairs_manifest)
+    parser.add_argument("--features-output", type=Path)
+    parser.add_argument("--features-manifest", type=Path)
     parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--rows-per-file", type=int, default=250_000)
+    parser.add_argument("--positive-neighbor-limit", type=int, default=1_001)
+    parser.add_argument("--limit-queries", type=int, default=0)
+    parser.add_argument("--graph-contract-key", default=GRAPH_CONTRACT_KEY)
+    parser.add_argument("--graph-contract-version", default=GRAPH_CONTRACT_VERSION)
     parser.add_argument("--min-free-gb", type=float)
     return parser.parse_args()
 
