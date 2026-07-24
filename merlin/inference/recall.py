@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Iterator, Mapping, Sequence
 
 from .candidate_policy import validate_canonical_policy
 from .interfaces import CandidateRetriever
@@ -129,6 +129,8 @@ class RecallPipeline:
     def recall_many(
         self,
         query_track_ids: Sequence[str],
+        *,
+        source_overrides: Mapping[str, Mapping[str, Sequence[Candidate]]] | None = None,
     ) -> Mapping[str, tuple[list[Candidate], RecallAudit]]:
         """Generate a bounded batch while allowing vector retrievers to batch-search."""
         queries = tuple(query_track_ids)
@@ -138,21 +140,27 @@ class RecallPipeline:
             raise ValueError("batch query track IDs must be unique")
         groups = {query_id: {} for query_id in queries}
         availability = {query_id: {} for query_id in queries}
+        overrides = source_overrides or {}
+        unknown_sources = set(overrides) - set(self.retriever_limits)
+        if unknown_sources:
+            raise ValueError(f"recall overrides contain unknown sources: {sorted(unknown_sources)}")
         for retriever in self.retrievers:
             available = getattr(retriever, "is_available", lambda _query: True)
             states = {query_id: bool(available(query_id)) for query_id in queries}
             retrieve_many = getattr(retriever, "retrieve_many", None)
-            retrieved = (
-                retrieve_many(queries, self.retriever_limits[retriever.name])
-                if retrieve_many is not None
-                else {
-                    query_id: retriever.retrieve(
-                        query_id, self.retriever_limits[retriever.name]
-                    )
-                    for query_id in queries
-                    if states[query_id]
-                }
-            )
+            retrieved = overrides.get(retriever.name)
+            if retrieved is None:
+                retrieved = (
+                    retrieve_many(queries, self.retriever_limits[retriever.name])
+                    if retrieve_many is not None
+                    else {
+                        query_id: retriever.retrieve(
+                            query_id, self.retriever_limits[retriever.name]
+                        )
+                        for query_id in queries
+                        if states[query_id]
+                    }
+                )
             for query_id in queries:
                 availability[query_id][retriever.name] = states[query_id]
                 groups[query_id][retriever.name] = list(retrieved.get(query_id, ()))
@@ -166,6 +174,37 @@ class RecallPipeline:
             )
             for query_id in queries
         }
+
+
+def iter_recalled_candidates(
+    pipeline: RecallPipeline,
+    query_track_ids: Iterable[str],
+    *,
+    batch_size: int = 256,
+) -> Iterator[tuple[str, list[Candidate], RecallAudit]]:
+    """Yield canonical candidates without materializing or persisting the pool."""
+    if batch_size <= 0:
+        raise ValueError("recall batch size must be positive")
+    iterator = iter(query_track_ids)
+    previous_query: str | None = None
+    while True:
+        batch: list[str] = []
+        for _ in range(batch_size):
+            query_id = next(iterator, None)
+            if query_id is None:
+                break
+            if not query_id:
+                raise ValueError("query track IDs must not be empty")
+            if previous_query is not None and query_id <= previous_query:
+                raise ValueError("streaming recall queries must be strictly sorted")
+            previous_query = query_id
+            batch.append(query_id)
+        if not batch:
+            return
+        recalled = pipeline.recall_many(batch)
+        for query_id in batch:
+            candidates, audit = recalled[query_id]
+            yield query_id, candidates, audit
 
 
 def candidate_digest(candidates: Sequence[Candidate]) -> str:

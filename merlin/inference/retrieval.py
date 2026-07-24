@@ -75,7 +75,7 @@ class VectorRetriever(CandidateRetriever):
         if not self.is_available(query_track_id):
             return []
         neighbors = self.search(query_track_id, self.overfetch_factor * limit + 1)
-        return self._filter_neighbors(query_track_id, neighbors, limit)
+        return self.filter_neighbors(query_track_id, neighbors, limit)
 
     def retrieve_many(
         self,
@@ -90,15 +90,16 @@ class VectorRetriever(CandidateRetriever):
             raise ValueError("vector batch search returned the wrong number of rows")
         results = {query_id: () for query_id in query_track_ids}
         for query_id, neighbors in zip(available, searched, strict=True):
-            results[query_id] = self._filter_neighbors(query_id, neighbors, limit)
+            results[query_id] = self.filter_neighbors(query_id, neighbors, limit)
         return results
 
-    def _filter_neighbors(
+    def filter_neighbors(
         self,
         query_track_id: str,
         neighbors: Sequence[tuple[str, float]],
         limit: int,
     ) -> list[Candidate]:
+        """Apply the frozen vector filtering policy to precomputed neighbors."""
         result: list[Candidate] = []
         seen: set[str] = set()
         for track_id, score in neighbors:
