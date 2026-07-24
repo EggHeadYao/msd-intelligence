@@ -481,5 +481,56 @@ def _final_runtime(args: argparse.Namespace, paths: InferenceArtifactPaths):
     return thresholds, audio, audio_retriever, tag, computer, pipeline
 
 
+def _run_final(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
+    (
+        allowed,
+        queries,
+        scope,
+        output,
+        manifest_path,
+        feature_output,
+        feature_manifest,
+    ) = _final_run_config(args, paths)
+    thresholds, audio, audio_retriever, tag, computer, pipeline = _final_runtime(
+        args, paths
+    )
+    pair_manifest, _feature_manifest = write_training_and_feature_artifacts(
+        _final_query_rows(
+            queries,
+            allowed,
+            thresholds,
+            pipeline,
+            audio,
+            audio_retriever,
+            tag,
+            computer,
+            args.batch_size,
+            args.positive_neighbor_limit,
+        ),
+        output,
+        manifest_path,
+        feature_output,
+        feature_manifest,
+        parent_paths={
+            "split_manifest": args.split_manifest,
+            "split_assignments": args.split_assignments,
+            "weak_label_thresholds": args.thresholds,
+            "audio_index_manifest": paths.audio_manifest,
+            "graph_index_manifest": paths.graph_manifest,
+            "candidate_policy_manifest": paths.candidate_policy,
+            "tag_idf": paths.tag_idf,
+            "songs_metadata": paths.songs_metadata,
+            "graph_edges": paths.graph_edges,
+        },
+        scope=scope,
+        rows_per_file=args.rows_per_file,
+    )
+    print(
+        f"training_pairs_ready scope={scope} stage=final_retrain "
+        f"pairs={pair_manifest['pair_count']} output={output} "
+        f"features={feature_output}"
+    )
+
+
 if __name__ == "__main__":
     main()
