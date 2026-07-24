@@ -332,5 +332,59 @@ def _final_feature_rows(
     ]
 
 
+def _final_query_rows(
+    queries: Sequence[str],
+    allowed: set[str],
+    thresholds: Mapping[str, object],
+    pipeline: RecallPipeline,
+    audio,
+    audio_retriever: VectorRetriever,
+    tag: TagRetriever,
+    computer: RankerV2FeatureComputer,
+    batch_size: int,
+    positive_neighbor_limit: int,
+) -> Iterator[tuple[list[dict[str, object]], list[dict[str, object]], Mapping[str, object]]]:
+    universe = tuple(sorted(allowed))
+    for start in range(0, len(queries), batch_size):
+        batch = queries[start : start + batch_size]
+        audio_neighbors = audio.search_many(batch, positive_neighbor_limit)
+        audio_override = {
+            query_id: audio_retriever.filter_neighbors(
+                query_id, neighbors, pipeline.retriever_limits["audio"]
+            )
+            for query_id, neighbors in zip(batch, audio_neighbors, strict=True)
+        }
+        recalled = pipeline.recall_many(batch, source_overrides={"audio": audio_override})
+        for query_id, neighbors in zip(batch, audio_neighbors, strict=True):
+            candidates, _audit = recalled[query_id]
+            artist, positives = _select_final_positives(
+                query_id, allowed, neighbors, audio_retriever, tag, thresholds
+            )
+            audio_cache = {
+                track_id: _finite(score)
+                for track_id, score in neighbors
+                if track_id in allowed
+            }
+            checks = _final_positive_checks(
+                query_id, artist, audio_cache, audio, tag, computer, thresholds
+            )
+            rows, audit = construct_query_pairs(
+                query_id,
+                positives,
+                candidates,
+                allowed,
+                universe,
+                audio_retriever.same_song,
+                *checks,
+            )
+            if rows:
+                features = _final_feature_rows(
+                    query_id, rows, candidates, audio_cache, computer
+                )
+                yield rows, features, audit
+        processed = min(start + len(batch), len(queries))
+        print(f"final_retrain_progress queries={processed}/{len(queries)}", flush=True)
+
+
 if __name__ == "__main__":
     main()
