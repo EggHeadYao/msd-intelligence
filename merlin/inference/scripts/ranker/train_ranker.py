@@ -7,7 +7,7 @@ import json
 import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, Mapping
 
 from ...feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
 from ...ranking.artifacts import write_ranker_artifacts
@@ -89,6 +89,68 @@ def load_frozen_preprocessing(
     if tuple(tuning.get("constant_features", ())) != constant_features:
         raise ValueError("frozen constant-feature contract mismatch")
     return fill_values, means, stds, constant_features
+
+
+def _collect_validation_scores(frame: Any, models: Mapping, functions, window):
+    collected_by_reg = {}
+    for reg_param in REG_PARAMS:
+        fitted = models[reg_param]
+        coefficients = functions.array(
+            *(functions.lit(float(value)) for value in fitted.coefficients)
+        )
+        margin = functions.aggregate(
+            functions.zip_with(
+                functions.col("feature_array"),
+                coefficients,
+                lambda feature, coefficient: feature * coefficient,
+            ),
+            functions.lit(float(fitted.intercept)),
+            lambda total, value: total + value,
+        )
+        ranking = window.partitionBy("query_track_id").orderBy(
+            functions.desc("margin"), functions.asc("candidate_track_id")
+        )
+        per_query = (
+            frame.withColumn("margin", margin)
+            .withColumn("rank", functions.row_number().over(ranking))
+            .withColumn("validation_group", functions.explode("validation_groups"))
+            .withColumn(
+                "gain",
+                functions.when(
+                    (functions.col("rank") <= 20)
+                    & (functions.col("validation_group.label") == 1),
+                    1.0 / functions.log2(functions.col("rank") + 1.0),
+                ).otherwise(0.0),
+            )
+            .groupBy(
+                "query_track_id",
+                functions.col("validation_group.query_group").alias("query_group"),
+            )
+            .agg(
+                functions.sum("gain").alias("dcg"),
+                functions.max("validation_group.eligible_positive_count").alias(
+                    "positive_count"
+                ),
+            )
+            .withColumn(
+                "idcg20",
+                functions.aggregate(
+                    functions.sequence(
+                        functions.lit(1),
+                        functions.least(
+                            functions.col("positive_count").cast("int"),
+                            functions.lit(20),
+                        ),
+                    ),
+                    functions.lit(0.0),
+                    lambda total, rank: total
+                    + 1.0 / functions.log2(rank.cast("double") + 1.0),
+                ),
+            )
+            .withColumn("ndcg20", functions.col("dcg") / functions.col("idcg20"))
+        )
+        collected_by_reg[reg_param] = per_query.collect()
+    return collected_by_reg
 
 
 def main() -> None:
