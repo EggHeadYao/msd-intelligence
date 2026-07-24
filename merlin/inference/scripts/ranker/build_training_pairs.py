@@ -303,5 +303,34 @@ def _final_positive_checks(
     return is_positive, is_positive_batch
 
 
+def _final_feature_rows(
+    query_id: str,
+    rows: Sequence[Mapping[str, object]],
+    candidates: Sequence[Candidate],
+    audio_cache: Mapping[str, float | None],
+    computer: RankerV2FeatureComputer,
+) -> list[dict[str, object]]:
+    recalled_by_id = {candidate.track_id: candidate for candidate in candidates}
+    feature_candidates = []
+    for row in rows:
+        candidate_id = str(row["candidate_track_id"])
+        recalled_candidate = recalled_by_id.get(candidate_id)
+        scores = dict(recalled_candidate.recall_scores) if recalled_candidate else {}
+        audio_score = audio_cache.get(candidate_id)
+        if audio_score is not None:
+            scores["audio"] = audio_score
+        feature_candidates.append(Candidate(candidate_id, recall_scores=scores))
+    raw_rows = computer.compute_raw_many(query_id, feature_candidates)
+    return [
+        {
+            "query_track_id": query_id,
+            "candidate_track_id": candidate.track_id,
+            "label": int(row["label"]),
+            **raw,
+        }
+        for row, candidate, raw in zip(rows, feature_candidates, raw_rows, strict=True)
+    ]
+
+
 if __name__ == "__main__":
     main()
