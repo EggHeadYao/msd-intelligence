@@ -153,15 +153,19 @@ class RankerV2FeatureComputer:
     ) -> list[Mapping[str, float | None]]:
         """Compute one query's features with optional batched vector lookups."""
         candidate_ids = [candidate.track_id for candidate in candidates]
-        audio_values = (
-            self.signals.audio_batch(query_track_id, candidate_ids)
-            if self.signals.audio_batch is not None
-            else [self.signals.audio(query_track_id, candidate_id) for candidate_id in candidate_ids]
+        audio_values = self._vector_values(
+            query_track_id,
+            candidates,
+            "audio",
+            self.signals.audio,
+            self.signals.audio_batch,
         )
-        graph_values = (
-            self.signals.graph_batch(query_track_id, candidate_ids)
-            if self.signals.graph_batch is not None
-            else [self.signals.graph(query_track_id, candidate_id) for candidate_id in candidate_ids]
+        graph_values = self._vector_values(
+            query_track_id,
+            candidates,
+            "graph",
+            self.signals.graph,
+            self.signals.graph_batch,
         )
         if len(audio_values) != len(candidates) or len(graph_values) != len(candidates):
             raise ValueError("batch pair lookup returned the wrong number of scores")
@@ -181,6 +185,37 @@ class RankerV2FeatureComputer:
                 strict=True,
             )
         ]
+
+    @staticmethod
+    def _vector_values(
+        query_track_id: str,
+        candidates: Sequence[Candidate],
+        source: str,
+        lookup: PairLookup,
+        batch_lookup: BatchPairLookup | None,
+    ) -> list[float | None]:
+        """Reuse exact recall scores and batch-compute only missing pair signals."""
+        values: list[float | None] = [None] * len(candidates)
+        missing_indexes: list[int] = []
+        missing_ids: list[str] = []
+        for index, candidate in enumerate(candidates):
+            hinted = candidate.recall_scores.get(source)
+            if hinted is None:
+                missing_indexes.append(index)
+                missing_ids.append(candidate.track_id)
+            else:
+                values[index] = _finite(hinted)
+        if missing_ids:
+            computed = (
+                batch_lookup(query_track_id, missing_ids)
+                if batch_lookup is not None
+                else [lookup(query_track_id, candidate_id) for candidate_id in missing_ids]
+            )
+            if len(computed) != len(missing_ids):
+                raise ValueError("batch pair lookup returned the wrong number of scores")
+            for index, value in zip(missing_indexes, computed, strict=True):
+                values[index] = _finite(value)
+        return values
 
     def _raw_values(
         self,
