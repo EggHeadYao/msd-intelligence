@@ -569,6 +569,42 @@ def write_training_pair_artifacts(
     return manifest
 
 
+def write_training_and_feature_artifacts(
+    query_rows: Iterable[
+        tuple[list[dict[str, object]], list[dict[str, object]], Mapping[str, object]]
+    ],
+    output_path: str | Path,
+    manifest_path: str | Path,
+    feature_output_path: str | Path,
+    feature_manifest_path: str | Path,
+    *,
+    parent_paths: Mapping[str, str | Path],
+    scope: str,
+    rows_per_file: int = 250_000,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Write streamed final-retrain pairs and features in one partitioned pass."""
+    if scope not in {"formal", "smoke"}:
+        raise ValueError("training scope must be formal or smoke")
+    output = Path(output_path)
+    feature_output = Path(feature_output_path)
+    stats = _write_streamed_rows(query_rows, output, feature_output, rows_per_file)
+    query_count = int(stats["query_count"])
+    pair_count = int(stats["pair_count"])
+    feature_count = int(stats["feature_count"])
+    if query_count == 0 or pair_count == 0 or pair_count != feature_count:
+        raise ValueError("streamed training pair and feature artifacts are inconsistent")
+    parent_hashes = {
+        name: sha256_path(path) for name, path in sorted(parent_paths.items())
+    }
+    manifest = _streamed_pair_manifest(output, stats, parent_hashes, scope)
+    write_json_atomic(manifest, manifest_path)
+    feature_manifest = _streamed_feature_manifest(
+        feature_output, stats, parent_hashes, output, manifest_path, scope
+    )
+    write_json_atomic(feature_manifest, feature_manifest_path)
+    return manifest, feature_manifest
+
+
 def load_training_pair_manifest(
     manifest_path: str | Path,
     pairs_path: str | Path,
