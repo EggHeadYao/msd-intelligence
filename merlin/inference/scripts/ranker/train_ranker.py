@@ -216,20 +216,40 @@ def main() -> None:
             handleInvalid="error",
         )
         assembled_train = assembler.transform(materialize(train))
-        scaler = StandardScaler(
-            inputCol="unscaled_features",
-            outputCol="features",
-            withMean=True,
-            withStd=True,
-        ).fit(assembled_train)
-        scaled_train = scaler.transform(assembled_train).select(
+        if args.stage == "tuning":
+            scaler = StandardScaler(
+                inputCol="unscaled_features",
+                outputCol="features",
+                withMean=True,
+                withStd=True,
+            ).fit(assembled_train)
+            transformed_train = scaler.transform(assembled_train)
+            means = tuple(float(value) for value in scaler.mean)
+            spark_stds = tuple(float(value) for value in scaler.std)
+            if any(not math.isfinite(value) or value < 0.0 for value in spark_stds):
+                raise ValueError("Ranker scaler produced an invalid standard deviation")
+            constant_features = tuple(
+                name
+                for name, value in zip(RANKER_V2_FEATURES, spark_stds, strict=True)
+                if value == 0.0
+            )
+            stds = tuple(1.0 if value == 0.0 else value for value in spark_stds)
+        else:
+            unscaled = vector_to_array("unscaled_features")
+            scaled = F.array(*(
+                (unscaled[index] - F.lit(means[index])) / F.lit(stds[index])
+                for index in range(len(RANKER_V2_FEATURES))
+            ))
+            transformed_train = assembled_train.withColumn(
+                "features",
+                array_to_vector(scaled),
+            )
+        release(train)
+        scaled_train = transformed_train.select(
             F.col("label").cast("double").alias("label"), "features"
         ).persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(scaled_train)
         scaled_train.count()
-        release(train)
-        means = tuple(float(value) for value in scaler.mean)
-        stds = tuple(float(value) for value in scaler.std)
 
         def fit(reg_param: float) -> Any:
             model = LogisticRegression(
