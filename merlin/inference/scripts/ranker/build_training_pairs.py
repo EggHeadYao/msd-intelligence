@@ -423,5 +423,63 @@ def _final_run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
     )
 
 
+def _final_runtime(args: argparse.Namespace, paths: InferenceArtifactPaths):
+    thresholds = _load_thresholds(args.thresholds)
+    audio = load_audio_index()
+    graph = FaissTrackIndex.from_files(
+        paths.graph_index,
+        paths.graph_mapping,
+        paths.graph_manifest,
+        paths.graph_encoder_metadata,
+        expected_space="graph",
+        expected_contract_key=args.graph_contract_key,
+        expected_contract=args.graph_contract_version,
+    )
+    catalog = load_catalog_context(
+        paths.songs_metadata,
+        paths.graph_edges,
+        include_ranker_metadata=True,
+    )
+    tag = TagRetriever.from_data(
+        catalog.tag_data,
+        idf_values=load_tag_idf(
+            paths.tag_idf,
+            expected_graph_edges_path=paths.graph_edges,
+        ),
+        same_song=catalog.same_song,
+    )
+    retrievers = build_canonical_retrievers(
+        audio, graph, paths, catalog.same_song, tag
+    )
+    policy = load_candidate_policy(paths.candidate_policy)
+    pipeline = RecallPipeline(
+        retrievers=retrievers,
+        retriever_limits={
+            str(name): int(limit)
+            for name, limit in policy["retriever_limits"].items()
+        },
+        candidate_limit=int(policy["candidate_limit"]),
+        canonical=True,
+    )
+    audio_retriever = next(
+        retriever
+        for retriever in retrievers
+        if isinstance(retriever, VectorRetriever) and retriever.name == "audio"
+    )
+    _audio, _graph, bfs, tag = retrievers
+    computer = RankerV2FeatureComputer(
+        tracks=catalog.ranker_tracks,
+        signals=PairSignalLookups(
+            audio=audio.similarity,
+            graph=graph.similarity,
+            bfs=bfs.pair_score,
+            tags=tag.pair_score,
+            audio_batch=audio.similarities,
+            graph_batch=graph.similarities,
+        ),
+    )
+    return thresholds, audio, audio_retriever, tag, computer, pipeline
+
+
 if __name__ == "__main__":
     main()
