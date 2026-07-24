@@ -178,21 +178,24 @@ def main() -> None:
             StorageLevel.MEMORY_AND_DISK
         )
         cached.append(train)
-        statistics = train.agg(
-            F.count("*").alias("row_count"),
-            *(
-                F.percentile_approx(name, 0.5, 1_000_000).alias(f"median_{name}")
-                for name in FILL_FEATURES
-            ),
-        ).first()
-        if int(statistics["row_count"]) == 0:
-            raise ValueError("Ranker training features are empty")
-        fill_values = {}
-        for name in FILL_FEATURES:
-            value = statistics[f"median_{name}"]
-            if value is None or not math.isfinite(float(value)):
-                raise ValueError(f"Set-A fill statistic is invalid: {name}")
-            fill_values[name] = float(value)
+        if args.stage == "tuning":
+            statistics = train.agg(
+                F.count("*").alias("row_count"),
+                *(
+                    F.percentile_approx(name, 0.5, 1_000_000).alias(f"median_{name}")
+                    for name in FILL_FEATURES
+                ),
+            ).first()
+            if int(statistics["row_count"]) == 0:
+                raise ValueError("Ranker training features are empty")
+            fill_values = {}
+            for name in FILL_FEATURES:
+                value = statistics[f"median_{name}"]
+                if value is None or not math.isfinite(float(value)):
+                    raise ValueError(f"Set-A fill statistic is invalid: {name}")
+                fill_values[name] = float(value)
+        else:
+            fill_values, means, stds, constant_features = frozen_preprocessing
 
         def materialize(frame: Any) -> Any:
             result = frame
