@@ -103,7 +103,7 @@ def _random_negatives(
 def construct_query_pairs(
     query_id: str,
     positives: Mapping[str, frozenset[str]],
-    candidates: Sequence[Mapping[str, object]],
+    candidates: Sequence[CandidateInput],
     allowed_tracks: set[str],
     random_universe: Sequence[str],
     same_song: SameSong,
@@ -134,12 +134,21 @@ def construct_query_pairs(
     negative_target = NEGATIVE_RATIO * len(positive_ids)
     candidate_target = int(negative_target * CANDIDATE_AWARE_FRACTION)
     rejection_counts: Counter[str] = Counter()
-    eligible_candidates: list[tuple[str, frozenset[str]]] = []
-    predicate_candidates: list[tuple[str, frozenset[str]]] = []
+    eligible_candidates: list[tuple[str, frozenset[str], Mapping[str, float]]] = []
+    predicate_candidates: list[tuple[str, frozenset[str], Mapping[str, float]]] = []
     seen_candidates: set[str] = set()
     for candidate in candidates:
-        track_id = str(candidate["track_id"])
-        recall_sources = frozenset(str(value) for value in candidate["recall_sources"])
+        if isinstance(candidate, Candidate):
+            track_id = candidate.track_id
+            recall_sources = candidate.sources
+            recall_scores = candidate.recall_scores
+        else:
+            track_id = str(candidate["track_id"])
+            recall_sources = frozenset(str(value) for value in candidate["recall_sources"])
+            recall_scores = {
+                str(name): float(value)
+                for name, value in dict(candidate.get("recall_scores", {})).items()
+            }
         if track_id == query_id:
             rejection_counts["query_self"] += 1
         elif track_id not in allowed_tracks:
@@ -152,14 +161,17 @@ def construct_query_pairs(
             rejection_counts["known_positive"] += 1
         else:
             seen_candidates.add(track_id)
-            predicate_candidates.append((track_id, recall_sources))
+            predicate_candidates.append((track_id, recall_sources, recall_scores))
     predicate_results = (
         is_positive_batch(
             query_id,
-            [track_id for track_id, _sources in predicate_candidates],
+            [track_id for track_id, _sources, _scores in predicate_candidates],
         )
         if is_positive_batch is not None
-        else [is_positive(query_id, track_id) for track_id, _sources in predicate_candidates]
+        else [
+            is_positive(query_id, track_id)
+            for track_id, _sources, _scores in predicate_candidates
+        ]
     )
     if len(predicate_results) != len(predicate_candidates):
         raise ValueError("batch positive predicate returned the wrong number of results")
@@ -172,7 +184,9 @@ def construct_query_pairs(
         key=lambda item: _pair_hash(query_id, item[0], "candidate_aware")
     )
     candidate_selected = eligible_candidates[:candidate_target]
-    rejected = positive_ids | {track_id for track_id, _sources in candidate_selected}
+    rejected = positive_ids | {
+        track_id for track_id, _sources, _scores in candidate_selected
+    }
     random_target = negative_target - len(candidate_selected)
     random_selected = _random_negatives(
         query_id,
@@ -205,8 +219,9 @@ def construct_query_pairs(
             "positive_sources": [],
             "negative_source": "candidate_aware",
             "recall_sources": sorted(sources),
+            "recall_scores": dict(scores),
         }
-        for track_id, sources in candidate_selected
+        for track_id, sources, scores in candidate_selected
     )
     rows.extend(
         {
