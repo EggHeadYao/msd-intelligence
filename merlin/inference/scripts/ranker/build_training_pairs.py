@@ -259,5 +259,49 @@ def _select_final_positives(
     return artist, positives
 
 
+def _final_positive_checks(
+    query_id: str,
+    artist: str | None,
+    audio_cache: dict[str, float | None],
+    audio,
+    tag: TagRetriever,
+    computer: RankerV2FeatureComputer,
+    thresholds: Mapping[str, object],
+):
+    audio_threshold = float(thresholds["audio_cosine_p90"])
+    tag_threshold = float(thresholds["tag_tfidf_cosine_p90"])
+
+    def audio_value(candidate_id: str) -> float | None:
+        if candidate_id not in audio_cache:
+            audio_cache[candidate_id] = _finite(
+                computer.signals.audio(query_id, candidate_id)
+            )
+        return audio_cache[candidate_id]
+
+    def is_positive(_query: str, candidate_id: str) -> bool:
+        candidate_artist = tag.track_to_artist.get(candidate_id)
+        if artist is not None and artist == candidate_artist:
+            return True
+        if artist is None or candidate_artist is None:
+            return False
+        audio_score = audio_value(candidate_id)
+        if audio_score is not None and audio_score >= audio_threshold:
+            return True
+        tag_score = _finite(tag.pair_score(query_id, candidate_id))
+        return tag_score is not None and tag_score >= tag_threshold
+
+    def is_positive_batch(_query: str, candidate_ids: Sequence[str]) -> list[bool]:
+        missing = [track_id for track_id in candidate_ids if track_id not in audio_cache]
+        if missing:
+            scores = audio.similarities(query_id, missing)
+            audio_cache.update(
+                (track_id, _finite(score))
+                for track_id, score in zip(missing, scores, strict=True)
+            )
+        return [is_positive(query_id, track_id) for track_id in candidate_ids]
+
+    return is_positive, is_positive_batch
+
+
 if __name__ == "__main__":
     main()
