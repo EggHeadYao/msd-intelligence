@@ -402,12 +402,25 @@ def main() -> None:
                 "selection_source": "frozen_from_set_b",
             }
 
+        coefficients = tuple(float(value) for value in model.coefficients)
+        constant_indexes = {
+            index
+            for index, name in enumerate(RANKER_V2_FEATURES)
+            if name in constant_features
+        }
+        if any(abs(coefficients[index]) > 1e-12 for index in constant_indexes):
+            raise ValueError("LR assigned weight to a zero-variance feature")
+        selection = {
+            **selection,
+            "constant_features": list(constant_features),
+        }
+
         write_ranker_artifacts(
             args.output,
             fill_values=fill_values,
             means=means,
             stds=stds,
-            coefficients=tuple(float(value) for value in model.coefficients),
+            coefficients=coefficients,
             intercept=float(model.intercept),
             reg_param=selected_reg,
             stage=args.stage,
@@ -416,6 +429,7 @@ def main() -> None:
             selection=selection,
             parent_paths=parse_parents(args.parent),
             scope=args.scope,
+            constant_features=constant_features,
         )
         print(
             "ranker_training_ready "
