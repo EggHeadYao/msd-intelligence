@@ -326,6 +326,69 @@ def iter_training_query_pairs(
             yield query_id, rows, audit
 
 
+def _write_streamed_rows(
+    query_rows: Iterable[
+        tuple[list[dict[str, object]], list[dict[str, object]], Mapping[str, object]]
+    ],
+    output: Path,
+    feature_output: Path,
+    rows_per_file: int,
+) -> dict[str, object]:
+    totals: Counter[str] = Counter()
+    rejection_totals: Counter[str] = Counter()
+    weak_source_totals: Counter[str] = Counter()
+    recall_source_totals: Counter[str] = Counter()
+    query_count = 0
+    with PartitionedParquetWriter(
+        output,
+        training_pair_parquet_schema(),
+        rows_per_file=rows_per_file,
+    ) as pair_writer, PartitionedParquetWriter(
+        feature_output,
+        raw_feature_parquet_schema("training"),
+        rows_per_file=rows_per_file,
+    ) as feature_writer:
+        for pairs, features, audit in query_rows:
+            if len(pairs) != len(features):
+                raise ValueError("streamed pair and feature query counts differ")
+            query_count += 1
+            for key in (
+                "positive_count",
+                "negative_count",
+                "candidate_aware_count",
+                "random_count",
+                "candidate_shortage",
+            ):
+                totals[key] += int(audit[key])
+            rejection_totals.update(audit["rejections"])
+            for row in pairs:
+                weak_source_totals.update(row["positive_sources"])
+                recall_source_totals.update(row["recall_sources"])
+            pair_writer.write_rows(
+                {
+                    "query_track_id": row["query_track_id"],
+                    "candidate_track_id": row["candidate_track_id"],
+                    "label": row["label"],
+                    "positive_sources": row["positive_sources"],
+                    "negative_source": row["negative_source"],
+                    "recall_sources": row["recall_sources"],
+                }
+                for row in pairs
+            )
+            feature_writer.write_rows(features)
+    return {
+        "query_count": query_count,
+        "pair_count": pair_writer.count,
+        "feature_count": feature_writer.count,
+        "pair_part_count": pair_writer.part_count,
+        "feature_part_count": feature_writer.part_count,
+        "totals": totals,
+        "rejection_totals": rejection_totals,
+        "weak_source_totals": weak_source_totals,
+        "recall_source_totals": recall_source_totals,
+    }
+
+
 def iter_candidate_positives(
     candidate_pool_path: str | Path,
     positives: WeakPositiveSource,
