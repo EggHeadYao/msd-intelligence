@@ -69,6 +69,57 @@ def _finite(value: float | None) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _positive_predicates(audio, tag: TagRetriever, thresholds: Mapping[str, object]):
+    audio_threshold = float(thresholds["audio_cosine_p90"])
+    tag_threshold = float(thresholds["tag_tfidf_cosine_p90"])
+    positive_cache: dict[tuple[str, str], bool] = {}
+    cached_query_id: str | None = None
+
+    def is_positive(query_id: str, candidate_id: str) -> bool:
+        nonlocal cached_query_id
+        if query_id != cached_query_id:
+            positive_cache.clear()
+            cached_query_id = query_id
+        key = (query_id, candidate_id)
+        cached = positive_cache.get(key)
+        if cached is not None:
+            return cached
+        query_artist = tag.track_to_artist.get(query_id)
+        candidate_artist = tag.track_to_artist.get(candidate_id)
+        if query_artist is not None and query_artist == candidate_artist:
+            result = True
+        elif query_artist is None or candidate_artist is None:
+            result = False
+        else:
+            audio_score = audio.similarity(query_id, candidate_id)
+            if audio_score is not None and audio_score >= audio_threshold:
+                result = True
+            else:
+                tag_score = tag.pair_score(query_id, candidate_id)
+                result = tag_score is not None and tag_score >= tag_threshold
+        positive_cache[key] = result
+        return result
+
+    def is_positive_batch(query_id: str, candidate_ids: Sequence[str]) -> list[bool]:
+        query_artist = tag.track_to_artist.get(query_id)
+        audio_scores = audio.similarities(query_id, candidate_ids)
+        results = []
+        for candidate_id, audio_score in zip(candidate_ids, audio_scores, strict=True):
+            candidate_artist = tag.track_to_artist.get(candidate_id)
+            if query_artist is not None and query_artist == candidate_artist:
+                results.append(True)
+            elif query_artist is None or candidate_artist is None:
+                results.append(False)
+            elif audio_score is not None and audio_score >= audio_threshold:
+                results.append(True)
+            else:
+                tag_score = tag.pair_score(query_id, candidate_id)
+                results.append(tag_score is not None and tag_score >= tag_threshold)
+        return results
+
+    return is_positive, is_positive_batch
+
+
 def parse_args() -> argparse.Namespace:
     defaults = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
