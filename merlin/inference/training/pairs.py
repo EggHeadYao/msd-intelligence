@@ -11,7 +11,11 @@ from typing import Callable, Iterable, Iterator, Mapping, Sequence
 
 from ..artifact_lineage import artifact_size_bytes, sha256_path
 from ..candidate_pool import iter_candidate_pool
-from ..jsonl_artifact import write_json_atomic, write_row_artifact
+from ..feature_schema import RANKER_V2_SCHEMA_VERSION
+from ..jsonl_artifact import PartitionedParquetWriter, write_json_atomic, write_row_artifact
+from ..ranking.features import RAW_BASE_FEATURES, RAW_FEATURE_VERSION
+from ..ranking.features import raw_feature_parquet_schema
+from ..types import Candidate
 from .weak_labels import iter_weak_positives
 
 
@@ -24,6 +28,20 @@ IsPositiveBatch = Callable[[str, Sequence[str]], Sequence[bool]]
 SameSong = Callable[[str, str], bool]
 WeakPositiveMap = Mapping[str, Mapping[str, frozenset[str]]]
 WeakPositiveSource = str | Path | WeakPositiveMap
+CandidateInput = Mapping[str, object] | Candidate
+
+
+def training_pair_parquet_schema():
+    import pyarrow as pa
+
+    return pa.schema((
+        pa.field("query_track_id", pa.string(), nullable=False),
+        pa.field("candidate_track_id", pa.string(), nullable=False),
+        pa.field("label", pa.int64(), nullable=False),
+        pa.field("positive_sources", pa.list_(pa.string()), nullable=False),
+        pa.field("negative_source", pa.string()),
+        pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
+    ))
 
 
 def allowed_training_tracks(
@@ -323,16 +341,7 @@ def write_training_pair_artifacts(
     output = Path(output_path)
     parquet_schema = None
     if output.suffix == ".parquet":
-        import pyarrow as pa
-
-        parquet_schema = pa.schema((
-            pa.field("query_track_id", pa.string(), nullable=False),
-            pa.field("candidate_track_id", pa.string(), nullable=False),
-            pa.field("label", pa.int64(), nullable=False),
-            pa.field("positive_sources", pa.list_(pa.string()), nullable=False),
-            pa.field("negative_source", pa.string()),
-            pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
-        ))
+        parquet_schema = training_pair_parquet_schema()
     pair_count = write_row_artifact(pair_rows(), output, parquet_schema=parquet_schema)
     if query_count == 0 or pair_count == 0:
         raise ValueError("training-pair artifact has no eligible query pairs")
