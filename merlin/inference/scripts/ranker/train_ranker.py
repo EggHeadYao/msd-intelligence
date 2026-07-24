@@ -128,15 +128,21 @@ def main() -> None:
         )
     from pyspark.ml.classification import LogisticRegression
     from pyspark.ml.feature import StandardScaler, VectorAssembler
-    from pyspark.ml.functions import vector_to_array
+    from pyspark.ml.functions import array_to_vector, vector_to_array
     from pyspark import StorageLevel
     from pyspark.sql import SparkSession, Window
     from pyspark.sql import functions as F
 
-    feature_bytes = artifact_size_bytes(args.train_features)
-    if args.validation_features is not None:
-        feature_bytes += artifact_size_bytes(args.validation_features)
-    projected_gb = feature_bytes * 2 / (1024 ** 3)
+    projected_gb = estimate_ranker_scratch_gb(
+        training_rows=int(train_feature_manifest["row_count"]),
+        validation_rows=(
+            int(validation_feature_manifest["row_count"])
+            if validation_feature_manifest is not None
+            else 0
+        ),
+        feature_count=len(RANKER_V2_FEATURES),
+        model_count=1,
+    )
     prepare_scratch_root(
         args.output.parent,
         scope=args.scope,
