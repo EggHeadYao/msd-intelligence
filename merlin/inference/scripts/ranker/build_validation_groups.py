@@ -22,6 +22,7 @@ from merlin.inference.tag_data import load_tag_idf
 from merlin.inference.training.validation_groups import (
     VALIDATION_GROUP_SEED,
     VALIDATION_QUERY_GROUPS,
+    build_nested_validation_pairs,
     collect_normalized_vector_matrix,
     estimate_validation_scratch_gb,
     load_selected_artist_terms,
@@ -513,19 +514,13 @@ def main() -> None:
         ).join(c_meta, "c_artist_id", "inner").select(
             "query_track_id", "candidate_track_id", F.lit("high_artist_term").alias("relation_source")
         )
-        relation_candidates = (
+        relation_sources = (
             same_artist.unionByName(same_release).unionByName(directed).unionByName(high_tag)
             .where(F.col("query_track_id") != F.col("candidate_track_id"))
-            .groupBy("query_track_id", "candidate_track_id")
-            .agg(F.sort_array(F.collect_set("relation_source")).alias("positive_sources"))
-            .localCheckpoint(eager=True)
         )
-        cached.append(relation_candidates)
-        tag_pair_temporary.cleanup()
-        tag_pair_temporary = None
         relation_pairs = (
-            relation_candidates.join(q_tracks, "query_track_id", "inner")
-            .join(c_tracks, "candidate_track_id", "inner")
+            relation_sources.join(F.broadcast(q_tracks), "query_track_id", "inner")
+            .join(F.broadcast(c_tracks), "candidate_track_id", "inner")
             .where(not_same_song("q", "c"))
             .where((F.col("q_norm") > 0.0) & (F.col("c_norm") > 0.0))
             .withColumn(
@@ -533,6 +528,8 @@ def main() -> None:
                 cosine(F.col("q_vector"), F.col("c_vector"), F.col("q_norm"), F.col("c_norm")),
             )
             .where(F.col("pre_pca_cosine") < F.lit(acoustic_p50))
+            .groupBy("query_track_id", "candidate_track_id")
+            .agg(F.sort_array(F.collect_set("relation_source")).alias("positive_sources"))
             .select(
                 "query_track_id",
                 "candidate_track_id",
@@ -542,9 +539,9 @@ def main() -> None:
         )
         cached.append(relation_pairs)
         relation_pairs.count()
-        release(relation_candidates)
+        tag_pair_temporary.cleanup()
+        tag_pair_temporary = None
         release(set_b)
-        release(pool_queries)
 
         counts = audio_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "audio_count").join(
             relation_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "relation_count"),
@@ -588,10 +585,6 @@ def main() -> None:
         release(audio_pairs)
         release(relation_pairs)
         release(counts)
-        eligible = positives.groupBy("query_track_id", "query_group").agg(
-            F.count("*").cast("long").alias("eligible_positive_count")
-        ).persist(StorageLevel.MEMORY_AND_DISK)
-        cached.append(eligible)
         pool = read_rows(args.candidate_pool).select(
             F.col("query_track_id").cast("string"), "candidates"
         )
@@ -602,34 +595,29 @@ def main() -> None:
             F.col("candidate.track_id").cast("string").alias("candidate_track_id"),
             F.col("candidate.recall_sources").alias("recall_sources"),
         )
-        positive_keys = positives.select(
-            "query_track_id", "candidate_track_id", "query_group"
-        ).withColumn("label", F.lit(1))
-        validation_pairs = (
-            eligible.join(candidate_rows, "query_track_id", "inner")
-            .join(positive_keys, ["query_track_id", "candidate_track_id", "query_group"], "left")
-            .fillna({"label": 0})
-            .select(
-                "query_track_id",
-                "candidate_track_id",
-                F.col("label").cast("int"),
-                "query_group",
-                "eligible_positive_count",
-                "recall_sources",
-            )
-            .persist(StorageLevel.MEMORY_AND_DISK)
+        validation_pairs, eligible, recalled_positives = build_nested_validation_pairs(
+            candidate_rows, positives
         )
+        eligible = eligible.persist(StorageLevel.MEMORY_AND_DISK)
+        recalled_positives = recalled_positives.persist(StorageLevel.MEMORY_AND_DISK)
+        cached.extend((eligible, recalled_positives))
+        validation_pairs = validation_pairs.persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(validation_pairs)
-        if validation_pairs.count() == 0:
+        layout_counts = validation_pairs.agg(
+            F.count("*").alias("pair_count"),
+            F.sum(F.size("validation_groups")).alias("group_row_count"),
+        ).first()
+        validation_pair_count = int(layout_counts["pair_count"])
+        validation_group_row_count = int(layout_counts["group_row_count"] or 0)
+        if validation_pair_count == 0:
             raise ValueError("Set-B validation pairs are empty")
-        missing_candidate_queries = eligible.select("query_track_id", "query_group").join(
-            validation_pairs.select("query_track_id", "query_group").distinct(),
-            ["query_track_id", "query_group"],
+        missing_candidate_queries = eligible.select("query_track_id").distinct().join(
+            pool_queries.select(F.col("track_id").alias("query_track_id")),
+            "query_track_id",
             "left_anti",
         ).limit(1).count()
         if missing_candidate_queries:
             raise ValueError("an eligible Set-B validation query has no canonical candidates")
-        release(eligible)
 
         positive_stats = {
             row["query_group"]: row.asDict()
@@ -640,7 +628,7 @@ def main() -> None:
         }
         hit_stats = {
             row["query_group"]: row.asDict()
-            for row in validation_pairs.where(F.col("label") == 1).groupBy("query_group").agg(
+            for row in recalled_positives.groupBy("query_group").agg(
                 F.count("*").alias("candidate_hits"),
                 F.countDistinct("query_track_id").alias("covered_queries"),
             ).collect()
@@ -664,6 +652,9 @@ def main() -> None:
             int(group_stats[group]["eligible_query_count"]) == 0 for group in VALIDATION_QUERY_GROUPS
         ):
             raise ValueError("formal Set-B validation is missing an eligible query group")
+        release(recalled_positives)
+        release(eligible)
+        release(pool_queries)
 
         threshold_payload = {
             "artifact_type": "set_b_validation_thresholds",
@@ -685,7 +676,11 @@ def main() -> None:
         write_json_atomic(threshold_payload, args.thresholds)
         positives.write.mode("errorifexists").parquet(_uri(args.positives))
         release(positives)
-        validation_pairs.write.mode("errorifexists").parquet(_uri(args.validation_pairs))
+        validation_pairs.repartition(
+            args.shuffle_partitions, "query_track_id"
+        ).sortWithinPartitions("query_track_id", "candidate_track_id").write.mode(
+            "errorifexists"
+        ).parquet(_uri(args.validation_pairs))
         release(validation_pairs)
         manifest = write_validation_group_manifest(
             args.manifest,
@@ -706,6 +701,8 @@ def main() -> None:
             },
             scope=args.scope,
             threshold_sample_count=threshold_sample_count,
+            pair_count=validation_pair_count,
+            group_row_count=validation_group_row_count,
             group_stats=group_stats,
         )
         print(
