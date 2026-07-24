@@ -99,20 +99,32 @@ def main() -> None:
         raise ValueError("tuning requires a validation feature manifest")
     if args.stage == "final_retrain" and args.fixed_reg_param not in REG_PARAMS:
         raise ValueError("final retrain requires one frozen regParam")
-    load_raw_feature_manifest(
+    if args.stage == "final_retrain" and (
+        args.frozen_scaler is None or args.frozen_tuning_manifest is None
+    ):
+        raise ValueError("final retrain requires the frozen Set-A scaler and tuning manifest")
+    train_feature_manifest = load_raw_feature_manifest(
         args.train_features_manifest,
         args.train_features,
         expected_scope=args.scope,
         expected_pair_kind="training",
         expected_stage=args.stage,
     )
+    validation_feature_manifest = None
+    frozen_preprocessing = None
     if args.stage == "tuning":
-        load_raw_feature_manifest(
+        validation_feature_manifest = load_raw_feature_manifest(
             args.validation_features_manifest,
             args.validation_features,
             expected_scope=args.scope,
             expected_pair_kind="validation",
             expected_stage="tuning",
+        )
+    else:
+        frozen_preprocessing = load_frozen_preprocessing(
+            args.frozen_scaler,
+            args.frozen_tuning_manifest,
+            float(args.fixed_reg_param),
         )
     from pyspark.ml.classification import LogisticRegression
     from pyspark.ml.feature import StandardScaler, VectorAssembler
