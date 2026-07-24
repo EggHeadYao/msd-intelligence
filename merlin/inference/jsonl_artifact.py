@@ -6,6 +6,7 @@ import gzip
 import io
 import json
 from pathlib import Path
+import shutil
 from typing import Any, Iterable, Iterator, Mapping
 
 
@@ -91,6 +92,80 @@ def write_row_artifact(
         return 0
     temporary.replace(output)
     return count
+
+
+def _write_parquet_part(pa: Any, pq: Any, rows: list[Mapping[str, object]], schema: Any, path: Path) -> None:
+    table = pa.Table.from_pylist(rows, schema=schema)
+    pq.write_table(table, path, compression="zstd", use_dictionary=True)
+
+
+class PartitionedParquetWriter:
+    """Incrementally write an atomically published directory of Parquet parts."""
+
+    def __init__(self, path: str | Path, schema: Any, *, rows_per_file: int = 250_000) -> None:
+        if rows_per_file <= 0:
+            raise ValueError("Parquet rows per file must be positive")
+        try:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+        except ImportError as error:
+            raise RuntimeError("writing Parquet datasets requires pyarrow") from error
+        self._pa = pa
+        self._pq = pq
+        self.output = Path(path)
+        if self.output.suffix != ".parquet":
+            raise ValueError("partitioned Parquet output must end in .parquet")
+        self.temporary = self.output.with_suffix(self.output.suffix + ".tmp")
+        if self.output.exists() or self.temporary.exists():
+            raise FileExistsError(f"Parquet output or temporary path already exists: {self.output}")
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.temporary.mkdir()
+        self.schema = schema
+        self.rows_per_file = rows_per_file
+        self.count = 0
+        self.part_count = 0
+        self._buffer: list[Mapping[str, object]] = []
+        self._closed = False
+
+    def write_rows(self, rows: Iterable[Mapping[str, object]]) -> None:
+        if self._closed:
+            raise ValueError("cannot write to a closed Parquet dataset")
+        for row in rows:
+            self._buffer.append(row)
+            if len(self._buffer) == self.rows_per_file:
+                self._flush()
+
+    @property
+    def pending_count(self) -> int:
+        return self.count + len(self._buffer)
+
+    def _flush(self) -> None:
+        if not self._buffer:
+            return
+        part = self.temporary / f"part-{self.part_count:05d}.parquet"
+        _write_parquet_part(self._pa, self._pq, self._buffer, self.schema, part)
+        self.count += len(self._buffer)
+        self.part_count += 1
+        self._buffer.clear()
+
+    def close(self) -> int:
+        if self._closed:
+            return self.count
+        self._flush()
+        self._closed = True
+        if self.count == 0:
+            shutil.rmtree(self.temporary)
+            raise ValueError("partitioned Parquet artifact must not be empty")
+        (self.temporary / "_SUCCESS").write_bytes(b"")
+        self.temporary.replace(self.output)
+        return self.count
+
+    def __enter__(self) -> PartitionedParquetWriter:
+        return self
+
+    def __exit__(self, error_type: object, _error: object, _traceback: object) -> None:
+        if error_type is None:
+            self.close()
 
 
 def read_row_artifact(
