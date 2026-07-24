@@ -1,7 +1,26 @@
 """Scratch-space guards shared by high-volume C3 Spark stages."""
 
+import math
 from pathlib import Path
 import shutil
+
+
+def estimate_ranker_scratch_gb(
+    *,
+    training_rows: int,
+    validation_rows: int,
+    feature_count: int,
+    model_count: int,
+) -> float:
+    """Estimate the peak serialized vectors and ranking shuffle, not Parquet bytes."""
+    values = (training_rows, feature_count, model_count)
+    if any(value <= 0 for value in values) or validation_rows < 0:
+        raise ValueError("ranker scratch estimate inputs are invalid")
+    training_vectors = training_rows * (feature_count * 8 + 24) * 1.5
+    validation_vectors = validation_rows * (feature_count * 8 + 96) * 1.5
+    ranking_shuffle = validation_rows * model_count * 64 * 2
+    projected_gib = max(training_vectors, validation_vectors + ranking_shuffle) / (1024**3)
+    return math.ceil(projected_gib * 4) / 4
 
 
 def prepare_scratch_root(
