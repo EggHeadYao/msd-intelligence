@@ -272,24 +272,27 @@ def main() -> None:
             release(scaled_train)
             validation = (
                 read_rows(args.validation_features)
-                .withColumn("validation_group", F.explode("validation_groups"))
                 .select(
                     "query_track_id",
                     "candidate_track_id",
-                    F.col("validation_group.label").alias("label"),
-                    F.col("validation_group.query_group").alias("query_group"),
-                    F.col("validation_group.eligible_positive_count").alias(
-                        "eligible_positive_count"
-                    ),
+                    "validation_groups",
                     *RAW_BASE_FEATURES,
                 )
-                .persist(StorageLevel.MEMORY_AND_DISK)
             )
-            cached.append(validation)
             invalid_groups = validation.where(
-                ~F.col("query_group").isin(*QUERY_GROUPS)
-                | F.col("eligible_positive_count").isNull()
-                | (F.col("eligible_positive_count") <= 0)
+                F.col("validation_groups").isNull()
+                | (F.size("validation_groups") == 0)
+                | F.exists(
+                    "validation_groups",
+                    lambda group: (
+                        group["query_group"].isNull()
+                        | ~group["query_group"].isin(*QUERY_GROUPS)
+                        | group["label"].isNull()
+                        | ~group["label"].isin(0, 1)
+                        | group["eligible_positive_count"].isNull()
+                        | (group["eligible_positive_count"] <= 0)
+                    ),
+                )
             ).limit(1).count()
             if invalid_groups:
                 raise ValueError("Set-B validation contains an invalid group or denominator")
@@ -298,17 +301,11 @@ def main() -> None:
             ).select(
                 "query_track_id",
                 "candidate_track_id",
-                F.col("label").cast("int").alias("label"),
-                "query_group",
-                F.col("eligible_positive_count").cast("long").alias(
-                    "eligible_positive_count"
-                ),
-                "features",
+                "validation_groups",
+                vector_to_array("features").alias("feature_array"),
             ).persist(StorageLevel.MEMORY_AND_DISK)
             cached.append(scaled_validation)
             scaled_validation.count()
-            release(validation)
-            feature_array = vector_to_array("features")
             score_structs = []
             for reg_param in REG_PARAMS:
                 fitted = models[reg_param]
