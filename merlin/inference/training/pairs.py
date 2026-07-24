@@ -44,6 +44,46 @@ def training_pair_parquet_schema():
     ))
 
 
+def _streamed_feature_manifest(
+    feature_output: Path,
+    stats: Mapping[str, object],
+    parent_hashes: Mapping[str, str],
+    output: Path,
+    manifest_path: str | Path,
+    scope: str,
+) -> dict[str, object]:
+    totals = stats["totals"]
+    assert isinstance(totals, Counter)
+    feature_parents = {
+        **parent_hashes,
+        "final_training_pairs": sha256_path(output),
+        "final_training_pairs_manifest": sha256_path(manifest_path),
+    }
+    return {
+        "artifact_type": "ranker_raw_pair_features",
+        "artifact_version": RAW_FEATURE_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "scope": scope,
+        "pair_kind": "training",
+        "stage": "final_retrain",
+        "row_layout": "one_row_per_training_pair",
+        "feature_schema_version": RANKER_V2_SCHEMA_VERSION,
+        "raw_feature_order": list(RAW_BASE_FEATURES),
+        "row_count": stats["feature_count"],
+        "counts": {
+            "rows": stats["feature_count"],
+            "label_0": int(totals["negative_count"]),
+            "label_1": int(totals["positive_count"]),
+        },
+        "output_file": feature_output.name,
+        "storage_format": "partitioned_parquet",
+        "part_count": stats["feature_part_count"],
+        "output_sha256": sha256_path(feature_output),
+        "output_size_bytes": artifact_size_bytes(feature_output),
+        "parent_hashes": feature_parents,
+    }
+
+
 def allowed_training_tracks(
     assignments: Mapping[str, str],
     stage: str,
