@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from ...artifact_lineage import artifact_size_bytes
-from ...feature_schema import RANKER_V2_FEATURES
+from ...feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
 from ...ranking.artifacts import write_ranker_artifacts
 from ...ranking.features import FILL_FEATURES, RAW_BASE_FEATURES
 from ...ranking.features import load_raw_feature_manifest
 from ...ranking.selection import REG_PARAMS, select_reg_param
-from ...scratch import prepare_scratch_root
+from ...scratch import estimate_ranker_scratch_gb, prepare_scratch_root
 
 
 QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
     parser.add_argument("--fixed-reg-param", type=float)
+    parser.add_argument("--frozen-scaler", type=Path)
+    parser.add_argument("--frozen-tuning-manifest", type=Path)
     parser.add_argument("--parent", action="append", default=[], metavar="NAME=PATH")
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     parser.add_argument("--scratch-root", type=Path)
