@@ -55,6 +55,42 @@ def _idcg20(positive_count: int) -> float:
     )
 
 
+def load_frozen_preprocessing(
+    scaler_path: Path,
+    tuning_manifest_path: Path,
+    fixed_reg_param: float,
+) -> tuple[dict[str, float], tuple[float, ...], tuple[float, ...], tuple[str, ...]]:
+    with scaler_path.open("r", encoding="utf-8") as stream:
+        scaler = json.load(stream)
+    with tuning_manifest_path.open("r", encoding="utf-8") as stream:
+        tuning = json.load(stream)
+    if scaler.get("feature_schema_version") != RANKER_V2_SCHEMA_VERSION:
+        raise ValueError("frozen scaler schema version mismatch")
+    if tuple(scaler.get("feature_order", ())) != RANKER_V2_FEATURES:
+        raise ValueError("frozen scaler feature order mismatch")
+    if tuning.get("artifact_type") != "ranker_training" or tuning.get("stage") != "tuning":
+        raise ValueError("frozen tuning manifest is invalid")
+    if float(tuning.get("selected_reg_param", -1.0)) != fixed_reg_param:
+        raise ValueError("fixed regParam does not match the tuning manifest")
+    fill_values = {
+        name: float(value) for name, value in scaler.get("fill_values", {}).items()
+    }
+    if set(fill_values) != set(FILL_FEATURES):
+        raise ValueError("frozen scaler fill-value set mismatch")
+    means = tuple(float(value) for value in scaler.get("means", ()))
+    stds = tuple(float(value) for value in scaler.get("stds", ()))
+    if len(means) != len(RANKER_V2_FEATURES) or len(stds) != len(means):
+        raise ValueError("frozen scaler vector length mismatch")
+    if any(not math.isfinite(value) for value in (*fill_values.values(), *means, *stds)):
+        raise ValueError("frozen scaler contains a non-finite value")
+    if any(value <= 0.0 for value in stds):
+        raise ValueError("frozen scaler standard deviations must be positive")
+    constant_features = tuple(str(name) for name in scaler.get("constant_features", ()))
+    if tuple(tuning.get("constant_features", ())) != constant_features:
+        raise ValueError("frozen constant-feature contract mismatch")
+    return fill_values, means, stds, constant_features
+
+
 def main() -> None:
     args = parse_args()
     if args.stage == "tuning" and args.validation_features is None:
