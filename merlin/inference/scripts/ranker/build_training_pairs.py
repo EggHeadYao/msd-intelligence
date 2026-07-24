@@ -120,6 +120,14 @@ def _positive_predicates(audio, tag: TagRetriever, thresholds: Mapping[str, obje
     return is_positive, is_positive_batch
 
 
+def main() -> None:
+    args = parse_args()
+    paths = InferenceArtifactPaths()
+    if args.stage != "tuning":
+        raise ValueError("final_retrain is not available in this revision")
+    _run_tuning(args, paths)
+
+
 def parse_args() -> argparse.Namespace:
     defaults = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -154,30 +162,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    paths = InferenceArtifactPaths()
+def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
+    output = args.output or paths.training_pairs
+    manifest_path = args.manifest or paths.training_pairs_manifest
+    if args.features_output is not None or args.features_manifest is not None:
+        raise ValueError("tuning features are exported by export_ranker_features")
     load_candidate_pool_manifest(
         args.candidate_pool_manifest,
         args.candidate_pool,
         expected_scope=args.scope,
     )
-    weak_positive_manifest = load_weak_positive_manifest(
+    weak_manifest = load_weak_positive_manifest(
         args.weak_positives_manifest,
         args.weak_positives,
         args.thresholds,
         expected_scope=args.scope,
     )
     assignments = load_split_assignments(args.split_assignments)
-    positive_count = int(weak_positive_manifest.get("positive_count", 0))
+    positive_count = int(weak_manifest.get("positive_count", 0))
     if positive_count <= 0:
         raise ValueError("weak-positive manifest has no positive rows")
-    projected_gb = positive_count * 4 * 80 / (1024 ** 3)
     prepare_scratch_root(
-        args.output.parent,
+        output.parent,
         scope=args.scope,
         min_free_gb=args.min_free_gb,
-        projected_gb=projected_gb,
+        projected_gb=positive_count * 4 * 80 / (1024**3),
     )
     thresholds = _load_thresholds(args.thresholds)
     audio = load_audio_index()
@@ -198,9 +207,9 @@ def main() -> None:
         args.candidate_pool,
         args.weak_positives,
         assignments,
-        args.output,
-        args.manifest,
-        stage=args.stage,
+        output,
+        manifest_path,
+        stage="tuning",
         same_song=same_song,
         is_positive=is_positive,
         is_positive_batch=is_positive_batch,
