@@ -437,6 +437,47 @@ def iter_candidate_positives(
         current_positive = advance_positive()
 
 
+def _streamed_pair_manifest(
+    output: Path,
+    stats: Mapping[str, object],
+    parent_hashes: Mapping[str, str],
+    scope: str,
+) -> dict[str, object]:
+    totals = stats["totals"]
+    assert isinstance(totals, Counter)
+    rejection_totals = stats["rejection_totals"]
+    weak_source_totals = stats["weak_source_totals"]
+    recall_source_totals = stats["recall_source_totals"]
+    if totals["negative_count"] != NEGATIVE_RATIO * totals["positive_count"]:
+        raise ValueError("streamed training artifact violates the 1:3 ratio")
+    return {
+        "artifact_type": "ranker_training_pairs",
+        "artifact_version": TRAINING_PAIR_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "scope": scope,
+        "stage": "final_retrain",
+        "seed": PAIR_SEED,
+        "negative_ratio": NEGATIVE_RATIO,
+        "candidate_aware_target_fraction": CANDIDATE_AWARE_FRACTION,
+        "query_count": stats["query_count"],
+        "pair_count": stats["pair_count"],
+        "counts": dict(sorted(totals.items())),
+        "actual_candidate_aware_fraction": (
+            totals["candidate_aware_count"] / totals["negative_count"]
+        ),
+        "rejection_counts": dict(sorted(rejection_totals.items())),
+        "weak_positive_source_counts": dict(sorted(weak_source_totals.items())),
+        "recall_source_totals": dict(sorted(recall_source_totals.items())),
+        "candidate_pool_layout": "streamed_not_materialized",
+        "pairs_file": output.name,
+        "storage_format": "partitioned_parquet",
+        "part_count": stats["pair_part_count"],
+        "pairs_sha256": sha256_path(output),
+        "pairs_size_bytes": artifact_size_bytes(output),
+        "parent_hashes": parent_hashes,
+    }
+
+
 def write_training_pair_artifacts(
     candidate_pool_path: str | Path,
     positives: WeakPositiveSource,
