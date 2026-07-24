@@ -123,9 +123,10 @@ def _positive_predicates(audio, tag: TagRetriever, thresholds: Mapping[str, obje
 def main() -> None:
     args = parse_args()
     paths = InferenceArtifactPaths()
-    if args.stage != "tuning":
-        raise ValueError("final_retrain is not available in this revision")
-    _run_tuning(args, paths)
+    if args.stage == "tuning":
+        _run_tuning(args, paths)
+    else:
+        _run_final(args, paths)
 
 
 def parse_args() -> argparse.Namespace:
@@ -146,8 +147,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--thresholds", type=Path, default=defaults.weak_label_thresholds)
     parser.add_argument("--split-assignments", type=Path, default=defaults.split_assignments)
     parser.add_argument("--split-manifest", type=Path, default=defaults.split_manifest)
-    parser.add_argument("--output", type=Path, default=defaults.training_pairs)
-    parser.add_argument("--manifest", type=Path, default=defaults.training_pairs_manifest)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--manifest", type=Path)
     parser.add_argument("--features-output", type=Path)
     parser.add_argument("--features-manifest", type=Path)
     parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
@@ -226,7 +227,7 @@ def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None
     print(
         "training_pairs_ready "
         f"scope={args.scope} stage={args.stage} pairs={manifest['pair_count']} "
-        f"output={args.output}",
+        f"output={output}",
     )
 
 
