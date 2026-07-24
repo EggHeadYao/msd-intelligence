@@ -386,5 +386,42 @@ def _final_query_rows(
         print(f"final_retrain_progress queries={processed}/{len(queries)}", flush=True)
 
 
+def _final_run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
+    sizes = (args.batch_size, args.rows_per_file, args.positive_neighbor_limit)
+    if any(value <= 0 for value in sizes):
+        raise ValueError("final-retrain batch, part, and neighbor sizes must be positive")
+    if args.limit_queries < 0:
+        raise ValueError("limit-queries must be non-negative")
+    load_split_manifest(args.split_manifest, args.split_assignments)
+    assignments = load_split_assignments(args.split_assignments)
+    allowed = {
+        track_id for track_id, split in assignments.items() if split in FINAL_SPLITS
+    }
+    queries = tuple(sorted(allowed))
+    if args.limit_queries:
+        queries = tuple(islice(queries, args.limit_queries))
+    scope = "smoke" if args.limit_queries else args.scope
+    output = args.output or paths.final_training_pairs
+    manifest_path = args.manifest or paths.final_training_pairs_manifest
+    feature_output = args.features_output or paths.final_raw_features
+    feature_manifest = args.features_manifest or paths.final_raw_features_manifest
+    projected_gb = len(queries) * MAX_POSITIVES_PER_QUERY * 4 * 48 / (1024**3)
+    prepare_scratch_root(
+        output.parent,
+        scope=scope,
+        min_free_gb=args.min_free_gb,
+        projected_gb=projected_gb,
+    )
+    return (
+        allowed,
+        queries,
+        scope,
+        output,
+        manifest_path,
+        feature_output,
+        feature_manifest,
+    )
+
+
 if __name__ == "__main__":
     main()
