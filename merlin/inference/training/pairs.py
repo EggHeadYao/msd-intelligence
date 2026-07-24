@@ -251,6 +251,41 @@ def construct_query_pairs(
     }
 
 
+def iter_training_query_pairs(
+    candidate_positive_records: Iterable[
+        tuple[str, Sequence[CandidateInput], Mapping[str, frozenset[str]] | None]
+    ],
+    assignments: Mapping[str, str],
+    *,
+    stage: str,
+    same_song: SameSong,
+    is_positive: IsPositive,
+    is_positive_batch: IsPositiveBatch | None = None,
+) -> Iterator[tuple[str, list[dict[str, object]], dict[str, object]]]:
+    """Construct bounded query groups directly from an in-memory recall stream."""
+    allowed = allowed_training_tracks(assignments, stage)
+    universe = tuple(sorted(allowed))
+    previous_query: str | None = None
+    for query_id, candidates, positives in candidate_positive_records:
+        if previous_query is not None and query_id <= previous_query:
+            raise ValueError("training query stream must be strictly sorted")
+        previous_query = query_id
+        if positives is None or query_id not in allowed:
+            continue
+        rows, audit = construct_query_pairs(
+            query_id,
+            positives,
+            candidates,
+            allowed,
+            universe,
+            same_song,
+            is_positive,
+            is_positive_batch,
+        )
+        if rows:
+            yield query_id, rows, audit
+
+
 def iter_candidate_positives(
     candidate_pool_path: str | Path,
     positives: WeakPositiveSource,
