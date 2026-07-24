@@ -371,10 +371,7 @@ def main() -> None:
             collected_by_reg = _collect_validation_scores(
                 scaled_validation, models, F, Window
             )
-            collected_rows = ()
             release(scaled_validation)
-            for row in collected_rows:
-                collected_by_reg[float(row["reg_param"])].append(row)
             query_scores = {}
             for reg_param in REG_PARAMS:
                 collected = collected_by_reg[reg_param]
