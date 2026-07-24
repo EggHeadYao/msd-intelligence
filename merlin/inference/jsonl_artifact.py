@@ -180,16 +180,20 @@ def read_row_artifact(
     if source.suffix != ".parquet":
         yield from read_jsonl_gzip(source)
         return
-    if not source.is_file():
+    if not source.exists():
         raise FileNotFoundError(f"Parquet row artifact does not exist: {source}")
     try:
         import pyarrow.parquet as pq
     except ImportError as error:
         raise RuntimeError("reading Parquet row artifacts requires pyarrow") from error
-    parquet = pq.ParquetFile(source)
-    for batch in parquet.iter_batches(batch_size=batch_size):
-        for row in batch.to_pylist(maps_as_pydicts="strict"):
-            yield row
+    files = (source,) if source.is_file() else tuple(sorted(source.glob("part-*.parquet")))
+    if not files:
+        raise ValueError(f"Parquet dataset contains no part files: {source}")
+    for file_path in files:
+        parquet = pq.ParquetFile(file_path)
+        for batch in parquet.iter_batches(batch_size=batch_size):
+            for row in batch.to_pylist(maps_as_pydicts="strict"):
+                yield row
 
 
 def write_json_atomic(payload: Mapping[str, object], path: str | Path) -> None:
