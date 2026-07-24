@@ -230,5 +230,34 @@ def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None
     )
 
 
+def _select_final_positives(
+    query_id: str,
+    allowed: set[str],
+    neighbors: Sequence[tuple[str, float]],
+    audio_retriever: VectorRetriever,
+    tag: TagRetriever,
+    thresholds: Mapping[str, object],
+) -> tuple[str | None, dict[str, frozenset[str]]]:
+    artist = tag.track_to_artist.get(query_id)
+    selected = select_weak_positives(
+        query_id,
+        allowed,
+        tag.track_to_artist,
+        tag.artist_tracks.get(artist, ()) if artist else (),
+        neighbors,
+        _tag_neighbors(tag, query_id),
+        audio_retriever.same_song,
+        thresholds,
+        limit=MAX_POSITIVES_PER_QUERY,
+    )
+    positives = {
+        str(row["track_id"]): frozenset(
+            str(source) for source in row["positive_sources"]
+        )
+        for row in selected
+    }
+    return artist, positives
+
+
 if __name__ == "__main__":
     main()
