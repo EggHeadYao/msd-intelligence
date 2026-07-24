@@ -34,6 +34,18 @@ from ...types import Candidate
 FINAL_SPLITS = frozenset({"set_a", "set_b", "remaining"})
 
 
+def _load_thresholds(path: Path) -> dict[str, object]:
+    with path.open("r", encoding="utf-8") as stream:
+        thresholds = json.load(stream)
+    if thresholds.get("artifact_type") != "weak_label_thresholds":
+        raise ValueError("weak-label threshold artifact type mismatch")
+    if thresholds.get("artifact_version") != WEAK_LABEL_VERSION:
+        raise ValueError("weak-label threshold artifact version mismatch")
+    if thresholds.get("fit_split") != "set_a":
+        raise ValueError("weak-label thresholds must be frozen from Set A")
+    return thresholds
+
+
 def parse_args() -> argparse.Namespace:
     defaults = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
