@@ -368,72 +368,10 @@ def main() -> None:
             ).persist(StorageLevel.MEMORY_AND_DISK)
             cached.append(scaled_validation)
             scaled_validation.count()
-            score_structs = []
-            for reg_param in REG_PARAMS:
-                fitted = models[reg_param]
-                coefficient_array = F.array(
-                    *(F.lit(float(value)) for value in fitted.coefficients)
-                )
-                margin = F.aggregate(
-                    F.zip_with(
-                        feature_array,
-                        coefficient_array,
-                        lambda feature, coefficient: feature * coefficient,
-                    ),
-                    F.lit(float(fitted.intercept)),
-                    lambda total, value: total + value,
-                )
-                score_structs.append(F.struct(
-                    F.lit(float(reg_param)).alias("reg_param"),
-                    margin.alias("margin"),
-                ))
-            predictions = (
-                scaled_validation.withColumn(
-                    "model_score", F.explode(F.array(*score_structs))
-                )
-                .select("*", "model_score.*")
-                .drop("model_score")
+            collected_by_reg = _collect_validation_scores(
+                scaled_validation, models, F, Window
             )
-            ranking = Window.partitionBy(
-                "reg_param", "query_track_id", "query_group"
-            ).orderBy(F.desc("margin"), F.asc("candidate_track_id"))
-            query_window = Window.partitionBy(
-                "reg_param", "query_track_id", "query_group"
-            )
-            per_query = (
-                predictions.withColumn("rank", F.row_number().over(ranking))
-                .withColumn(
-                    "positive_count",
-                    F.max("eligible_positive_count").over(query_window),
-                )
-                .withColumn(
-                    "gain",
-                    F.when(
-                        (F.col("rank") <= 20) & (F.col("label") == 1),
-                        1.0 / F.log2(F.col("rank") + 1.0),
-                    ).otherwise(0.0),
-                )
-                .groupBy("reg_param", "query_track_id", "query_group")
-                .agg(
-                    F.sum("gain").alias("dcg"),
-                    F.max("positive_count").alias("positive_count"),
-                )
-                .withColumn(
-                    "idcg20",
-                    F.aggregate(
-                        F.sequence(
-                            F.lit(1),
-                            F.least(F.col("positive_count").cast("int"), F.lit(20)),
-                        ),
-                        F.lit(0.0),
-                        lambda total, rank: total
-                        + 1.0 / F.log2(rank.cast("double") + 1.0),
-                    ),
-                )
-                .withColumn("ndcg20", F.col("dcg") / F.col("idcg20"))
-            )
-            collected_by_reg = {reg_param: [] for reg_param in REG_PARAMS}
-            collected_rows = per_query.collect()
+            collected_rows = ()
             release(scaled_validation)
             for row in collected_rows:
                 collected_by_reg[float(row["reg_param"])].append(row)
