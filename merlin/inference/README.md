@@ -72,7 +72,9 @@ split_manifest + split_assignments
   -> raw_pair_features
   -> Set-B validation_group_thresholds + validation_group_positives
   -> validation_pairs + validation_raw_features
-  -> ranker schema + scaler + coefficients + training manifest
+  -> tuning ranker schema + scaler + coefficients + training manifest
+  -> streamed final_training_pairs + final_raw_pair_features
+  -> final ranker coefficients with frozen Set-A preprocessing
 ```
 
 Recall commands live under `scripts/recall`; supervised dataset, feature, and
@@ -86,10 +88,19 @@ writable for compatibility with earlier smoke artifacts.
 
 Candidate-pool rows retain the required ordered track IDs and
 `recall_sources`; source scores and source ranks remain transient recall data.
-Training feature rows do not duplicate pair-audit columns, and validation
-features store one feature vector per `(query, candidate)` with compact nested
-group labels. Numeric feature columns are persisted as float32 and converted by
-Spark ML during assembly.
+Training feature rows do not duplicate pair-audit columns. Validation pairs and
+features both store one row per `(query, candidate)` with compact nested group
+labels; they never materialize one copy of the feature vector per validation
+group. Numeric feature columns are persisted as float32 and converted by Spark
+ML during assembly.
+
+The materialized candidate pools belong to Set-A tuning and Set-B validation.
+Final retraining does not persist a 980K-query candidate pool. The
+`build_training_pairs --stage final_retrain` branch applies the frozen Set-A
+weak-label thresholds, recalls one bounded query batch, samples its negatives,
+reuses exact Audio/Graph recall scores, computes raw features, and writes only
+partitioned final pair and feature datasets. Spark reads those part files as
+one Parquet dataset.
 
 High-volume formal stages reserve 16 GiB by default and fail before writing
 when the target filesystem is below that threshold. Spark stages place shuffle
@@ -127,6 +138,16 @@ and scaler statistics are serialized for Python inference. Set-B validation is
 supplied by `build_validation_groups` with the frozen `audio_dominant`,
 `relation_dominant`, and `mixed` query groups. A statistically tied selection
 chooses the larger regularization value using 2,000 paired bootstrap samples.
+Each unique Set-B pair is assembled and scaled once. Candidate ranks are also
+computed once per `(regParam, query)` before the nested group labels are
+expanded for nDCG aggregation. The three frozen `regParam` values are ranked
+sequentially so only one validation shuffle is live at a time.
+
+Final retraining requires the selected tuning `regParam`, tuning manifest, and
+Set-A scaler. Fill values, means, standard deviations, and zero-variance feature
+handling remain frozen from Set A; only the LR coefficients are fitted again on
+A+B+Remaining. Availability masks that are constant in Set A stay in the fixed
+feature schema with effective scale one and must have zero model weight.
 
 The pair builder enforces split-before-pair, excludes every Set-C endpoint,
 checks the complete positive predicate before writing a negative, keeps an exact
