@@ -122,23 +122,17 @@ def export_raw_pair_features(
             (
                 "query_track_id",
                 "candidate_track_id",
-                "label",
-                "query_group",
-                "eligible_positive_count",
                 "recall_sources",
+                "validation_groups",
             ),
-            order_by=("query_track_id", "candidate_track_id", "query_group"),
+            engine="pyarrow",
         ):
-            query_id, candidate_id, label, query_group, positive_count, recall_sources = values
+            query_id, candidate_id, recall_sources, validation_groups = values
             yield {
                 "query_track_id": query_id,
                 "candidate_track_id": candidate_id,
-                "label": label,
-                "query_group": query_group,
-                "eligible_positive_count": positive_count,
-                "positive_sources": [],
-                "negative_source": None,
                 "recall_sources": list(recall_sources or ()),
+                "validation_groups": list(validation_groups or ()),
             }
 
     def compute(query_id: str, pairs: list[Mapping[str, object]]):
@@ -170,26 +164,22 @@ def export_raw_pair_features(
 
     def validation_rows() -> Iterator[dict[str, object]]:
         grouped_rows = groupby(pair_rows(), key=lambda pair: str(pair["query_track_id"]))
+        seen_queries: set[str] = set()
         for query_id, grouped in grouped_rows:
+            if query_id in seen_queries:
+                raise ValueError("validation pairs are not clustered by query")
+            seen_queries.add(query_id)
             pairs = list(grouped)
-            by_candidate: dict[str, list[Mapping[str, object]]] = {}
-            for pair in pairs:
-                by_candidate.setdefault(str(pair["candidate_track_id"]), []).append(pair)
-            representatives = [values[0] for values in by_candidate.values()]
-            for _pair, candidate, raw in compute(query_id, representatives):
-                group_rows = by_candidate[candidate.track_id]
-                recall_sources = list(group_rows[0].get("recall_sources", []))
-                if any(list(row.get("recall_sources", [])) != recall_sources for row in group_rows):
-                    raise ValueError("validation recall provenance differs across groups")
+            for pair, candidate, raw in compute(query_id, pairs):
                 groups = []
-                for row in group_rows:
-                    label = int(row["label"])
+                for group in pair["validation_groups"]:
+                    label = int(group["label"])
                     if label not in {0, 1}:
                         raise ValueError("validation pair label must be binary")
                     groups.append({
-                        "query_group": str(row["query_group"]),
+                        "query_group": str(group["query_group"]),
                         "label": label,
-                        "eligible_positive_count": int(row["eligible_positive_count"]),
+                        "eligible_positive_count": int(group["eligible_positive_count"]),
                     })
                     counts["group_rows"] += 1
                     counts[f"label_{label}"] += 1
@@ -197,7 +187,7 @@ def export_raw_pair_features(
                 yield {
                     "query_track_id": query_id,
                     "candidate_track_id": candidate.track_id,
-                    "recall_sources": recall_sources,
+                    "recall_sources": list(pair.get("recall_sources", [])),
                     "validation_groups": groups,
                     **raw,
                 }
