@@ -40,6 +40,30 @@ FILL_FEATURES = (
 )
 
 
+def raw_feature_parquet_schema(pair_kind: str):
+    if pair_kind not in {"training", "validation"}:
+        raise ValueError("raw-feature pair kind must be training or validation")
+    import pyarrow as pa
+
+    fields = [
+        pa.field("query_track_id", pa.string(), nullable=False),
+        pa.field("candidate_track_id", pa.string(), nullable=False),
+    ]
+    if pair_kind == "training":
+        fields.append(pa.field("label", pa.int64(), nullable=False))
+    else:
+        fields.extend((
+            pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
+            pa.field("validation_groups", pa.list_(pa.struct((
+                pa.field("query_group", pa.string(), nullable=False),
+                pa.field("label", pa.int64(), nullable=False),
+                pa.field("eligible_positive_count", pa.int64(), nullable=False),
+            ))), nullable=False),
+        ))
+    fields.extend(pa.field(name, pa.float32()) for name in RAW_BASE_FEATURES)
+    return pa.schema(fields)
+
+
 def materialize_raw_features(
     raw: Mapping[str, object],
     fill_values: Mapping[str, float],
@@ -187,25 +211,7 @@ def export_raw_pair_features(
     output = Path(output_path)
     parquet_schema = None
     if output.suffix == ".parquet":
-        import pyarrow as pa
-
-        fields = [
-            pa.field("query_track_id", pa.string(), nullable=False),
-            pa.field("candidate_track_id", pa.string(), nullable=False),
-        ]
-        if pair_kind == "training":
-            fields.append(pa.field("label", pa.int64(), nullable=False))
-        else:
-            fields.extend((
-                pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
-                pa.field("validation_groups", pa.list_(pa.struct((
-                    pa.field("query_group", pa.string(), nullable=False),
-                    pa.field("label", pa.int64(), nullable=False),
-                    pa.field("eligible_positive_count", pa.int64(), nullable=False),
-                ))), nullable=False),
-            ))
-        fields.extend(pa.field(name, pa.float32()) for name in RAW_BASE_FEATURES)
-        parquet_schema = pa.schema(fields)
+        parquet_schema = raw_feature_parquet_schema(pair_kind)
     row_count = write_row_artifact(rows(), output, parquet_schema=parquet_schema)
     if row_count == 0:
         raise ValueError("raw feature artifact must not be empty")
