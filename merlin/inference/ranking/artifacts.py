@@ -29,6 +29,7 @@ def write_ranker_artifacts(
     selection: Mapping[str, object],
     parent_paths: Mapping[str, str | Path],
     scope: str,
+    constant_features: Sequence[str] = (),
 ) -> dict[str, object]:
     if scope not in {"formal", "smoke"}:
         raise ValueError("ranker scope must be formal or smoke")
@@ -37,6 +38,11 @@ def write_ranker_artifacts(
         raise ValueError("ranker artifact vector length mismatch")
     if any(float(value) <= 0.0 for value in stds):
         raise ValueError("ranker scaler standard deviations must be positive")
+    constant = tuple(str(name) for name in constant_features)
+    if len(set(constant)) != len(constant) or any(
+        name not in RANKER_V2_FEATURES for name in constant
+    ):
+        raise ValueError("ranker constant-feature list is invalid")
     if not converged:
         raise ValueError("ranker run did not converge")
     root = Path(output_dir)
@@ -61,10 +67,13 @@ def write_ranker_artifacts(
         {
             **common,
             "artifact_type": "ranker_scaler",
-            "fit_split": "set_a" if stage == "tuning" else "a_b_remaining",
+            "fit_split": "set_a",
+            "training_universe": "set_a" if stage == "tuning" else "a_b_remaining",
             "fill_values": {name: float(value) for name, value in fill_values.items()},
             "means": [float(value) for value in means],
             "stds": [float(value) for value in stds],
+            "constant_features": list(constant),
+            "constant_feature_scale": "effective_std_1_with_zero_model_weight",
         },
         scaler_path,
     )
@@ -96,6 +105,7 @@ def write_ranker_artifacts(
         "converged": converged,
         "iterations": int(iterations),
         "selection": dict(selection),
+        "constant_features": list(constant),
         "artifact_hashes": {
             path.name: sha256_path(path)
             for path in (schema_path, scaler_path, coefficients_path)
