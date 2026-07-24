@@ -62,6 +62,13 @@ def _tag_neighbors(tag: TagRetriever, query_id: str) -> list[tuple[str, float]]:
     ]
 
 
+def _finite(value: float | None) -> float | None:
+    if value is None:
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
 def parse_args() -> argparse.Namespace:
     defaults = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
