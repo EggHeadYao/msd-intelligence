@@ -13,8 +13,55 @@ from ..jsonl_artifact import write_json_atomic
 
 
 VALIDATION_GROUP_VERSION = "merlin_validation_groups_v1"
+VALIDATION_PAIR_LAYOUT = "one_pair_nested_groups_v1"
 VALIDATION_GROUP_SEED = 42
 VALIDATION_QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
+
+
+def build_nested_validation_pairs(candidate_rows, positives):
+    """Attach all eligible validation groups to one physical candidate row."""
+    from pyspark.sql import functions as F
+
+    pair_columns = ["query_track_id", "candidate_track_id"]
+    eligible = positives.groupBy("query_track_id", "query_group").agg(
+        F.count("*").cast("long").alias("eligible_positive_count")
+    )
+    eligible_groups = eligible.groupBy("query_track_id").agg(
+        F.sort_array(F.collect_list(F.struct(
+            "query_group", "eligible_positive_count"
+        ))).alias("eligible_groups")
+    )
+    recalled = (
+        positives.select(*pair_columns, "query_group")
+        .join(candidate_rows.select(*pair_columns), pair_columns, "inner")
+        .dropDuplicates([*pair_columns, "query_group"])
+    )
+    positive_groups = recalled.groupBy(*pair_columns).agg(
+        F.sort_array(F.collect_set("query_group")).alias("positive_groups")
+    )
+    empty_groups = F.expr("cast(array() as array<string>)")
+    validation_pairs = (
+        candidate_rows.join(eligible_groups, "query_track_id", "inner")
+        .join(positive_groups, pair_columns, "left")
+        .withColumn(
+            "validation_groups",
+            F.transform(
+                "eligible_groups",
+                lambda group: F.struct(
+                    group["query_group"].alias("query_group"),
+                    F.array_contains(
+                        F.coalesce(F.col("positive_groups"), empty_groups),
+                        group["query_group"],
+                    ).cast("int").alias("label"),
+                    group["eligible_positive_count"].cast("long").alias(
+                        "eligible_positive_count"
+                    ),
+                ),
+            ),
+        )
+        .select(*pair_columns, "recall_sources", "validation_groups")
+    )
+    return validation_pairs, eligible, recalled
 
 
 def load_selected_artist_terms(
@@ -62,10 +109,11 @@ def estimate_validation_scratch_gb(
         raise ValueError("validation scratch estimate inputs must be positive")
     vector_checkpoint = (set_a_tracks + set_b_tracks) * feature_dimension * 8 * 1.5
     sample_sort = max_sample_pairs * 48 * 2
-    validation_expansion = unique_candidates * len(VALIDATION_QUERY_GROUPS) * 64 * 2
+    nested_group_bytes = 64 + len(VALIDATION_QUERY_GROUPS) * 24
+    validation_pairs = unique_candidates * nested_group_bytes * 2
     threshold_pairs = set_b_tracks * set_b_tracks * 0.15 * 48 * 2
     projected_bytes = (
-        vector_checkpoint + sample_sort + validation_expansion + threshold_pairs
+        vector_checkpoint + sample_sort + validation_pairs + threshold_pairs
     )
     gib = projected_bytes / (1024**3)
     return max(4.0, math.ceil(gib * 4) / 4)
@@ -423,6 +471,8 @@ def write_validation_group_manifest(
     parent_paths: Mapping[str, str | Path],
     scope: str,
     threshold_sample_count: int,
+    pair_count: int,
+    group_row_count: int,
     group_stats: Mapping[str, Mapping[str, int | float]],
 ) -> dict[str, object]:
     if scope not in {"formal", "smoke"}:
@@ -431,6 +481,8 @@ def write_validation_group_manifest(
         raise ValueError("validation-group statistics must cover all frozen groups")
     if threshold_sample_count <= 0:
         raise ValueError("validation-group threshold sample must not be empty")
+    if pair_count <= 0 or group_row_count < pair_count:
+        raise ValueError("validation-pair layout counts are invalid")
     manifest = {
         "artifact_type": "set_b_validation_groups",
         "artifact_version": VALIDATION_GROUP_VERSION,
@@ -440,6 +492,10 @@ def write_validation_group_manifest(
         "apply_split": "set_b",
         "seed": VALIDATION_GROUP_SEED,
         "threshold_sample_count": int(threshold_sample_count),
+        "validation_pair_layout": VALIDATION_PAIR_LAYOUT,
+        "validation_pair_ordering": ["query_track_id", "candidate_track_id"],
+        "validation_pair_count": int(pair_count),
+        "validation_group_row_count": int(group_row_count),
         "query_groups": list(VALIDATION_QUERY_GROUPS),
         "group_stats": {name: dict(group_stats[name]) for name in VALIDATION_QUERY_GROUPS},
         "thresholds_file": Path(thresholds_path).name,
@@ -479,6 +535,16 @@ def load_validation_group_manifest(
         raise ValueError("validation-group split boundary mismatch")
     if manifest.get("query_groups") != list(VALIDATION_QUERY_GROUPS):
         raise ValueError("validation-group names or order mismatch")
+    if manifest.get("validation_pair_layout") != VALIDATION_PAIR_LAYOUT:
+        raise ValueError("validation-pair row layout mismatch")
+    if manifest.get("validation_pair_ordering") != [
+        "query_track_id", "candidate_track_id"
+    ]:
+        raise ValueError("validation-pair ordering mismatch")
+    pair_count = int(manifest.get("validation_pair_count", 0))
+    group_row_count = int(manifest.get("validation_group_row_count", 0))
+    if pair_count <= 0 or group_row_count < pair_count:
+        raise ValueError("validation-pair manifest counts are invalid")
     with Path(thresholds_path).open("r", encoding="utf-8") as stream:
         thresholds = json.load(stream)
     if thresholds.get("artifact_type") != "set_b_validation_thresholds":
