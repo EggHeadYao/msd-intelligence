@@ -327,9 +327,8 @@ The validator must not hard-code dimension 128.
 
 ## Validate L1-1 feature sanity
 
-Compare cleaned and scaled pre-PCA cosine similarity with the final selected-PCA
-cosine similarity on the same same-artist, same-release, and matched-random
-pairs:
+Compare cleaned and scaled pre-PCA cosine similarity with the canonical PCA-128
+cosine similarity on the same same-artist, same-release, and matched-random pairs:
 
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
@@ -337,7 +336,7 @@ spark-submit --master 'local[6]' --driver-memory 5g \
   --mode l1 \
   --raw-input parquets_new/prepared/song_audio_features_raw.parquet \
   --songs-metadata parquets_new/prepared/songs_metadata.parquet \
-  --output parquets_new/merlin/audio-var90 \
+  --output parquets_new/merlin/audio \
   --pair-count 10000 \
   --bootstrap-samples 2000 \
   --seed 42 \
@@ -349,7 +348,15 @@ Spark session. The default `--mode artifact` preserves the fast standalone
 encoder-validation workflow.
 
 The validator must use the saved preprocessing parameters, scaler, PCA model,
-and `selected_k`. It must not fit another model.
+and `selected_k`. It must not fit another model. Non-128 experiment artifacts
+can run `--mode artifact`, but cannot run formal `l1` or `all` validation because
+the frozen L1-1 contract compares pre-PCA with PCA-128.
+
+The same frozen preprocessing contract is reused by C3 when it reconstructs
+cleaned pre-PCA vectors for Set-B and Set-C validation groups. Changing C1
+feature order, medians, clipping, time-signature encoding, scaler statistics, or
+dimension metadata therefore requires the corresponding manifest contract to
+change; downstream code must never silently refit these values.
 
 `validation_report.json` should include:
 
@@ -367,7 +374,8 @@ and `selected_k`. It must not fit another model.
 
 ```text
 parquets_new/merlin/
-├── audio-fixed128/
+├── audio/                 # canonical full PCA-128 encoder and FAISS index
+├── audio-fixed128/        # optional comparison run
 ├── audio-var90/
 ├── audio-var95/
 └── audio-smoke/
@@ -386,3 +394,6 @@ Compare at least:
 * Hedges' g and confidence intervals.
 * Retrieval recall or top-K neighbor preservation.
 * FAISS index size and query latency.
+
+C3 discovers only `parquets_new/merlin/audio`. The comparison directories are
+isolated experiments and are not runtime candidates.
