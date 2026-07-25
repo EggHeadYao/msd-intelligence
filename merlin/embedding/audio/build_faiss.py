@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,7 +27,6 @@ from merlin.embedding.audio.artifacts import (
     remove_path,
     replace_artifact,
     sha256_path,
-    validate_c1_manifest,
     write_json_atomic,
 )
 from merlin.embedding.audio.columns import CONTRACT_VERSION
@@ -117,64 +115,6 @@ def spark_path(path: Path) -> str:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
-
-
-def encoder_contract(output_dir: Path) -> tuple[int, str, int]:
-    metadata_path = output_dir / "audio_encoder_metadata.json"
-    require(
-        metadata_path.exists(),
-        f"missing C1 encoder metadata: {metadata_path}",
-    )
-
-    with metadata_path.open("r", encoding="utf-8") as handle:
-        metadata = json.load(handle)
-
-    required = (
-        "run_id",
-        "shared_audio_contract_version",
-        "c1_feature_version",
-        "selected_k",
-        "embedding_format",
-        "row_count",
-    )
-    missing = [key for key in required if key not in metadata]
-    require(
-        not missing,
-        f"C1 encoder metadata missing keys: {missing}",
-    )
-
-    require(
-        metadata["shared_audio_contract_version"] == CONTRACT_VERSION,
-        "wrong audio contract",
-    )
-    require(
-        int(metadata["c1_feature_version"]) == 2,
-        "wrong C1 feature version",
-    )
-
-    selected_k = int(metadata["selected_k"])
-    require(
-        selected_k > 0,
-        "C1 selected PCA dimension must be positive",
-    )
-
-    max_components = metadata.get("max_components")
-    if max_components is not None:
-        require(
-            selected_k <= int(max_components),
-            "C1 selected dimension exceeds fitted PCA dimension",
-        )
-
-    require(
-        metadata["embedding_format"] == "array<float32>",
-        "wrong embedding format",
-    )
-
-    expected_rows = int(metadata["row_count"])
-    require(expected_rows > 0, "C1 metadata row count must be positive")
-
-    validate_c1_manifest(output_dir, metadata)
-    return selected_k, str(metadata["run_id"]), expected_rows
 
 
 def read_embeddings(
