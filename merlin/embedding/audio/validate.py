@@ -786,6 +786,25 @@ def build_report(
             "shared_audio_contract_version": encoder_metadata["shared_audio_contract_version"],
             "c1_feature_version": encoder_metadata["c1_feature_version"],
         },
+        "encoder": {
+            "selection_mode": encoder_metadata.get("selection_mode") or (
+                "fixed_k"
+                if encoder_metadata.get("fixed_k") is not None
+                else "target_variance"
+            ),
+            "target_variance": encoder_metadata.get("target_variance"),
+            "fixed_k": encoder_metadata.get("fixed_k"),
+            "fitted_k": int(encoder_metadata["max_components"]),
+            "selected_k": int(encoder_metadata["selected_k"]),
+            "selected_cumulative_explained_variance": float(
+                encoder_metadata.get(
+                    "selected_cumulative_explained_variance",
+                    encoder_metadata["cumulative_explained_variance"][
+                        int(encoder_metadata["selected_k"]) - 1
+                    ],
+                )
+            ),
+        },
         "integrity": {
             "embedding_rows": output_rows,
             "eligible_rows": base_rows,
