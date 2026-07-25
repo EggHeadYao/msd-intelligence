@@ -7,7 +7,7 @@ from typing import Iterable
 import numpy as np
 from pyspark import cloudpickle
 
-from .features import Point
+from .features import Point, point_batches
 
 cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
@@ -47,14 +47,15 @@ def partition_statistics(
     loss_sum = 0.0
     gradient = np.zeros_like(weights)
     intercept_gradient = 0.0
-    for _, _, _, label, features in rows:
-        residual = float(np.dot(features, weights) + intercept - label)
-        losses, derivatives = residual_terms(np.asarray([residual]), loss, delta)
-        derivative = float(derivatives[0])
-        count += 1
-        loss_sum += float(losses[0])
-        gradient += derivative * features
-        intercept_gradient += derivative
+    for points in point_batches(rows):
+        features = np.stack([row[4] for row in points])
+        labels = np.asarray([row[3] for row in points], dtype=np.float64)
+        residuals = features @ weights + intercept - labels
+        losses, derivatives = residual_terms(residuals, loss, delta)
+        count += len(points)
+        loss_sum += float(np.sum(losses, dtype=np.float64))
+        gradient += features.T @ derivatives
+        intercept_gradient += float(np.sum(derivatives, dtype=np.float64))
     if count:
         yield Statistics(count, loss_sum, gradient, intercept_gradient)
 
