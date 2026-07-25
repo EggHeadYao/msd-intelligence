@@ -477,6 +477,7 @@ def validate_frozen_preprocess_contract(
     time_columns = (*time_columns, TIME_SIGNATURE_UNKNOWN_COLUMN)
     if tuple(metadata["time_signature_columns"]) != time_columns:
         raise ValueError("frozen time_signature_columns do not match their values")
+
     candidates = build_feature_columns(time_columns)
     dropped = tuple(metadata["dropped_features"])
     if len(dropped) != len(set(dropped)) or not set(dropped).issubset(candidates):
