@@ -28,11 +28,14 @@ def train(config: dict, spark: SparkSession, overwrite: bool = False) -> Path:
     concatenate = config["representation"] == "t90_rff"
     training = frame_points(frame.where(F.col("split") == "train")).mapPartitions(
         lambda rows: transform_partition(rows, transform, concatenate)
-    ).persist(StorageLevel.MEMORY_AND_DISK)
+    ).persist(StorageLevel.DISK_ONLY)
     validation = frame_points(frame.where(F.col("split") == "validation")).mapPartitions(
         lambda rows: transform_partition(rows, transform, concatenate)
-    ).persist(StorageLevel.MEMORY_AND_DISK)
+    ).persist(StorageLevel.DISK_ONLY)
     train_mean = float(frame.where(F.col("split") == "train").agg(F.avg("normalized_year")).first()[0])
+    if training.count() != counts["train"] or validation.count() != counts["validation"]:
+        raise ValueError("transformed split counts differ from input")
+    frame.unpersist()
     dimension = transform.output_dimension + (transform.input_dimension if concatenate else 0)
     result = fit(training, validation, dimension, train_mean, config)
     weights = np.asarray(result["weights"], dtype=np.float64)
@@ -60,5 +63,5 @@ def train(config: dict, spark: SparkSession, overwrite: bool = False) -> Path:
         {"configuration": config, "counts": counts, "spark_version": spark.version,
          "spark_master": spark.sparkContext.master, "total_seconds": time.perf_counter() - started},
     )
-    predictions.unpersist(); training.unpersist(); validation.unpersist(); frame.unpersist()
+    predictions.unpersist(); training.unpersist(); validation.unpersist()
     return output
