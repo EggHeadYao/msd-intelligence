@@ -236,11 +236,13 @@ It should check:
 
 ## Build FAISS
 
+Build the canonical production index from the formal encoder:
+
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/build_faiss.py \
-  --input parquets_new/merlin/audio-var90/song_embeddings_audio.parquet \
-  --output parquets_new/merlin/audio-var90 \
+  --input parquets_new/merlin/audio/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio \
   --shuffle-partitions 64
 ```
 
@@ -263,17 +265,22 @@ Inner product equals cosine similarity because embeddings are L2-normalized.
 
 ### Partial FAISS index
 
-Using (with isolated output names):
+To build a limited index, use isolated output names, for example:
 
 ```bash
---limit 10000
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/build_faiss.py \
+  --input parquets_new/merlin/audio-smoke/song_embeddings_audio.parquet \
+  --output parquets_new/merlin/audio-smoke \
+  --limit 10000 \
+  --index-name index_audio_partial.faiss \
+  --track-ids-name index_audio_partial_track_ids.parquet \
+  --manifest-name index_audio_partial_manifest.json
 ```
 
-The command must also provide non-default `--index-name`, `--track-ids-name`,
-and `--manifest-name` values when writing into the production audio directory.
-
-builds an index over only the first 10,000 embeddings after sorting by
-`track_id`. The manifest records:
+This indexes the first 10,000 embeddings after sorting by `track_id`. When a
+limited build targets the production directory, all three names must differ
+from their canonical counterparts. The manifest records:
 
 ```json
 {
@@ -286,12 +293,25 @@ Do not treat a partial index as a production artifact.
 
 ## Validate FAISS
 
+Canonical validation uses the default names and requires PCA-128:
+
+```bash
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/validate_faiss.py \
+  --output parquets_new/merlin/audio \
+  --expected-rows 1000000 \
+  --shuffle-partitions 64
+```
+
+An isolated noncanonical experiment must opt in explicitly:
+
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/validate_faiss.py \
   --embeddings parquets_new/merlin/audio-var90/song_embeddings_audio.parquet \
   --output parquets_new/merlin/audio-var90 \
   --expected-rows 1000000 \
+  --allow-noncanonical-dimension \
   --shuffle-partitions 64
 ```
 
