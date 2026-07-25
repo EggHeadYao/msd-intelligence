@@ -23,8 +23,10 @@ from pyspark.sql.types import ArrayType, FloatType
 
 from merlin.embedding.audio.artifacts import (
     C1_MANIFEST_NAME,
+    ENCODER_METADATA_NAME,
     sha256_path,
     validate_c1_manifest,
+    validate_encoder_contract,
 )
 from merlin.embedding.audio.columns import (
     CONTRACT_VERSION,
@@ -96,6 +98,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Smoke-only mode: report fewer than the required pairs instead of failing.",
     )
+    parser.add_argument(
+        "--allow-noncanonical-dimension",
+        action="store_true",
+        help="Allow an isolated artifact-only smoke run whose PCA dimension is not 128.",
+    )
     return parser.parse_args()
 
 
@@ -124,7 +131,7 @@ def read_metadata(path: Path) -> dict[str, Any]:
 def validate_layout(output_dir: Path) -> None:
     required = (
         "song_embeddings_audio.parquet",
-        "audio_encoder_metadata.json",
+        ENCODER_METADATA_NAME,
         "pca_model",
         C1_MANIFEST_NAME,
         "scaler_model",
@@ -133,7 +140,11 @@ def validate_layout(output_dir: Path) -> None:
     require(not missing, f"audio output missing files: {missing}")
 
 
-def validate_metadata(metadata: dict[str, Any]) -> int:
+def validate_metadata(
+    metadata: dict[str, Any],
+    *,
+    require_canonical_dimension: bool = True,
+) -> int:
     required = (
         "merlin_schema_version",
         "shared_audio_contract_version",
@@ -153,6 +164,9 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
         "permanent_dropped_fields",
         "feature_order_sha256",
         "embedding_format",
+        "target_variance",
+        "fixed_k",
+        "max_components",
         "selected_k",
         "explained_variance",
         "cumulative_explained_variance",
@@ -166,7 +180,11 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     )
     missing = [key for key in required if key not in metadata]
     require(not missing, f"metadata missing keys: {missing}")
-    selected_k = int(metadata["selected_k"])
+    encoder = validate_encoder_contract(
+        metadata,
+        require_canonical_dimension=require_canonical_dimension,
+    )
+    selected_k = encoder.selected_k
     require(metadata["merlin_schema_version"] == "3.0", "wrong MERLIN schema version")
     require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")
     require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
@@ -176,7 +194,6 @@ def validate_metadata(metadata: dict[str, Any]) -> int:
     require(int(metadata["merlin_array_feature_count"]) == 552, "array feature count mismatch")
     require(int(metadata["merlin_raw_view_count"]) == 563, "raw view count mismatch")
     require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
-    require(selected_k == 128, "C1 embedding dimension must be 128")
     require(len(metadata["feature_columns"]) == int(metadata["feature_count"]), "feature_count mismatch")
     producer = metadata["producer"]
     require(isinstance(producer, dict), "invalid C1 producer")
@@ -869,9 +886,15 @@ def main() -> None:
         require(args.bootstrap_samples > 0, "bootstrap_samples must be positive")
         require(args.reproduction_tolerance > 0.0, "reproduction_tolerance must be positive")
     validate_layout(args.output)
-    encoder_metadata_path = args.output / "audio_encoder_metadata.json"
+    encoder_metadata_path = args.output / ENCODER_METADATA_NAME
     metadata = read_metadata(encoder_metadata_path)
-    selected_k = validate_metadata(metadata)
+    require_canonical_dimension = (
+        args.mode in {"l1", "all"} or not args.allow_noncanonical_dimension
+    )
+    selected_k = validate_metadata(
+        metadata,
+        require_canonical_dimension=require_canonical_dimension,
+    )
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
