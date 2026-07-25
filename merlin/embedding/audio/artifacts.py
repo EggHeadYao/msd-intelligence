@@ -127,6 +127,56 @@ def _validated_variance_curve(
     return cumulative
 
 
+def _validate_selection(
+    metadata: dict[str, Any],
+    contract: EncoderContract,
+    cumulative: Sequence[float],
+) -> None:
+    declared_mode = metadata.get("selection_mode")
+    target = metadata["target_variance"]
+    fixed_k = metadata["fixed_k"]
+    selection_mode = declared_mode or (
+        "fixed_k" if fixed_k is not None else "target_variance"
+    )
+    if selection_mode == "fixed_k":
+        if declared_mode is not None:
+            _require(target is None, "fixed-k C1 metadata cannot contain target variance")
+        _require(fixed_k is not None, "fixed-k C1 metadata is missing fixed k")
+        _require(int(fixed_k) == contract.selected_k, "fixed-k C1 selection mismatch")
+        if "target_variance_reached" in metadata:
+            _require(
+                metadata["target_variance_reached"] is True,
+                "fixed-k C1 target status must be true",
+            )
+        return
+    if selection_mode != "target_variance":
+        raise ValueError("C1 selection mode is invalid")
+    _require(fixed_k is None, "target-variance C1 metadata cannot contain fixed k")
+    _require(target is not None, "target-variance C1 metadata is missing its target")
+    target_value = float(target)
+    _require(
+        math.isfinite(target_value) and 0.0 < target_value <= 1.0,
+        "C1 target variance is invalid",
+    )
+    reached = cumulative[contract.selected_k - 1] >= target_value
+    if "target_variance_reached" in metadata:
+        _require(
+            bool(metadata["target_variance_reached"]) == reached,
+            "C1 target variance status mismatch",
+        )
+    if reached:
+        _require(
+            contract.selected_k == 1
+            or cumulative[contract.selected_k - 2] < target_value,
+            "C1 did not select the smallest dimension reaching target variance",
+        )
+    else:
+        _require(
+            contract.selected_k == contract.fitted_k,
+            "unreached C1 target must select fitted k",
+        )
+
+
 def write_json_atomic(data: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
