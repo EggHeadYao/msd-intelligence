@@ -79,10 +79,14 @@ spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/train_pca.py \
   --input parquets_new/prepared/song_audio_features_raw.parquet \
   --parent-manifest parquets_new/prepared/prepared_manifest.json \
-  --output parquets_new/merlin/audio-fixed128 \
+  --output parquets_new/merlin/audio \
   --fixed-k 128 \
+  --max-components 128 \
   --shuffle-partitions 64
 ```
+
+Omitting both selection options also defaults to fixed 128 dimensions. The
+explicit arguments above make the formal contract visible in the command.
 
 ## Smoke test
 
