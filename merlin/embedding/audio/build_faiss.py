@@ -5,7 +5,11 @@ import json
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
 from uuid import uuid4
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import faiss
 import numpy as np
@@ -14,23 +18,24 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
-from artifacts import (
+from merlin.embedding.audio.artifacts import (
+    AUDIO_INDEX_NAME,
+    AUDIO_MAPPING_NAME,
+    ENCODER_METADATA_NAME,
+    FAISS_MANIFEST_NAME,
+    FAISS_MANIFEST_VERSION,
     remove_path,
     replace_artifact,
     sha256_path,
     validate_c1_manifest,
     write_json_atomic,
 )
-from columns import CONTRACT_VERSION
+from merlin.embedding.audio.columns import CONTRACT_VERSION
 
 
 TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
 DEFAULT_AUDIO_DIR = Path("parquets_new/merlin/audio")
-FAISS_MANIFEST_NAME = "index_audio_manifest.json"
-FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build the MERLIN C1 audio FAISS index."
@@ -41,10 +46,10 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_AUDIO_DIR / "song_embeddings_audio.parquet",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_AUDIO_DIR)
-    parser.add_argument("--index-name", default="index_audio.faiss")
+    parser.add_argument("--index-name", default=AUDIO_INDEX_NAME)
     parser.add_argument(
         "--track-ids-name",
-        default="index_audio_track_ids.parquet",
+        default=AUDIO_MAPPING_NAME,
     )
     parser.add_argument("--manifest-name", default=FAISS_MANIFEST_NAME)
     parser.add_argument("--batch-size", type=int, default=10_000)
@@ -74,8 +79,8 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
         if Path(value).name != value:
             raise ValueError(f"{option} name must be a file name, not a path")
     default_names = (
-        "index_audio.faiss",
-        "index_audio_track_ids.parquet",
+        AUDIO_INDEX_NAME,
+        AUDIO_MAPPING_NAME,
         FAISS_MANIFEST_NAME,
     )
     requested_names = (
