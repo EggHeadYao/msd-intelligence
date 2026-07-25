@@ -2,20 +2,32 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import shutil
 import subprocess
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from columns import CONTRACT_VERSION, PREPARED_AUDIO_COLUMNS, SHARED_FEATURE_COLUMNS
+from merlin.embedding.audio.columns import (
+    CONTRACT_VERSION,
+    PREPARED_AUDIO_COLUMNS,
+    SHARED_FEATURE_COLUMNS,
+)
 
 C1_MANIFEST_NAME = "c1_manifest.json"
+ENCODER_METADATA_NAME = "audio_encoder_metadata.json"
+CANONICAL_EMBEDDING_DIMENSION = 128
+AUDIO_INDEX_NAME = "index_audio.faiss"
+AUDIO_MAPPING_NAME = "index_audio_track_ids.parquet"
+FAISS_MANIFEST_NAME = "index_audio_manifest.json"
+FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
 C1_OUTPUTS = {
     "embeddings": "song_embeddings_audio.parquet",
     "scaler_model": "scaler_model",
     "pca_model": "pca_model",
-    "encoder_metadata": "audio_encoder_metadata.json",
+    "encoder_metadata": ENCODER_METADATA_NAME,
 }
 C1_SUCCESS_MARKERS = {
     "embeddings": ("_SUCCESS",),
