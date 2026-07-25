@@ -24,6 +24,7 @@ from merlin.embedding.audio.artifacts import (
     ENCODER_METADATA_NAME,
     FAISS_MANIFEST_NAME,
     FAISS_MANIFEST_VERSION,
+    load_encoder_contract,
     remove_path,
     replace_artifact,
     sha256_path,
@@ -295,9 +296,20 @@ def main() -> None:
     run_id = str(uuid4())
     args.output.mkdir(parents=True, exist_ok=True)
 
-    expected_dim, encoder_run_id, encoder_row_count = encoder_contract(
-        args.output
+    canonical_index = (
+        args.output.resolve() == DEFAULT_AUDIO_DIR.resolve()
+        and args.limit == 0
+        and args.index_name == AUDIO_INDEX_NAME
+        and args.track_ids_name == AUDIO_MAPPING_NAME
+        and args.manifest_name == FAISS_MANIFEST_NAME
     )
+    _metadata, encoder = load_encoder_contract(
+        args.output,
+        require_canonical_dimension=canonical_index,
+    )
+    expected_dim = encoder.selected_k
+    encoder_run_id = encoder.run_id
+    encoder_row_count = encoder.row_count
 
     spark = create_spark(args.shuffle_partitions)
     spark.sparkContext.setLogLevel("WARN")
@@ -371,9 +383,7 @@ def main() -> None:
         staged_index = staging / args.index_name
         faiss.write_index(index, str(staged_index))
 
-        encoder_metadata_path = (
-            args.output / "audio_encoder_metadata.json"
-        )
+        encoder_metadata_path = args.output / ENCODER_METADATA_NAME
         manifest = {
             "artifact_type": "merlin_faiss_index",
             "manifest_version": FAISS_MANIFEST_VERSION,
