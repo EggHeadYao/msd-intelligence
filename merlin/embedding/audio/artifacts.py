@@ -37,6 +37,59 @@ C1_SUCCESS_MARKERS = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class EncoderContract:
+    run_id: str
+    row_count: int
+    selected_k: int
+    fitted_k: int
+
+    @property
+    def canonical_dimension(self) -> bool:
+        return (
+            self.selected_k == CANONICAL_EMBEDDING_DIMENSION
+            and self.fitted_k == CANONICAL_EMBEDDING_DIMENSION
+        )
+
+
+def _encoder_dimensions(metadata: dict[str, Any]) -> EncoderContract:
+    required = {
+        "run_id",
+        "shared_audio_contract_version",
+        "c1_feature_version",
+        "embedding_format",
+        "row_count",
+        "target_variance",
+        "fixed_k",
+        "selected_k",
+        "max_components",
+        "explained_variance",
+        "cumulative_explained_variance",
+    }
+    missing = sorted(required - set(metadata))
+    _require(not missing, f"C1 encoder metadata missing keys: {missing}")
+    _require(
+        metadata["shared_audio_contract_version"] == CONTRACT_VERSION,
+        "wrong audio contract",
+    )
+    _require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
+    _require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
+    contract = EncoderContract(
+        str(metadata["run_id"]),
+        int(metadata["row_count"]),
+        int(metadata["selected_k"]),
+        int(metadata["max_components"]),
+    )
+    _require(bool(contract.run_id), "C1 encoder run_id must be non-empty")
+    _require(contract.row_count > 0, "C1 metadata row count must be positive")
+    _require(contract.selected_k > 0, "C1 selected PCA dimension must be positive")
+    _require(
+        contract.fitted_k >= contract.selected_k,
+        "C1 selected dimension exceeds fitted PCA dimension",
+    )
+    return contract
+
+
 def write_json_atomic(data: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
