@@ -32,10 +32,6 @@ from merlin.embedding.audio.columns import (
     CONTRACT_VERSION,
     PREPARED_AUDIO_COLUMNS,
     TRACK_ID_COLUMN,
-    TIME_SIGNATURE_UNKNOWN_COLUMN,
-    TIME_SIGNATURE_VALUES,
-    build_feature_columns,
-    time_signature_one_hot_column,
 )
 from merlin.embedding.audio.l1_stats import (
     bootstrap_hedges_g_ci,
@@ -48,6 +44,7 @@ from merlin.embedding.audio.preprocess import (
     SEGMENT_MEDIAN_BATCH_SIZE,
     add_scalar_availability,
     apply_frozen_preprocess,
+    validate_frozen_preprocess_contract,
 )
 from merlin.embedding.audio.train_pca import (
     FEATURES_COLUMN,
@@ -219,18 +216,9 @@ def validate_metadata(
     feature_text = "\n".join(metadata["feature_columns"])
     expected_hash = hashlib.sha256(feature_text.encode("utf-8")).hexdigest()
     require(metadata["feature_order_sha256"] == expected_hash, "feature order hash mismatch")
-    preprocess = metadata["preprocess"]
-    time_values = tuple(preprocess.get("time_signature_values", ()))
-    require(time_values == TIME_SIGNATURE_VALUES, "time signature values mismatch")
-    time_columns = tuple(time_signature_one_hot_column(value) for value in time_values)
-    time_columns = (*time_columns, TIME_SIGNATURE_UNKNOWN_COLUMN)
-    require(tuple(preprocess.get("time_signature_columns", ())) == time_columns, "time columns mismatch")
-    candidates = build_feature_columns(time_columns)
-    dropped = tuple(preprocess.get("dropped_features", ()))
-    require(len(dropped) == len(set(dropped)), "duplicate dropped features")
-    require(set(dropped).issubset(candidates), "unknown dropped features")
-    expected_features = tuple(column for column in candidates if column not in set(dropped))
-    require(tuple(metadata["feature_columns"]) == expected_features, "feature schema is not canonical")
+    validate_frozen_preprocess_contract(
+        metadata["feature_columns"], metadata["preprocess"]
+    )
     require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
     cumulative_128 = float(metadata["cumulative_explained_variance"][selected_k - 1])
     require(
