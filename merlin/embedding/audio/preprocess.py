@@ -8,7 +8,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
 from pyspark.sql import functions as F
 
-from columns import (
+from merlin.embedding.audio.columns import (
     CLIPPED_CONTINUOUS_COLUMNS,
     FADE_RATIO_COLUMNS,
     KEY_CIRCULAR_COLUMNS,
@@ -392,7 +392,7 @@ def fill_segment_missing_values_frozen(
     return df.select(*expressions)
 
 
-def add_log_clipped_features_frozen(df: DataFrame, bounds: Any) -> DataFrame:
+def _frozen_clip_bounds(bounds: Any) -> dict[str, tuple[float, float]]:
     if not isinstance(bounds, dict) or set(bounds) != {"loudness", "tempo", "duration"}:
         raise ValueError("frozen preprocessing clip_bounds keys mismatch")
     frozen: dict[str, tuple[float, float]] = {}
@@ -404,6 +404,11 @@ def add_log_clipped_features_frozen(df: DataFrame, bounds: Any) -> DataFrame:
         if not math.isfinite(low) or not math.isfinite(high) or low > high:
             raise ValueError(f"frozen preprocessing clip_bounds[{column}] is invalid")
         frozen[column] = (low, high)
+    return frozen
+
+
+def add_log_clipped_features_frozen(df: DataFrame, bounds: Any) -> DataFrame:
+    frozen = _frozen_clip_bounds(bounds)
 
     availability = {"loudness": "has_loudness", "tempo": "has_tempo", "duration": "has_duration"}
     for source, target in zip(("tempo", "duration"), LOG_CONTINUOUS_COLUMNS):
@@ -438,12 +443,11 @@ def fill_scalar_missing_values_frozen(df: DataFrame, medians: Any) -> DataFrame:
     return df
 
 
-def apply_frozen_preprocess(
-    df: DataFrame,
+def validate_frozen_preprocess_contract(
     feature_columns: Sequence[str],
     metadata: Any,
-) -> DataFrame:
-    """Apply training-time preprocessing without fitting any statistics."""
+) -> None:
+    """Validate saved preprocessing statistics without executing a Spark transform."""
     if not isinstance(metadata, dict):
         raise ValueError("frozen preprocessing metadata must be an object")
     required = {
@@ -459,6 +463,42 @@ def apply_frozen_preprocess(
     if missing:
         raise ValueError(f"frozen preprocessing metadata missing keys: {missing}")
 
+    _frozen_clip_bounds(metadata["clip_bounds"])
+    _require_finite_mapping(
+        metadata["segment_medians"], SEGMENT_FEATURE_COLUMNS, "segment_medians"
+    )
+    _require_finite_mapping(
+        metadata["scalar_medians"], _scalar_median_columns(), "scalar_medians"
+    )
+    time_values = tuple(metadata["time_signature_values"])
+    if time_values != TIME_SIGNATURE_VALUES:
+        raise ValueError("frozen time_signature_values are not canonical")
+    time_columns = tuple(time_signature_one_hot_column(value) for value in time_values)
+    time_columns = (*time_columns, TIME_SIGNATURE_UNKNOWN_COLUMN)
+    if tuple(metadata["time_signature_columns"]) != time_columns:
+        raise ValueError("frozen time_signature_columns do not match their values")
+    candidates = build_feature_columns(time_columns)
+    dropped = tuple(metadata["dropped_features"])
+    if len(dropped) != len(set(dropped)) or not set(dropped).issubset(candidates):
+        raise ValueError("frozen dropped_features are invalid")
+    expected_features = tuple(
+        column for column in candidates if column not in set(dropped)
+    )
+    if tuple(feature_columns) != expected_features:
+        raise ValueError("frozen feature_columns do not match preprocessing metadata")
+    epsilon = float(metadata["near_zero_range_epsilon"])
+    if not math.isfinite(epsilon) or epsilon != NEAR_ZERO_RANGE_EPSILON:
+        raise ValueError("frozen near_zero_range_epsilon is invalid")
+
+
+def apply_frozen_preprocess(
+    df: DataFrame,
+    feature_columns: Sequence[str],
+    metadata: Any,
+) -> DataFrame:
+    """Apply training-time preprocessing without fitting any statistics."""
+    validate_frozen_preprocess_contract(feature_columns, metadata)
+
     df = fill_segment_missing_values_frozen(df, metadata["segment_medians"])
     df = add_scalar_availability(df)
     df = add_fade_ratios(df)
@@ -467,21 +507,6 @@ def apply_frozen_preprocess(
         df,
         metadata["time_signature_values"],
     )
-    if tuple(metadata["time_signature_values"]) != time_values:
-        raise ValueError("frozen time_signature_values are not canonical integers")
-    if tuple(metadata["time_signature_columns"]) != time_columns:
-        raise ValueError("frozen time_signature_columns do not match their values")
     df = add_log_clipped_features_frozen(df, metadata["clip_bounds"])
     df = fill_scalar_missing_values_frozen(df, metadata["scalar_medians"])
-
-    candidates = build_feature_columns(time_columns)
-    dropped = tuple(metadata["dropped_features"])
-    if len(dropped) != len(set(dropped)) or not set(dropped).issubset(candidates):
-        raise ValueError("frozen dropped_features are invalid")
-    expected_features = tuple(column for column in candidates if column not in set(dropped))
-    if tuple(feature_columns) != expected_features:
-        raise ValueError("frozen feature_columns do not match preprocessing metadata")
-    epsilon = float(metadata["near_zero_range_epsilon"])
-    if not math.isfinite(epsilon) or epsilon < 0.0:
-        raise ValueError("frozen near_zero_range_epsilon is invalid")
     return df
