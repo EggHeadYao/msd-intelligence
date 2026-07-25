@@ -3,6 +3,33 @@
 This module trains and validates the PCA-based MERLIN audio encoder and builds a
 FAISS nearest-neighbor index over the resulting embeddings.
 
+## Module layout
+
+This directory is a Python package. Internal and downstream code should import
+through `merlin.embedding.audio`; the scripts also retain direct
+`spark-submit merlin/embedding/audio/<script>.py` entry points.
+
+* `columns.py` defines the shared audio schema and feature order.
+* `preprocess.py` fits preprocessing statistics and reapplies the frozen contract.
+* `train_pca.py` fits the scaler/PCA encoder and publishes embeddings.
+* `build_faiss.py` builds the audio nearest-neighbor index.
+* `artifacts.py` owns encoder, manifest, lineage, and canonical-path contracts.
+* `validate.py` validates encoder artifacts and runs the formal L1-1 experiment.
+* `validate_faiss.py` validates index, mapping, manifest, and source alignment.
+* `l1_stats.py` contains the statistical routines used by L1-1 validation.
+
+## Canonical contract
+
+The production C1 directory is `parquets_new/merlin/audio`. Formal C1 and L1-1
+artifacts must fit and select exactly 128 PCA components, contain all one million
+tracks, and use the canonical filenames below. C3 consumes this contract
+alongside C2's independent graph contract, using metadata and manifests rather
+than producer implementation details.
+
+Limited or non-128-dimensional runs are experiments. They must use an isolated
+output directory and cannot be used for formal L1-1, the production FAISS
+loader, or C3 training/evaluation.
+
 ## PCA dimension selection
 
 Training supports two mutually exclusive selection modes:
