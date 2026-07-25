@@ -5,7 +5,11 @@ import hashlib
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
 from uuid import uuid4
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pyspark import StorageLevel
 from pyspark.ml.feature import PCA, StandardScaler, VectorAssembler
@@ -15,8 +19,10 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import NumericType, StringType
 
-from artifacts import (
+from merlin.embedding.audio.artifacts import (
+    CANONICAL_EMBEDDING_DIMENSION,
     C1_MANIFEST_NAME,
+    ENCODER_METADATA_NAME,
     build_c1_manifest,
     code_provenance,
     load_prepared_manifest,
@@ -25,9 +31,10 @@ from artifacts import (
     remove_path,
     staging_directory,
     validate_c1_manifest,
+    validate_encoder_contract,
     write_json_atomic,
 )
-from columns import (
+from merlin.embedding.audio.columns import (
     CONTRACT_VERSION,
     MERLIN_ARRAY_FEATURE_COUNT,
     MERLIN_RAW_VIEW_COUNT,
@@ -36,14 +43,18 @@ from columns import (
     SHARED_FEATURE_COUNT,
     TRACK_ID_COLUMN,
 )
-from preprocess import SEGMENT_MEDIAN_BATCH_SIZE, preprocess_audio_features
+from merlin.embedding.audio.preprocess import (
+    SEGMENT_MEDIAN_BATCH_SIZE,
+    preprocess_audio_features,
+)
 
 
 FEATURES_COLUMN = "features"
 SCALED_FEATURES_COLUMN = "scaled_features"
 PCA_FEATURES_COLUMN = "pca_features"
 EMBEDDING_COLUMN = "embedding"
-DEFAULT_FIXED_K = 128
+DEFAULT_AUDIO_DIR = Path("parquets_new/merlin/audio")
+DEFAULT_FIXED_K = CANONICAL_EMBEDDING_DIMENSION
 DEFAULT_TARGET_MAX_COMPONENTS = 256
 MODEL_READY_SCHEMA_VERSION = "c1_model_ready_v2"
 
@@ -61,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("parquets_new/merlin/audio"),
+        default=DEFAULT_AUDIO_DIR,
     )
 
     selection_group = parser.add_mutually_exclusive_group()
@@ -126,6 +137,20 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
 
     if args.shuffle_partitions <= 0:
         raise ValueError("shuffle partitions must be positive")
+
+    canonical_configuration = (
+        args.target_variance is None
+        and args.fixed_k == CANONICAL_EMBEDDING_DIMENSION
+        and args.max_components == CANONICAL_EMBEDDING_DIMENSION
+        and args.limit == 0
+    )
+    if (
+        args.output.resolve() == DEFAULT_AUDIO_DIR.resolve()
+        and not canonical_configuration
+    ):
+        raise ValueError(
+            "partial or non-128 C1 experiments must use a non-production output directory"
+        )
 
     return args
 
@@ -467,9 +492,16 @@ def main() -> None:
             "scaler_std": vector_to_list(scaler_model.std),
         }
 
+        validate_encoder_contract(
+            metadata,
+            require_canonical_dimension=(
+                args.output.resolve() == DEFAULT_AUDIO_DIR.resolve()
+            ),
+        )
+
         write_json_atomic(
             metadata,
-            staging / "audio_encoder_metadata.json",
+            staging / ENCODER_METADATA_NAME,
         )
         manifest = build_c1_manifest(staging, metadata)
         write_json_atomic(manifest, staging / C1_MANIFEST_NAME)
