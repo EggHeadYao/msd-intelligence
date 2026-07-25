@@ -177,6 +177,42 @@ def _validate_selection(
         )
 
 
+def validate_encoder_contract(
+    metadata: dict[str, Any],
+    *,
+    require_canonical_dimension: bool = False,
+) -> EncoderContract:
+    """Validate the dimension contract shared by C1 producers and consumers."""
+    contract = _encoder_dimensions(metadata)
+    cumulative = _validated_variance_curve(metadata, contract)
+    _validate_selection(metadata, contract, cumulative)
+    if require_canonical_dimension:
+        _require(
+            contract.canonical_dimension,
+            "canonical C1 artifacts require a fitted and selected PCA dimension of 128",
+        )
+    return contract
+
+
+def load_encoder_contract(
+    output: str | Path,
+    *,
+    require_canonical_dimension: bool = False,
+) -> tuple[dict[str, Any], EncoderContract]:
+    output_dir = Path(output)
+    metadata_path = output_dir / ENCODER_METADATA_NAME
+    if not metadata_path.is_file():
+        raise FileNotFoundError(f"missing C1 encoder metadata: {metadata_path}")
+    with metadata_path.open("r", encoding="utf-8") as stream:
+        metadata = json.load(stream)
+    contract = validate_encoder_contract(
+        metadata,
+        require_canonical_dimension=require_canonical_dimension,
+    )
+    validate_c1_manifest(output_dir, metadata)
+    return metadata, contract
+
+
 def write_json_atomic(data: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
