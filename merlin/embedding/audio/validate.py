@@ -7,7 +7,11 @@ import json
 import math
 import warnings
 from pathlib import Path
+import sys
 from typing import Any, Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pyspark import StorageLevel
 from pyspark.ml.feature import PCAModel, StandardScalerModel, VectorAssembler
@@ -17,8 +21,12 @@ from pyspark.sql import Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, FloatType
 
-from artifacts import C1_MANIFEST_NAME, sha256_path, validate_c1_manifest
-from columns import (
+from merlin.embedding.audio.artifacts import (
+    C1_MANIFEST_NAME,
+    sha256_path,
+    validate_c1_manifest,
+)
+from merlin.embedding.audio.columns import (
     CONTRACT_VERSION,
     PREPARED_AUDIO_COLUMNS,
     TRACK_ID_COLUMN,
@@ -27,19 +35,19 @@ from columns import (
     build_feature_columns,
     time_signature_one_hot_column,
 )
-from l1_stats import (
+from merlin.embedding.audio.l1_stats import (
     bootstrap_hedges_g_ci,
     classify_validation,
     distribution,
     hedges_g,
     preservation_summary,
 )
-from preprocess import (
+from merlin.embedding.audio.preprocess import (
     SEGMENT_MEDIAN_BATCH_SIZE,
     add_scalar_availability,
     apply_frozen_preprocess,
 )
-from train_pca import (
+from merlin.embedding.audio.train_pca import (
     FEATURES_COLUMN,
     PCA_FEATURES_COLUMN,
     SCALED_FEATURES_COLUMN,
