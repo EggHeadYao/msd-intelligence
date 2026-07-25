@@ -1,0 +1,222 @@
+\subsection{Models and Distributed Learning}
+
+\begin{frame}{Baseline: SGD Ridge sets the linear reference}
+
+\begin{columns}[T,onlytextwidth]
+	\column{.52\textwidth}
+	\textbf{One global linear model}
+	\[
+		\widehat y_i = \mathbf{w}^{\mathsf T}\mathbf{x}_i+b
+	\]
+	\[
+		J(\mathbf{w},b)=
+		\frac{1}{N}\sum_{i=1}^{N}(\widehat y_i-y_i)^2
+		+\lambda\lVert\mathbf{w}\rVert_2^2
+	\]
+	\[
+		\mathbf{w}\leftarrow
+		\mathbf{w}-\eta\nabla_{\mathbf{w}}J
+	\]
+
+	\column{.43\textwidth}
+	\textbf{Why it is the baseline}
+	\begin{itemize}
+		\setlength{\itemsep}{4pt}
+		\item The squared error directly penalizes year error.
+		\item L2 shrinkage stabilizes correlated audio features.
+		\item The objective is convex, so SGD has a clear target.
+		\item Coefficients give an interpretable linear reference.
+	\end{itemize}
+\end{columns}
+
+\medskip
+
+\begin{block}{Limitation}
+One hyperplane cannot express thresholds or feature interactions: the effect of a
+feature is fixed for every song and every era.~{\scriptsize\autocite{hoerl1970ridge}}
+\end{block}
+
+\end{frame}
+
+\begin{frame}{LightGBM: nonlinear boosting improves the baseline}
+
+\small
+
+\begin{columns}[T,onlytextwidth]
+	\column{.52\textwidth}
+	\textbf{Build an additive tree model}
+	\[
+		F_M(\mathbf{x})=F_0(\mathbf{x})
+		+\sum_{m=1}^{M}\eta f_m(\mathbf{x})
+	\]
+	Each tree $f_m$ follows the negative loss gradient left by the
+	previous trees.
+
+	\medskip
+	\textbf{Robust Huber objective}
+	\[
+	\rho_\delta(r)=
+	\begin{cases}
+		\frac{1}{2}r^2,& |r|\leq\delta,\\
+		\delta(|r|-\frac{1}{2}\delta),& |r|>\delta.
+	\end{cases}
+	\]
+
+	\column{.43\textwidth}
+	\textbf{Advantages over Ridge}
+	\begin{itemize}
+		\setlength{\itemsep}{2pt}
+		\item Tree splits learn nonlinear thresholds.
+		\item A path through a tree represents feature interactions.
+		\item Huber loss limits the influence of extreme year errors.
+		\item Histogram splits reduce the cost of searching continuous values.
+	\end{itemize}
+\end{columns}
+
+\medskip
+\begin{block}{Practical effect}
+Trees learn conditional rules such as ``loudness matters only at a certain
+tempo''; Ridge can only add two fixed linear effects.
+~{\scriptsize\autocite{ke2017lightgbm,huber1964robust}}
+\end{block}
+
+\end{frame}
+
+\begin{frame}[shrink=12]{Ordinal-MoE: order plus era-specific experts}
+
+\small
+
+\begin{columns}[T,onlytextwidth]
+	\column{.53\textwidth}
+	\textbf{CORAL ordinal head: respect year order}
+	\[
+	\begin{aligned}
+	p_k&=\sigma(s-\theta_k),\\
+	\widehat y_{\rm ord}&=1922+\sum_{k=0}^{88}p_k
+	\end{aligned}
+	\]
+	Here $p_k$ is the probability of passing ordered year threshold $k$.
+
+	\medskip
+	\textbf{Mixture of decade experts}
+	\[
+	\begin{aligned}
+	\mathbf{g}&=\operatorname{softmax}(W_g\mathbf{x}+\mathbf{b}_g),\\
+	\widehat y_{\rm moe}&=\sum_j g_j e_j(\mathbf{x})
+	\end{aligned}
+	\]
+	The gate $g_j$ chooses how strongly each decade expert contributes.
+
+	\column{.42\textwidth}
+	\textbf{Why go beyond one tree ensemble?}
+	\begin{itemize}
+		\setlength{\itemsep}{2pt}
+		\item Ordered thresholds prevent treating years as unrelated labels.
+		\item Experts learn different feature--year relations by era.
+		\item Soft gates allow gradual transitions between decades.
+		\item Bounded expert outputs avoid implausible years.
+	\end{itemize}
+\end{columns}
+
+\medskip
+\[
+\begin{aligned}
+\widehat y&=0.20\,\widehat y_{\rm ord}+0.80\,\widehat y_{\rm moe},\\
+\mathcal L&=.35\mathcal L_{\rm ord}+.45\rho_\delta\\
+&\quad +.12\mathcal L_{\rm decade}+\text{auxiliary terms}.
+\end{aligned}
+\]
+{\small Multiple supervised heads combine global order with local era
+specialization.~{\scriptsize\autocite{cao2020coral,jacobs1991experts}}}
+
+\end{frame}
+
+\begin{frame}{Frozen test: three models, two kinds of improvement}
+
+\begin{center}
+\setlength{\tabcolsep}{12pt}
+\begin{tabular}{l r r}
+	\textbf{Model} & \textbf{MAE (years)} & \textbf{RMSE (years)} \\
+	\hline
+	SGD Ridge & $6.7465$ & $9.4074$ \\
+	LightGBM & $5.8339$ & $\mathbf{8.3633}$ \\
+	Ordinal-MoE blend & $\mathbf{5.4745}$ & $8.8143$ \\
+\end{tabular}
+\end{center}
+
+\medskip
+
+\begin{columns}[T,onlytextwidth]
+	\column{.47\textwidth}
+	\begin{block}{Lowest average absolute error}
+	Ordinal-MoE reduces Ridge MAE by $18.9\%$. Its ordered, era-specific
+	structure improves the typical prediction.
+	\end{block}
+
+	\column{.47\textwidth}
+	\begin{block}{Lowest large-error penalty}
+	LightGBM reduces Ridge RMSE by $11.1\%$ and has the best RMSE, indicating
+	better control of the largest errors.
+	\end{block}
+\end{columns}
+
+\medskip
+{\small Same frozen artist-disjoint test split: $49{,}436$ tracks. Model
+selection and preprocessing use no test labels.}
+
+\end{frame}
+
+\begin{frame}{Spark makes the model comparison scale}
+
+\small
+
+\begin{center}
+\textbf{Parquet} $\longrightarrow$
+\textbf{Spark partitions} $\longrightarrow$
+\textbf{local computation} $\longrightarrow$
+\textbf{aggregate/update} $\longrightarrow$
+\textbf{distributed metrics}
+\end{center}
+
+\[
+\nabla J =
+\frac{1}{N}\sum_{p=1}^{P}
+\underbrace{\sum_{i\in\mathcal P_p}\nabla\ell_i}_{\text{computed on partition }p}
++\lambda\mathbf{w}
+\]
+
+\begin{columns}[T,onlytextwidth]
+	\small
+	\column{.30\textwidth}
+	\textbf{SGD Ridge}
+	\begin{itemize}
+		\setlength{\itemsep}{2pt}
+		\item Local residual and gradient sums.
+		\item Reduce before one global update.
+	\end{itemize}
+
+	\column{.30\textwidth}
+	\textbf{LightGBM}
+	\begin{itemize}
+		\setlength{\itemsep}{2pt}
+		\item SynapseML coordinates workers.
+		\item Distributed split histograms.
+	\end{itemize}
+
+	\column{.34\textwidth}
+	\textbf{Ordinal-MoE}
+	\begin{itemize}
+		\setlength{\itemsep}{2pt}
+		\item Broadcast current head parameters.
+		\item Reduce analytic mini-batch gradients.
+	\end{itemize}
+\end{columns}
+
+\smallskip
+\begin{block}{Why Spark matters}
+The $515$k-track feature matrix stays partitioned instead of being collected
+to one driver; caching and parallel computation support repeated training and
+consistent evaluation.~{\scriptsize\autocite{zaharia2012rdd}}
+\end{block}
+
+\end{frame}
