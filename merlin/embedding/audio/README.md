@@ -196,17 +196,33 @@ The numbers above are illustrative.
 
 ## Validate an encoder
 
+Validate the canonical encoder artifact:
+
+```bash
+spark-submit --master 'local[6]' --driver-memory 5g \
+  merlin/embedding/audio/validate.py \
+  --mode artifact \
+  --output parquets_new/merlin/audio \
+  --expected-rows 1000000 \
+  --shuffle-partitions 64
+```
+
+For an isolated dimension-selection experiment, opt in explicitly:
+
 ```bash
 spark-submit --master 'local[6]' --driver-memory 5g \
   merlin/embedding/audio/validate.py \
   --mode artifact \
   --output parquets_new/merlin/audio-var90 \
   --expected-rows 1000000 \
+  --allow-noncanonical-dimension \
   --shuffle-partitions 64
 ```
 
 The validator must read the expected embedding dimension from
 `audio_encoder_metadata.json["selected_k"]`. It must not assume dimension 128.
+The explicit flag is required because only fitted-and-selected PCA-128 artifacts
+are eligible for the canonical C1 path and formal L1-1 evidence.
 
 It should check:
 
@@ -216,7 +232,7 @@ It should check:
 * Embeddings contain no null, NaN, or infinite values.
 * Embeddings are L2-normalized.
 * The fitted PCA model dimension equals `max_components`.
-* The final embedding dimension equals `selected_k`.
+* The published embedding dimension equals `selected_k`.
 
 ## Build FAISS
 
