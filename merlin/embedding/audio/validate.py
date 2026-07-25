@@ -278,11 +278,11 @@ def load_and_validate_models(
     require(scaler.getWithMean() and scaler.getWithStd(), "wrong scaler configuration")
     require(scaler.getInputCol() == "features", "wrong scaler input column")
     require(scaler.getOutputCol() == "scaled_features", "wrong scaler output column")
-    require(pca.getK() == 128, "wrong PCA component count")
+    require(pca.getK() == int(metadata["max_components"]), "wrong PCA component count")
     require(pca.getInputCol() == "scaled_features", "wrong PCA input column")
     require(pca.getOutputCol() == "pca_features", "wrong PCA output column")
     require(pca.pc.numRows == int(metadata["feature_count"]), "PCA row count mismatch")
-    require(pca.pc.numCols == int(metadata["selected_k"]), "PCA column count mismatch")
+    require(pca.pc.numCols == int(metadata["max_components"]), "PCA column count mismatch")
     return scaler, pca
 
 
