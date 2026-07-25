@@ -57,7 +57,7 @@ def evaluate(args: argparse.Namespace, spark: SparkSession) -> dict:
         raise ValueError("model and input feature order differ")
     frame = load_feature_frame(
         spark, args.input, contract, args.max_rows, ("test",)
-    ).repartition(args.partitions)
+    ).repartition(args.partitions).cache()
     counts = split_counts(frame)
     if counts.get("test", 0) <= 0:
         raise ValueError("test split is empty")
@@ -93,6 +93,7 @@ def evaluate(args: argparse.Namespace, spark: SparkSession) -> dict:
         },
     )
     predictions.unpersist()
+    frame.unpersist()
     return metrics
 
 
