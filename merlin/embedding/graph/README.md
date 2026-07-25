@@ -1,6 +1,6 @@
 # MERLIN C2 Graph Retrieval
 
-MERLIN C2 is a full-catalog, graph-based similar-track retriever. It converts the canonical Million Song Dataset relation graph into deterministic typed random walks, learns one 128-dimensional Word2Vec vector per track, and serves exact cosine-equivalent retrieval through a normalized inner-product FAISS index.
+MERLIN C2 is a graph-based similar-track retriever over the full Million Song Dataset catalog. It converts the canonical relation graph into deterministic typed random walks, exports one 128-dimensional Word2Vec root vector per track for coverage auditing, and serves context-bearing vectors through a normalized inner-product FAISS index.
 
 The implementation also includes a masked-artist retrieval experiment. That experiment removes the direct artist relation from 10,000 query tracks, rebuilds the complete C2 representation, and measures whether release and other graph structure can reconstruct the hidden same-artist neighborhood.
 
@@ -122,6 +122,12 @@ Both path arrays use the fixed order `[P1, P2, P3, P4]`. `termination_reason` is
 Each embedding is the learned vector of the root track token; the implementation does not average all tokens in a walk. Vectors are converted to float32 and L2-normalized. Training fails on incomplete coverage, duplicate IDs, missing root vectors, non-finite values, zero norms, incorrect dimensions, or normalization errors.
 
 `build_faiss.py` sorts embeddings by `node_id`, validates them in bounded batches, and builds an exact `IndexFlatIP`. Because all vectors are unit-normalized, inner product is equivalent to cosine similarity. The row mapping is written from the same sorted table used to populate FAISS, so row identity never depends on Parquet file order.
+
+### Serving coverage gate
+
+An exported root vector is not automatically a valid graph-retrieval signal. A track that appears only in length-one sentences has no Word2Vec context pair; its vector may remain in the encoder export for coverage auditing, but it must not enter the candidate-serving FAISS mapping. For Ranker features, `has_graph` is true only when both tracks have context-bearing vectors present in that serving mapping.
+
+The currently persisted full-catalog FAISS bundle contains all 1,000,000 exported root vectors. Before the multi-view Candidate stage consumes it, a context-count audit must produce the valid serving ID set and rebuild or filter the FAISS index and mapping. The final audit must report encoder export coverage and valid serving coverage separately.
 
 The durable graph bundle contains:
 
