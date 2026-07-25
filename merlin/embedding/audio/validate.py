@@ -22,6 +22,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, FloatType
 
 from merlin.embedding.audio.artifacts import (
+    CANONICAL_EMBEDDING_DIMENSION,
     C1_MANIFEST_NAME,
     ENCODER_METADATA_NAME,
     sha256_path,
@@ -219,12 +220,38 @@ def validate_metadata(
     validate_frozen_preprocess_contract(
         metadata["feature_columns"], metadata["preprocess"]
     )
-    require(len(metadata["explained_variance"]) >= selected_k, "explained_variance shorter than selected_k")
-    cumulative_128 = float(metadata["cumulative_explained_variance"][selected_k - 1])
-    require(
-        bool(metadata["pca_128_below_90_percent"]) == (cumulative_128 < 0.90),
-        "PCA-128 variance diagnostic mismatch",
-    )
+    cumulative = metadata["cumulative_explained_variance"]
+    selected_cumulative = float(cumulative[selected_k - 1])
+    if "selected_cumulative_explained_variance" in metadata:
+        require(
+            abs(
+                float(metadata["selected_cumulative_explained_variance"])
+                - selected_cumulative
+            )
+            <= 1e-12,
+            "selected cumulative variance mismatch",
+        )
+    if encoder.fitted_k >= CANONICAL_EMBEDDING_DIMENSION:
+        cumulative_128 = float(cumulative[CANONICAL_EMBEDDING_DIMENSION - 1])
+        if "pca_128_cumulative_explained_variance" in metadata:
+            require(
+                abs(
+                    float(metadata["pca_128_cumulative_explained_variance"])
+                    - cumulative_128
+                )
+                <= 1e-12,
+                "PCA-128 cumulative variance mismatch",
+            )
+        require(
+            bool(metadata["pca_128_below_90_percent"]) == (cumulative_128 < 0.90),
+            "PCA-128 variance diagnostic mismatch",
+        )
+    else:
+        require(
+            metadata.get("pca_128_cumulative_explained_variance") is None
+            and metadata["pca_128_below_90_percent"] is None,
+            "PCA-128 diagnostics must be unavailable when fewer than 128 components were fitted",
+        )
     require(len(metadata["scaler_mean"]) == int(metadata["feature_count"]), "scaler_mean length mismatch")
     require(len(metadata["scaler_std"]) == int(metadata["feature_count"]), "scaler_std length mismatch")
     return selected_k
