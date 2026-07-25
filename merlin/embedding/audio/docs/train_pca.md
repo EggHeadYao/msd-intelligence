@@ -31,6 +31,7 @@ flowchart TD
 - Persist the processed, scaled, and normalized stages on disk so Spark actions reuse them.
 - Assemble and standardize the feature vector.
 - Train PCA and select the final embedding dimension.
+- Reserve fitted-and-selected 128D output for the canonical audio directory; partial or alternative-dimension experiments must use an isolated output directory.
 - Project each song, normalize the embedding, and write the embedding table.
 - Save the scaler, PCA model, and encoder metadata for reproducibility.
 - Write into a sibling staging directory and publish only after all success markers exist.

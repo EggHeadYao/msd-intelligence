@@ -7,6 +7,7 @@
 - `collect_scalar_medians_and_feature_ranges(df, feature_columns)`: Computes scalar fill medians and finite feature ranges in one Spark aggregation.
 - `select_non_constant_features(ranges, columns)`: Removes constant features before StandardScaler and PCA.
 - `preprocess_audio_features(df)`: Runs the full preprocessing sequence and returns the transformed DataFrame, selected feature columns, and metadata.
+- `validate_frozen_preprocess_contract(feature_columns, metadata)`: Validates saved medians, clip bounds, category columns, dropped features, and the fixed near-zero threshold without running Spark transformations.
 - `preprocess.apply_frozen_preprocess(...)`: Replays the saved training transform without recomputing medians, quantiles, or dropped features; used by L1-1 validation and C3 Set-B group construction.
 - `metadata.clip_bounds`: Stores clipping thresholds for reproducibility.
 - `metadata.segment_medians`: Stores segment fill values used for missing segment aggregates.
