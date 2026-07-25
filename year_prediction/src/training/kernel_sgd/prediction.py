@@ -8,7 +8,7 @@ from pyspark import cloudpickle
 from pyspark.sql import DataFrame, functions as F
 from pyspark.sql.types import DoubleType, IntegerType, StringType, StructField, StructType
 
-from .features import Point
+from .features import Point, point_batches
 
 cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
@@ -32,11 +32,18 @@ SCHEMA = StructType(
 def prediction_partition(
     rows: Iterable[Point], weights: np.ndarray, intercept: float
 ) -> Iterator[tuple]:
-    for track, artist, year, label, features in rows:
-        normalized = float(np.dot(features, weights) + intercept)
-        raw_year = MIN_YEAR + YEAR_SPAN * normalized
-        clipped = min(MAX_YEAR, max(MIN_YEAR, raw_year))
-        yield track, artist, year, label, normalized, raw_year, clipped, abs(clipped - year)
+    for values in point_batches(rows):
+        features = np.stack([row[4] for row in values])
+        normalized = features @ weights + intercept
+        raw_years = MIN_YEAR + YEAR_SPAN * normalized
+        clipped_years = np.clip(raw_years, MIN_YEAR, MAX_YEAR)
+        for row, prediction, raw_year, clipped in zip(
+            values, normalized, raw_years, clipped_years
+        ):
+            yield (
+                row[0], row[1], row[2], row[3], float(prediction), float(raw_year),
+                float(clipped), abs(float(clipped) - row[2]),
+            )
 
 
 def quality_metrics(predictions: DataFrame) -> dict:

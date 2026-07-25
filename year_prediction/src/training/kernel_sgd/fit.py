@@ -4,17 +4,27 @@ import math
 
 import numpy as np
 
+from .features import point_batches
 from .objective import distributed_statistics
 
 
 def validation_metrics(points, weights: np.ndarray, intercept: float) -> dict:
-    def error(row):
-        raw = 1922.0 + 89.0 * float(np.dot(row[4], weights) + intercept)
-        prediction = min(2011.0, max(1922.0, raw))
-        difference = prediction - row[2]
-        return 1, abs(difference), difference * difference
+    def partition_metrics(rows):
+        count = 0
+        absolute = 0.0
+        squared = 0.0
+        for values in point_batches(rows):
+            features = np.stack([row[4] for row in values])
+            years = np.asarray([row[2] for row in values], dtype=np.float64)
+            raw = 1922.0 + 89.0 * (features @ weights + intercept)
+            differences = np.clip(raw, 1922.0, 2011.0) - years
+            count += len(values)
+            absolute += float(np.abs(differences).sum())
+            squared += float(np.dot(differences, differences))
+        if count:
+            yield count, absolute, squared
 
-    count, absolute, squared = points.map(error).fold(
+    count, absolute, squared = points.mapPartitions(partition_metrics).fold(
         (0, 0.0, 0.0),
         lambda left, right: tuple(a + b for a, b in zip(left, right)),
     )
