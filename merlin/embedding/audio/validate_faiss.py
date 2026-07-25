@@ -157,26 +157,6 @@ def validate_manifest(
     return manifest
 
 
-def read_selected_k(output_dir: Path) -> int:
-    metadata_path = output_dir / "audio_encoder_metadata.json"
-    require(metadata_path.exists(), f"missing C1 encoder metadata: {metadata_path}")
-    with metadata_path.open("r", encoding="utf-8") as handle:
-        metadata = json.load(handle)
-    required = (
-        "shared_audio_contract_version",
-        "c1_feature_version",
-        "selected_k",
-        "embedding_format",
-    )
-    missing = [key for key in required if key not in metadata]
-    require(not missing, f"C1 encoder metadata missing keys: {missing}")
-    require(metadata["shared_audio_contract_version"] == CONTRACT_VERSION, "wrong audio contract")
-    require(int(metadata["c1_feature_version"]) == 2, "wrong C1 feature version")
-    require(int(metadata["selected_k"]) == 128, "C1 FAISS dimension must be 128")
-    require(metadata["embedding_format"] == "array<float32>", "wrong embedding format")
-    return 128
-
-
 def validate_mapping(mapping: DataFrame, expected_rows: int) -> None:
     stats = mapping.agg(
         F.count("*").alias("rows"),
