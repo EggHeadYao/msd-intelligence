@@ -1,21 +1,33 @@
 # Spark LightGBM evaluation
 
-The evaluator loads a native SynapseML LightGBM model, verifies the saved
-594-feature order hash, reads only the fixed test split, and computes metrics
-with Spark aggregations.
+Use the `SYNAPSEML`, `PYSPARK_PYTHON`, and `LD_LIBRARY_PATH` exports from the training guide.
+
+Run artifact validation before opening the fixed test split:
 
 ```bash
-SYNAPSEML=com.microsoft.azure:synapseml_2.12:1.1.3
-
-spark-submit \
-  --master spark://spark-master:7077 \
+p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
+  --master 'local[2]' \
+  --driver-memory 4g \
   --packages "$SYNAPSEML" \
-  year_prediction/src/evaluation/lightgbm/evaluate.py \
-  --model-root artifacts/lightgbm \
-  --input data/year_prediction/full_tabular.parquet \
-  --manifest data/year_prediction/manifest.json \
-  --output artifacts/lightgbm-test
+  --conf spark.hadoop.fs.defaultFS=file:/// \
+  p1team02/year_prediction/src/evaluation/lightgbm/validate.py \
+  --model-root parquets/year_prediction/models/lightgbm-full
 ```
 
-Outputs include partitioned predictions, overall and decade metrics, and Spark
-run metadata.
+Evaluate the frozen model once on test artists:
+
+```bash
+p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
+  --master 'local[2]' \
+  --driver-memory 4g \
+  --packages "$SYNAPSEML" \
+  --conf spark.hadoop.fs.defaultFS=file:/// \
+  p1team02/year_prediction/src/evaluation/lightgbm/evaluate.py \
+  --model-root parquets/year_prediction/models/lightgbm-full \
+  --input parquets/year_prediction/features/full_tabular.parquet \
+  --manifest parquets/year_prediction/features/manifest.json \
+  --output parquets/year_prediction/results/experiment_a/lightgbm/lightgbm-full/test \
+  --partitions 32
+```
+
+The output contains test predictions, MAE/RMSE and decade metrics, plus Spark run metadata. The evaluator rejects a model whose saved 594-feature order hash does not match the input manifest.
