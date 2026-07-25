@@ -21,6 +21,7 @@ from merlin.embedding.audio.artifacts import (
     ENCODER_METADATA_NAME,
     FAISS_MANIFEST_NAME,
     FAISS_MANIFEST_VERSION,
+    load_encoder_contract,
     sha256_path,
 )
 from merlin.embedding.audio.columns import CONTRACT_VERSION
@@ -104,10 +105,14 @@ def validate_manifest(
     output_dir: Path,
     index_path: Path,
     mapping_path: Path,
+    manifest_name: str,
     expected_rows: int,
-) -> None:
-    manifest_path = output_dir / FAISS_MANIFEST_NAME
-    metadata_path = output_dir / "audio_encoder_metadata.json"
+    expected_dimension: int,
+    encoder_run_id: str,
+    encoder_rows: int,
+) -> dict[str, Any]:
+    manifest_path = output_dir / manifest_name
+    metadata_path = output_dir / ENCODER_METADATA_NAME
     require(manifest_path.exists(), f"missing FAISS manifest: {manifest_path}")
     with manifest_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
@@ -127,19 +132,29 @@ def validate_manifest(
     require(int(manifest.get("c1_feature_version", -1)) == 2, "wrong manifest feature version")
     require(manifest.get("index_type") == "IndexFlatIP", "wrong FAISS index type")
     require(manifest.get("metric") == "inner_product", "wrong FAISS metric")
-    require(int(manifest.get("dimension", -1)) == 128, "wrong manifest dimension")
+    require(
+        int(manifest.get("dimension", -1)) == expected_dimension,
+        "wrong manifest dimension",
+    )
     require(int(manifest.get("row_count", -1)) == expected_rows, "wrong manifest row count")
     require(manifest.get("index_file") == index_path.name, "wrong manifest index path")
     require(manifest.get("mapping_path") == mapping_path.name, "wrong manifest mapping path")
     require(manifest.get("index_sha256") == sha256_path(index_path), "wrong index hash")
     require(manifest.get("mapping_sha256") == sha256_path(mapping_path), "wrong mapping hash")
-    with metadata_path.open("r", encoding="utf-8") as handle:
-        metadata = json.load(handle)
     require(
         manifest.get("encoder_metadata_sha256") == sha256_path(metadata_path),
         "wrong encoder metadata hash",
     )
-    require(manifest.get("encoder_run_id") == metadata.get("run_id"), "encoder run mismatch")
+    require(manifest.get("encoder_run_id") == encoder_run_id, "encoder run mismatch")
+    partial = manifest.get("partial_index") is True
+    requested_limit = int(manifest.get("requested_limit", -1))
+    if partial:
+        require(requested_limit > 0, "partial FAISS manifest has no positive limit")
+        require(expected_rows <= min(requested_limit, encoder_rows), "partial FAISS row count mismatch")
+    else:
+        require(requested_limit == 0, "complete FAISS manifest has a requested limit")
+        require(expected_rows == encoder_rows, "complete FAISS index does not cover the encoder")
+    return manifest
 
 
 def read_selected_k(output_dir: Path) -> int:
@@ -240,16 +255,31 @@ def main() -> None:
     args = parse_args()
     require(args.queries > 0, "query count must be positive")
     require(args.top_k > 0, "top-k must be positive")
+    require(args.expected_rows > 0, "expected rows must be positive")
+    for name in (args.index_name, args.track_ids_name, args.manifest_name):
+        require(Path(name).name == name and bool(name), "FAISS artifact names must be file names")
     index_path = args.output / args.index_name
     mapping_path = args.output / args.track_ids_name
     require(index_path.exists(), f"missing FAISS index: {index_path}")
     require(mapping_path.exists(), f"missing track-id mapping: {mapping_path}")
-    validate_manifest(args.output, index_path, mapping_path, args.expected_rows)
+    _metadata, encoder = load_encoder_contract(
+        args.output,
+        require_canonical_dimension=not args.allow_noncanonical_dimension,
+    )
+    validate_manifest(
+        args.output,
+        index_path,
+        mapping_path,
+        args.manifest_name,
+        args.expected_rows,
+        encoder.selected_k,
+        encoder.run_id,
+        encoder.row_count,
+    )
 
     index = faiss.read_index(str(index_path))
     validate_index_runtime(index)
-    selected_k = read_selected_k(args.output)
-    require(index.d == selected_k, "FAISS index dimension does not match selected_k")
+    require(index.d == encoder.selected_k, "FAISS index dimension does not match selected_k")
     require(index.ntotal == args.expected_rows, "FAISS index size mismatch")
 
     spark = create_spark(args.shuffle_partitions)
