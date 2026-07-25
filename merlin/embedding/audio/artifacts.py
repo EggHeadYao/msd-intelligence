@@ -90,6 +90,43 @@ def _encoder_dimensions(metadata: dict[str, Any]) -> EncoderContract:
     return contract
 
 
+def _validated_variance_curve(
+    metadata: dict[str, Any],
+    contract: EncoderContract,
+) -> tuple[float, ...]:
+    explained = tuple(float(value) for value in metadata["explained_variance"])
+    cumulative = tuple(
+        float(value) for value in metadata["cumulative_explained_variance"]
+    )
+    _require(
+        len(explained) == contract.fitted_k,
+        "C1 explained variance length mismatch",
+    )
+    _require(
+        len(cumulative) == contract.fitted_k,
+        "C1 cumulative variance length mismatch",
+    )
+    _require(
+        all(math.isfinite(value) and value >= 0.0 for value in explained),
+        "C1 explained variance contains invalid values",
+    )
+    _require(
+        all(math.isfinite(value) for value in cumulative)
+        and all(left <= right for left, right in zip(cumulative, cumulative[1:])),
+        "C1 cumulative variance is invalid",
+    )
+    if "selected_cumulative_explained_variance" in metadata:
+        _require(
+            abs(
+                float(metadata["selected_cumulative_explained_variance"])
+                - cumulative[contract.selected_k - 1]
+            )
+            <= 1e-12,
+            "C1 selected cumulative variance mismatch",
+        )
+    return cumulative
+
+
 def write_json_atomic(data: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
