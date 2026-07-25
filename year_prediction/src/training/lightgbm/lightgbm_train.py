@@ -22,6 +22,7 @@ from lightgbm_metrics import (  # noqa: E402
     decade_metrics,
     regression_metrics,
 )
+from lightgbm_config import file_sha256, read_config  # noqa: E402
 from spark_io import write_native_model, write_parquet_parts  # noqa: E402
 from spark_common import (  # noqa: E402
     assert_artist_isolation,
@@ -38,7 +39,11 @@ DEFAULT_OUTPUT = Path("parquets/year_prediction/models/lightgbm-spark-v1")
 
 
 def parse_args() -> argparse.Namespace:
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config", type=Path)
+    preliminary, _ = config_parser.parse_known_args()
     parser = argparse.ArgumentParser(description="Train distributed SynapseML LightGBM")
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -58,6 +63,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-bin", type=int, default=255)
     parser.add_argument("--huber-alpha", type=float, default=0.80)
     parser.add_argument("--seed", type=int, default=472)
+    if preliminary.config is not None:
+        allowed = {action.dest for action in parser._actions}
+        parser.set_defaults(**read_config(preliminary.config, allowed))
     return parser.parse_args()
 
 
@@ -150,11 +158,11 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         contract,
         args.max_rows_per_split,
         ("train", "validation", "test") if args.evaluate_test else ("train", "validation"),
-    ).repartition(max(1, args.num_tasks or spark.sparkContext.defaultParallelism))
+    ).repartition(max(1, args.num_tasks or spark.sparkContext.defaultParallelism)).cache()
     assert_artist_isolation(frame)
     counts = split_counts(frame)
-    train = frame.where(F.col("split") == "train").cache()
-    validation = frame.where(F.col("split") == "validation").cache()
+    train = frame.where(F.col("split") == "train")
+    validation = frame.where(F.col("split") == "validation")
     fit_frame = train.withColumn("is_validation", F.lit(False)).unionByName(
         validation.withColumn("is_validation", F.lit(True))
     )
@@ -181,9 +189,8 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         },
     )
     parameters = {
-        name: value
+        name: str(value) if isinstance(value, Path) else value
         for name, value in vars(args).items()
-        if not isinstance(value, Path)
     }
     write_json(args.output / "arguments.json", parameters)
     metadata = {
@@ -196,9 +203,11 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         "total_seconds": time.perf_counter() - started,
         "test_read": args.evaluate_test,
     }
+    if args.config is not None:
+        metadata["configuration_path"] = str(args.config.resolve())
+        metadata["configuration_sha256"] = file_sha256(args.config)
     write_json(args.output / "run_metadata.json", metadata)
-    train.unpersist()
-    validation.unpersist()
+    frame.unpersist()
     return {"metrics": metrics, "metadata": metadata}
 
 
