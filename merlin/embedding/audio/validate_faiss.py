@@ -4,24 +4,31 @@ import argparse
 import json
 import warnings
 from pathlib import Path
+import sys
 from typing import Any, Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import faiss
 import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from artifacts import sha256_path
-from columns import CONTRACT_VERSION
+from merlin.embedding.audio.artifacts import (
+    AUDIO_INDEX_NAME,
+    AUDIO_MAPPING_NAME,
+    ENCODER_METADATA_NAME,
+    FAISS_MANIFEST_NAME,
+    FAISS_MANIFEST_VERSION,
+    sha256_path,
+)
+from merlin.embedding.audio.columns import CONTRACT_VERSION
 
 
 TRACK_ID_COLUMN = "track_id"
 EMBEDDING_COLUMN = "embedding"
 DEFAULT_AUDIO_DIR = Path("parquets_new/merlin/audio")
-FAISS_MANIFEST_NAME = "index_audio_manifest.json"
-FAISS_MANIFEST_VERSION = "merlin_faiss_index_v1"
-
-
 def validate_source_mapping(
     index: Any,
     queries: Sequence[tuple[int, str, Sequence[float]]],
@@ -53,12 +60,18 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_AUDIO_DIR / "song_embeddings_audio.parquet",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_AUDIO_DIR)
-    parser.add_argument("--index-name", default="index_audio.faiss")
-    parser.add_argument("--track-ids-name", default="index_audio_track_ids.parquet")
+    parser.add_argument("--index-name", default=AUDIO_INDEX_NAME)
+    parser.add_argument("--track-ids-name", default=AUDIO_MAPPING_NAME)
+    parser.add_argument("--manifest-name", default=FAISS_MANIFEST_NAME)
     parser.add_argument("--expected-rows", type=int, default=1_000_000)
     parser.add_argument("--queries", type=int, default=10)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--shuffle-partitions", type=int, default=64)
+    parser.add_argument(
+        "--allow-noncanonical-dimension",
+        action="store_true",
+        help="Allow an isolated smoke index whose encoder dimension is not 128.",
+    )
     return parser.parse_args()
 
 
