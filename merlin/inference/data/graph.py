@@ -67,16 +67,9 @@ def load_bfs_data(
 
 def load_artist_neighbors(graph_edges_path: str | Path) -> Mapping[str, Sequence[str]]:
     """Load only the directed artist-similarity adjacency for shared assembly."""
-    edges = _graph_edge_rows(graph_edges_path, "artist_similarity")
+    edges = parquet_rows(
+        graph_edges_path,
+        ("src_id", "dst_id"),
+        edge_type="artist_similarity",
+    )
     return build_bfs_data((), edges).artist_neighbors
-
-
-def _graph_edge_rows(path: str | Path, edge_type: str) -> Iterable[tuple[str, str]]:
-    yield from parquet_rows(path, ("src_id", "dst_id"), edge_type=edge_type)
-
-
-def _parquet_rows(
-    path: str | Path,
-    columns: tuple[str, str],
-) -> Iterable[tuple[str, str]]:
-    yield from parquet_rows(path, columns)
