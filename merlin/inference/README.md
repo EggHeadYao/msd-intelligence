@@ -1,34 +1,51 @@
-# MERLIN Pure-Python Inference
+# MERLIN C3 Ranker and Inference
 
 This package defines the stable boundary between C1/C2 artifacts, Person A's
-ranker output, and the online recommendation pipeline. Importing it does not
-require Spark or FAISS.
+ranker output, offline evaluation, and the online recommendation pipeline. Core
+contracts and online components are pure Python; high-volume preparation and
+training entry points may use Spark or FAISS.
 
 ## Package layout
 
-- `scripts/recall/` contains recall artifact, export, audit, and validation CLIs.
-- `scripts/ranker/` contains supervised dataset, feature, and Spark training CLIs.
-- `training/` implements weak labels, training pairs, and Set-B validation groups.
-- `ranking/` implements feature artifacts, LR serialization, lineage, and selection.
-- `runtime/` assembles and validates the final online inference pipeline.
-- Top-level modules contain the shared recall path, C1/C2 adapters, contracts, and I/O.
+- `artifacts/paths.py` defines canonical C1/C2/C3 locations; `integrity.py`
+  validates hashes and parent lineage; `io.py` owns JSON and Parquet IO.
+- `data/` loads catalog identity, projected graph adjacency, and artist tags.
+- `retrieval/faiss.py` owns FAISS access while `retrieval/retrievers.py`
+  implements Audio, Graph, BFS, and Tag candidate retrievers.
+- `recall/pipeline.py` implements online four-source recall;
+  `recall/streaming.py` implements bounded-memory batched recall for training.
+- `recall/policy.py` owns source quotas and `recall/pool.py` owns candidate-pool
+  serialization and validation; `recall/factory.py` assembles canonical recall.
+- `ranking/features/compute.py` computes pair signals while
+  `ranking/features/artifacts.py` owns raw-feature schemas and persistence.
+- `ranking/model.py` owns LR inference and model artifacts;
+  `ranking/selection.py` implements tuning selection.
+- `training/` implements the supervised split, weak labels, pair sampling, and
+  validation groups.
+- `evaluation/` freezes Set-C protocol rules and computes ranking statistics.
+- `runtime/` assembles and validates the production recommendation pipeline.
+- `scripts/recall/` and `scripts/ranker/` are the supported command-line entry
+  points; `scripts/support/` contains shared Spark scratch-space handling.
 
-The formal candidate export path and its dependencies intentionally remain at
-their established module locations under `scripts/recall/` and the package root.
+Code should import public package paths such as
+`merlin.inference.ranking.features`, `merlin.inference.retrieval`, and
+`merlin.inference.recall`. Older flat
+module names, numbered feature modules, and duplicate compatibility scripts are
+not part of the current interface.
 
 ## Flow
 
 1. `CandidateRetriever` implementations nominate Audio, Graph, BFS, and Tag candidates.
 2. `merge_candidates` unions candidates and preserves source evidence.
-3. `PairFeatureComputer` produces named `ranker-v2` pair features.
+3. `PairFeatureComputer` produces the canonical named pair features.
 4. `LogisticRanker` standardizes features and computes the raw LR margin.
-5. Candidates are sorted by raw margin to produce the final top 20.
+5. Candidates are sorted by raw margin to produce the top 20.
 
 `VectorRetriever` accepts an injected nearest-neighbor function so C1 and C2
 can expose their FAISS index without coupling this package to index construction.
 `BfsRetriever` consumes mappings derived from `artist_similarity_edges` and
 `track_artist`; `TagRetriever` uses artist-level terms from `artist_term`.
-Expanded song-level terms are historical v1 data and are not canonical input.
+Expanded song-level terms are not canonical input.
 
 The main pipeline does not apply MMR. It ranks the canonical candidate union by
 the LR raw margin and returns the top 20. MMR is deferred future work.
@@ -68,18 +85,27 @@ The supervised C3 artifacts are built in one direction only:
 split_manifest + split_assignments
   -> weak_label_thresholds + weak_positives
   -> candidate_pool + candidate_audit
-  -> training_pairs
-  -> raw_pair_features
+  -> tuning/training_pairs + tuning/raw_pair_features
   -> Set-B validation_group_thresholds + validation_group_positives
   -> validation_pairs + validation_raw_features
   -> tuning ranker schema + scaler + coefficients + training manifest
-  -> streamed final_training_pairs + final_raw_pair_features
-  -> final ranker coefficients with frozen Set-A preprocessing
+  -> streamed training_pairs + raw_pair_features
+  -> Full and no-hard-negative rankers with frozen Set-A preprocessing
+  -> frozen Set-C protocol
+  -> Set-C candidates + groups + raw features
+  -> one evaluation report
 ```
 
 Recall commands live under `scripts/recall`; supervised dataset, feature, and
 training commands live under `scripts/ranker`. Every CLI supports explicit
 paths; smoke outputs should be written outside the formal `ranker/` directory.
+
+Set-A-only datasets live under `parquets_new/merlin/ranker/tuning/`. The root
+`training_pairs.parquet` and `raw_pair_features.parquet` names are reserved for
+the canonical A+B+Remaining retrain datasets. This separates tuning inputs
+without encoding lifecycle words such as `final` in published filenames. The
+`final_retrain` value remains the manifest stage name because it distinguishes
+the frozen retrain protocol from Set-A tuning.
 
 High-volume row artifacts use Parquet with Zstandard compression by default,
 including split assignments, candidate pools, weak positives, training pairs,
@@ -94,9 +120,10 @@ labels; they never materialize one copy of the feature vector per validation
 group. Numeric feature columns are persisted as float32 and converted by Spark
 ML during assembly.
 
-The materialized candidate pools belong to Set-A tuning and Set-B validation.
-Final retraining does not persist a 980K-query candidate pool. The
-`build_training_pairs --stage final_retrain` branch applies the frozen Set-A
+The materialized candidate pools belong to Set-A tuning, Set-B validation, and
+the one-time Set-C evaluation. Retraining does not persist a 980K-query
+candidate pool. The `build_training_pairs --stage final_retrain` branch applies
+the frozen Set-A
 weak-label thresholds, recalls one bounded query batch, samples its negatives,
 reuses exact Audio/Graph recall scores, computes raw features, and writes only
 partitioned final pair and feature datasets. Spark reads those part files as
