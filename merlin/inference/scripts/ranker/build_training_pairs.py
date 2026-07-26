@@ -299,17 +299,19 @@ def _select_positives(
     return artist, positives
 
 
-def _final_positive_checks(
+def _positive_checks(
     query_id: str,
     artist: str | None,
     audio_cache: dict[str, float | None],
     audio,
     tag: TagRetriever,
-    computer: RankerV2FeatureComputer,
+    computer: RankerFeatureComputer,
     thresholds: Mapping[str, object],
 ):
     audio_threshold = float(thresholds["audio_cosine_p90"])
     tag_threshold = float(thresholds["tag_tfidf_cosine_p90"])
+    tag_cache: dict[str, float | None] = {}
+    tag_pair_cache: dict[str, float | None] = {}
 
     def audio_value(candidate_id: str) -> float | None:
         if candidate_id not in audio_cache:
