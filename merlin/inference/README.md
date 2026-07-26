@@ -1,37 +1,31 @@
-# MERLIN C3 Ranker and Inference
+# MERLIN C3 Ranking and Inference
 
-This package defines the stable boundary between C1/C2 artifacts, Person A's
-ranker output, offline evaluation, and the online recommendation pipeline. Core
+`merlin.inference` is the stable boundary between C1/C2 artifacts, C3 offline
+training and evaluation, and the production recommendation pipeline. Core
 contracts and online components are pure Python; high-volume preparation and
-training entry points may use Spark or FAISS.
+training entry points may use FAISS or Spark.
 
-## Package layout
+## Architecture
 
-- `artifacts/paths.py` defines canonical C1/C2/C3 locations; `integrity.py`
-  validates hashes and parent lineage; `io.py` owns JSON and Parquet IO.
-- `data/` loads catalog identity, projected graph adjacency, and artist tags.
-- `retrieval/faiss.py` owns FAISS access while `retrieval/retrievers.py`
-  implements Audio, Graph, BFS, and Tag candidate retrievers.
-- `recall/pipeline.py` implements online four-source recall;
-  `recall/streaming.py` implements bounded-memory batched recall for training.
-- `recall/policy.py` owns source quotas and `recall/pool.py` owns candidate-pool
-  serialization and validation; `recall/factory.py` assembles canonical recall.
-- `ranking/features/compute.py` computes pair signals while
-  `ranking/features/artifacts.py` owns raw-feature schemas and persistence.
-- `ranking/model.py` owns LR inference and model artifacts;
-  `ranking/selection.py` implements tuning selection.
-- `training/` implements the supervised split, weak labels, pair sampling, and
-  validation groups.
-- `evaluation/` freezes Set-C protocol rules and computes ranking statistics.
-- `runtime/` assembles and validates the production recommendation pipeline.
-- `scripts/recall/` and `scripts/ranker/` are the supported command-line entry
-  points; `scripts/support/` contains shared Spark scratch-space handling.
+```text
+                          C1 Audio FAISS
+                         /
+query track -> four-source recall -- C2 Graph FAISS -> candidate union
+                         \  BFS / Tag                    |
+                                                         v
+                                                canonical pair features
+                                                         |
+                                                         v
+                                                frozen Logistic Ranker
+                                                         |
+                                                         v
+                                                deterministic top 20
+```
 
-Code should import public package paths such as
-`merlin.inference.ranking.features`, `merlin.inference.retrieval`, and
-`merlin.inference.recall`. Older flat
-module names, numbered feature modules, and duplicate compatibility scripts are
-not part of the current interface.
+Recall nominates candidates and preserves source evidence. Feature computation
+then derives query/candidate signals independently of recall provenance. The
+ranker applies frozen Set-A preprocessing and scores every candidate by its raw
+LR margin. The production path does not apply MMR.
 
 ## Flow
 
