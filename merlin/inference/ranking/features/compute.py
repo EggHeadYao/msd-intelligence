@@ -412,24 +412,18 @@ class RankerFeatureComputer:
         bfs_raw: float | None,
         tags_raw: float | None,
     ) -> Mapping[str, float | None]:
-        query = self.tracks.get(query_track_id, TrackMetadataV2())
-        other = self.tracks.get(candidate_id, TrackMetadataV2())
-        has_release = query.release_id is not None and other.release_id is not None
-        has_year = query.year is not None and other.year is not None
-        year_gap_raw = float(abs(query.year - other.year)) if has_year else None
-        return {
-            "cos_audio": audio_raw,
-            "cos_graph": graph_raw,
-            "has_graph": float(graph_raw is not None),
-            "bfs_score": bfs_raw,
-            "has_bfs": float(bfs_raw is not None),
-            "tag_tfidf_cosine": tags_raw,
-            "has_tags": float(tags_raw is not None),
-            "same_release": float(has_release and query.release_id == other.release_id),
-            "has_release": float(has_release),
-            "year_gap": year_gap_raw,
-            "has_year": float(has_year),
-        }
+        return dict(zip(
+            RAW_FEATURE_ORDER,
+            self._raw_tuple(
+                query_track_id,
+                candidate_id,
+                audio_raw,
+                graph_raw,
+                bfs_raw,
+                tags_raw,
+            ),
+            strict=True,
+        ))
 
     def _fill(self, name: str, value: float | None) -> float:
         return self.fills.get(name) if value is None else value
