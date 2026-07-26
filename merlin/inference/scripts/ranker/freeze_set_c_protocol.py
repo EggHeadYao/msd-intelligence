@@ -68,3 +68,47 @@ def main() -> None:
         ("no_hard_neg", paths.no_hard_neg_pairs_manifest),
     ):
         with path.open("r", encoding="utf-8") as stream:
+            pair_manifest = json.load(stream)
+        if pair_manifest.get("stage") != "final_retrain":
+            raise ValueError(f"{variant} pair manifest is not a retrain")
+        pair_manifests[variant] = pair_manifest
+    full_counts = pair_manifests["full"].get("counts", {})
+    no_hard_counts = pair_manifests["no_hard_neg"].get("counts", {})
+    if (
+        pair_manifests["full"].get("query_count")
+        != pair_manifests["no_hard_neg"].get("query_count")
+        or full_counts.get("positive_count") != no_hard_counts.get("positive_count")
+        or full_counts.get("negative_count") != no_hard_counts.get("negative_count")
+        or float(
+            pair_manifests["no_hard_neg"].get(
+                "candidate_aware_target_fraction", -1.0
+            )
+        )
+        != 0.0
+    ):
+        raise ValueError("No-hard-neg does not preserve the Full query/pair budget")
+    protocol = create_set_c_protocol(
+        args.output,
+        scope=args.scope,
+        parent_paths={
+            "split_manifest": paths.split_manifest,
+            "split_assignments": paths.split_assignments,
+            "candidate_policy_manifest": paths.candidate_policy,
+            "validation_group_thresholds": paths.validation_group_thresholds,
+            "ranker_training_manifest": paths.ranker_training_manifest,
+            "no_hard_neg_training_manifest": paths.no_hard_neg_training_manifest,
+            "audio_index_manifest": paths.audio_manifest,
+            "graph_index_manifest": paths.graph_manifest,
+            "tag_idf": paths.tag_idf,
+            "songs_metadata": paths.songs_metadata,
+            "graph_edges": paths.graph_edges,
+        },
+    )
+    print(
+        "set_c_protocol_frozen "
+        f"version={protocol['artifact_version']} output={args.output}"
+    )
+
+
+if __name__ == "__main__":
+    main()
