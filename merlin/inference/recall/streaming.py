@@ -277,3 +277,73 @@ class StreamingRecallEngine:
         root_artist = self.tag.track_to_artist.get(query_id)
         tag_group, tag_positive = self._tag_group(
             query_code,
+            batch.tag_templates.get(root_artist) if root_artist is not None else None,
+        )
+        candidates = self._merge((audio_group, graph_group, bfs_group, tag_group))
+        audio_positive = [
+            (self.codec.tracks[int(code)], float(score))
+            for code, score in zip(audio_codes, audio_scores, strict=True)
+            if code >= 0
+        ]
+        tag_positive_rows = [
+            (self.codec.tracks[int(code)], float(score))
+            for code, score in zip(*tag_positive, strict=True)
+        ]
+        return candidates, audio_positive, tag_positive_rows
+
+    def candidate_query(
+        self,
+        batch: StreamingRecallBatch,
+        position: int,
+    ) -> tuple[EncodedCandidates, RecallAudit]:
+        """Build the canonical candidate union without positive-pool materialization."""
+        query_id = batch.queries[position]
+        query_code = self.codec.code(query_id)
+        audio_codes, audio_scores = batch.audio.query(position)
+        graph_codes, graph_scores = batch.graph.query(position)
+        audio_codes, audio_scores = self._ordered(audio_codes, audio_scores)
+        graph_codes, graph_scores = self._ordered(graph_codes, graph_scores)
+        groups = (
+            self._filter_group(
+                query_code, audio_codes, audio_scores, self.limits["audio"]
+            ),
+            self._filter_group(
+                query_code, graph_codes, graph_scores, self.limits["graph"]
+            ),
+            self._bfs_group(
+                query_code,
+                batch.bfs_templates.get(self.bfs.track_to_artist.get(query_id)),
+            ),
+            self._tag_group(
+                query_code,
+                batch.tag_templates.get(self.tag.track_to_artist.get(query_id)),
+            )[0],
+        )
+        candidates = self._merge(groups)
+        counts = {
+            name: len(group[0]) for name, group in zip(SOURCE_NAMES, groups, strict=True)
+        }
+        raw_count = sum(counts.values())
+        unique_count = len(candidates)
+        exclusive = {
+            name: int(np.count_nonzero(candidates.source_masks == (1 << index)))
+            for index, name in enumerate(SOURCE_NAMES)
+        }
+        availability = {
+            "audio": self.audio.contains(query_id),
+            "graph": self.graph.contains(query_id),
+            "bfs": self.bfs.is_available(query_id),
+            "tag": self.tag.is_available(query_id),
+        }
+        return candidates, RecallAudit(
+            source_counts=counts,
+            source_shortages={
+                name: int(self.limits[name]) - count for name, count in counts.items()
+            },
+            unique_candidates=unique_count,
+            raw_candidates=raw_count,
+            duplicate_candidates=raw_count - unique_count,
+            deduplication_rate=(raw_count - unique_count) / raw_count if raw_count else 0.0,
+            exclusive_candidates=exclusive,
+            source_available=availability,
+        )
