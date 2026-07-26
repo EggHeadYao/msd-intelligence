@@ -137,3 +137,73 @@ class BfsTemplate:
     offsets: np.ndarray
     distances: np.ndarray
     similarities: np.ndarray
+
+
+@dataclass(frozen=True, slots=True)
+class TagTemplate:
+    recall_codes: np.ndarray
+    recall_scores: np.ndarray
+    positive_codes: np.ndarray
+    positive_scores: np.ndarray
+
+
+@dataclass(slots=True)
+class StreamingRecallEngine:
+    """Keep retrain recall numeric until selected pairs are materialized."""
+
+    audio: FaissTrackIndex
+    graph: FaissTrackIndex
+    bfs: BfsRetriever
+    tag: TagRetriever
+    codec: TrackCodec
+    limits: Mapping[str, int]
+    audio_row_codes: np.ndarray = field(init=False, repr=False)
+    graph_row_codes: np.ndarray = field(init=False, repr=False)
+    bfs_artist_codes: Mapping[str, np.ndarray] = field(init=False, repr=False)
+    _bfs_templates: OrderedDict[str, BfsTemplate] = field(
+        init=False, repr=False, default_factory=OrderedDict
+    )
+    _tag_templates: OrderedDict[str, TagTemplate] = field(
+        init=False, repr=False, default_factory=OrderedDict
+    )
+
+    def __post_init__(self) -> None:
+        lookup = self.codec.track_to_code.get
+        self.audio_row_codes = np.fromiter(
+            (lookup(track_id, -1) for track_id in self.audio.row_to_track),
+            dtype=np.int32,
+            count=len(self.audio.row_to_track),
+        )
+        self.graph_row_codes = np.fromiter(
+            (lookup(track_id, -1) for track_id in self.graph.row_to_track),
+            dtype=np.int32,
+            count=len(self.graph.row_to_track),
+        )
+        self.bfs_artist_codes = {
+            artist: np.asarray(
+                [
+                    code
+                    for track_id in sorted(track_ids)
+                    if (code := self.codec.code(track_id)) >= 0
+                ],
+                dtype=np.int32,
+            )
+            for artist, track_ids in self.bfs.artist_tracks.items()
+        }
+
+    def search_many(
+        self,
+        queries: Sequence[str],
+        positive_neighbor_limit: int,
+    ) -> StreamingRecallBatch:
+        query_tuple = tuple(queries)
+        graph_limit = self.limits["graph"] * 3 + 1
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            audio_job = executor.submit(
+                self._search_available,
+                self.audio,
+                self.audio_row_codes,
+                query_tuple,
+                positive_neighbor_limit,
+            )
+            graph_job = executor.submit(
