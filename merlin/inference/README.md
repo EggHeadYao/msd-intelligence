@@ -46,32 +46,32 @@ Import public package paths such as `merlin.inference.recall`,
 flat modules, numbered feature modules, and compatibility scripts are not part
 of the supported interface.
 
-## Recall-only assembly
+## Online request flow
 
-Stage-1 can be built and audited before the Ranker artifacts exist. First create
-the frozen policy and Tag-IDF artifacts:
+1. Audio, Graph, BFS, and Tag retrievers nominate candidates under the frozen
+   source quotas.
+2. Duplicate track IDs are merged while source scores and ranks are retained
+   for audit.
+3. The union is capped at 1,000 unique candidates and same-song items are
+   excluded.
+4. Canonical pair features are filled and scaled with frozen Set-A statistics.
+5. Candidates are sorted by `(-raw_margin, track_id)` and the top 20 are
+   returned.
 
-```bash
-python -m merlin.inference.scripts.recall.build_recall_artifacts
+Load the fail-closed production pipeline with the frozen C2 contract:
+
+```python
+from merlin.inference import load_inference_pipeline
+
+pipeline = load_inference_pipeline(
+    graph_contract_key="c2_graph_version",
+    graph_contract_version="<frozen-version>",
+)
+recommendations = pipeline.recommend(query_track_id)
 ```
 
-Then run deterministic four-source recall for a fixed query list:
-
-```bash
-python -m merlin.inference.scripts.recall.validate_recall --queries queries.txt
-```
-
-The recall-only loader validates both FAISS lineages, the candidate policy,
-Tag-IDF parent lineage, prepared track/song identity, and canonical graph edge
-partitions. Its report covers source availability, source counts and shortages,
-raw/unique candidates, deduplication, exclusive candidates, and repeat hashes.
-Candidate Recall@250/1000 is intentionally deferred until frozen positive pairs
-are supplied; the structural report does not present coverage counts as relevance.
-
-On validation hosts whose FAISS wheel uses unsupported SIMD instructions, set
-`MERLIN_FAISS_SEARCH_ENGINE=numpy` and pass `--low-memory`. This uses bounded
-`reconstruct_n` blocks with exact NumPy inner products and loads Audio and Graph
-sequentially. Production remains on the default FAISS search path.
+A separate `ColdAudioPipeline` accepts a C1-compatible 128D query embedding and
+ranks Audio neighbors directly. It never invokes Graph, BFS, Tag, or LR.
 
 ## Supervised artifact order
 
