@@ -60,12 +60,12 @@ def canonical_policy_manifest() -> dict[str, object]:
 def validate_canonical_policy(
     limits: Mapping[str, int],
     candidate_limit: int,
-    final_limit: int,
+    limit: int,
 ) -> None:
     if dict(limits) != CANONICAL_RETRIEVER_LIMITS:
         raise ValueError("retriever limits do not match the canonical four-source policy")
-    if candidate_limit != CANONICAL_CANDIDATE_LIMIT or final_limit != CANONICAL_FINAL_LIMIT:
-        raise ValueError("candidate or final limit does not match the canonical policy")
+    if candidate_limit != CANONICAL_CANDIDATE_LIMIT or limit != CANONICAL_LIMIT:
+        raise ValueError("candidate or recommendation limit does not match the canonical policy")
 
 
 def load_candidate_policy(path: str | Path) -> dict[str, object]:
