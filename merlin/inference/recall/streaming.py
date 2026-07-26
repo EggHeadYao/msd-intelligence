@@ -68,3 +68,72 @@ class EncodedCandidates:
 
     codec: TrackCodec
     codes: np.ndarray
+    source_masks: np.ndarray
+    scores: np.ndarray
+    _positions: dict[int, int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.scores.shape != (len(self.codes), len(SOURCE_NAMES)):
+            raise ValueError("compact candidate score matrix has an invalid shape")
+        self._positions = {
+            int(code): position for position, code in enumerate(self.codes)
+        }
+
+    def __len__(self) -> int:
+        return len(self.codes)
+
+    def track_id(self, position: int) -> str:
+        return self.codec.tracks[int(self.codes[position])]
+
+    def position(self, track_code: int) -> int | None:
+        return self._positions.get(track_code)
+
+    def evidence(self, position: int) -> tuple[frozenset[str], dict[str, float]]:
+        mask = int(self.source_masks[position])
+        sources = frozenset(
+            name for index, name in enumerate(SOURCE_NAMES) if mask & (1 << index)
+        )
+        scores = {
+            name: float(self.scores[position, index])
+            for index, name in enumerate(SOURCE_NAMES)
+            if np.isfinite(self.scores[position, index])
+        }
+        return sources, scores
+
+
+@dataclass(frozen=True, slots=True)
+class RawVectorBatch:
+    """FAISS matrices plus the catalog-code mapping for their index rows."""
+
+    scores: np.ndarray
+    rows: np.ndarray
+    query_positions: Mapping[int, int]
+    row_codes: np.ndarray
+
+    def query(self, batch_position: int) -> tuple[np.ndarray, np.ndarray]:
+        search_position = self.query_positions.get(batch_position)
+        if search_position is None:
+            return (
+                np.empty(0, dtype=np.int32),
+                np.empty(0, dtype=np.float32),
+            )
+        rows = self.rows[search_position]
+        valid = (rows >= 0) & (rows < len(self.row_codes))
+        return self.row_codes[rows[valid]], self.scores[search_position][valid]
+
+
+@dataclass(frozen=True, slots=True)
+class StreamingRecallBatch:
+    queries: tuple[str, ...]
+    audio: RawVectorBatch
+    graph: RawVectorBatch
+    bfs_templates: Mapping[str, BfsTemplate]
+    tag_templates: Mapping[str, TagTemplate]
+
+
+@dataclass(frozen=True, slots=True)
+class BfsTemplate:
+    codes: np.ndarray
+    offsets: np.ndarray
+    distances: np.ndarray
+    similarities: np.ndarray
