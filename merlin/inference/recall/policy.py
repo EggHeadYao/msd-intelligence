@@ -36,7 +36,7 @@ def canonical_policy_manifest() -> dict[str, object]:
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "retriever_limits": dict(CANONICAL_RETRIEVER_LIMITS),
         "candidate_limit": CANONICAL_CANDIDATE_LIMIT,
-        "final_limit": CANONICAL_FINAL_LIMIT,
+        "final_limit": CANONICAL_LIMIT,
         "same_song_filter": True,
         "vector": {
             "index_type": "IndexFlatIP",
