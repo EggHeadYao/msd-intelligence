@@ -513,11 +513,10 @@ def main() -> None:
                 else spark.read.json(str(path))
             )
 
-        train = read_rows(args.train_features).persist(
-            StorageLevel.MEMORY_AND_DISK
-        )
-        cached.append(train)
+        train = read_rows(args.train_features).select("label", *RAW_BASE_FEATURES)
         if args.stage == "tuning":
+            train = train.persist(StorageLevel.MEMORY_AND_DISK)
+            cached.append(train)
             statistics = train.agg(
                 F.count("*").alias("row_count"),
                 *(
