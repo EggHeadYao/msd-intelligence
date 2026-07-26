@@ -295,3 +295,25 @@ def similarity_features(
         *rank_expressions,
     )
 
+
+def scalar_features(spark: SparkSession, path: Path, labels: DataFrame) -> DataFrame:
+    scalar = spark.read.parquet(spark_path(path)).select(
+        "track_id",
+        F.col("artist_id").alias("scalar_artist_id"),
+        *SCALAR_COLUMNS,
+    )
+    joined = labels.join(scalar, "track_id", "inner")
+    if joined.where(F.col("artist_id") != F.col("scalar_artist_id")).limit(1).count():
+        raise ValueError("scalar and label artist IDs disagree")
+    return joined.select(
+        *AUDIT_COLUMNS,
+        *(
+            F.col(name).cast("double").alias(name)
+            for name in SCALAR_COLUMNS
+        ),
+        *(
+            F.when(F.col(name).isNull() | F.isnan(name), 1.0).otherwise(0.0).alias(missing)
+            for name, missing in zip(SCALAR_COLUMNS, SCALAR_MISSING_COLUMNS, strict=True)
+        ),
+    )
+
