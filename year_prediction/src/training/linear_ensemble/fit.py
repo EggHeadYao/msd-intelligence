@@ -100,3 +100,74 @@ def apply_weights(
         "absolute_error_years",
     )
 
+
+def evaluate_and_write(predictions: DataFrame, output: Path) -> dict:
+    predictions = predictions.cache()
+    metrics = regression_metrics(predictions)
+    metrics["by_decade"] = decade_metrics(predictions)
+    written = write_parquet_parts(predictions, output)
+    if written != metrics["count"]:
+        raise ValueError("written prediction count differs from evaluated count")
+    predictions.unpersist()
+    return metrics
+
+
+def run(args: argparse.Namespace, spark: SparkSession) -> dict:
+    prepare_output(args.output, args.overwrite)
+    started = time.perf_counter()
+    validation, validation_rows = join_predictions(args, spark, "validation")
+    test, test_rows = join_predictions(args, spark, "test")
+    intercept, weights = fit_weights(validation)
+    validation_metrics = evaluate_and_write(
+        apply_weights(validation, intercept, weights),
+        args.output / "validation_predictions.parquet",
+    )
+    test_metrics = evaluate_and_write(
+        apply_weights(test, intercept, weights),
+        args.output / "test_predictions.parquet",
+    )
+    model = {
+        "fit_split": "validation",
+        "intercept": intercept,
+        "model_type": "linear_prediction_ensemble",
+        "objective": "squared_error",
+        "prediction_column": "raw_prediction_year",
+        "weights": weights,
+    }
+    metrics = {"validation": validation_metrics, "test": test_metrics}
+    arguments = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in vars(args).items()
+    }
+    write_json(args.output / "arguments.json", arguments)
+    write_json(args.output / "model.json", model)
+    write_json(args.output / "metrics.json", metrics)
+    write_json(
+        args.output / "run_metadata.json",
+        {
+            "application_id": spark.sparkContext.applicationId,
+            "fit_rows": validation_rows,
+            "model_type": model["model_type"],
+            "spark_master": spark.sparkContext.master,
+            "spark_version": spark.version,
+            "test_rows": test_rows,
+            "total_seconds": time.perf_counter() - started,
+        },
+    )
+    validation.unpersist()
+    test.unpersist()
+    return metrics
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("YearPredictionLinearEnsemble").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        print(json.dumps(run(args, spark), sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
