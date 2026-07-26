@@ -132,6 +132,76 @@ def load_frozen_initial_parameters(
 ) -> tuple[Path, tuple[float, ...], float]:
     """Load the lineage-bound tuning solution used to warm-start LR."""
     with tuning_manifest_path.open("r", encoding="utf-8") as stream:
+        tuning = json.load(stream)
+    coefficients_path = tuning_manifest_path.parent / "ranker_coefficients.json"
+    artifact_hashes = tuning.get("artifact_hashes")
+    if not isinstance(artifact_hashes, dict) or artifact_hashes.get(
+        coefficients_path.name
+    ) != sha256_path(coefficients_path):
+        raise ValueError("frozen tuning coefficient hash mismatch")
+    with coefficients_path.open("r", encoding="utf-8") as stream:
+        artifact = json.load(stream)
+    if artifact.get("artifact_type") != "ranker_coefficients":
+        raise ValueError("frozen coefficient artifact type mismatch")
+    if artifact.get("class_weight") != "none":
+        raise ValueError("frozen coefficient model must not use class weights")
+    if artifact.get("feature_schema_version") != FEATURE_SCHEMA:
+        raise ValueError("frozen coefficient schema version mismatch")
+    if tuple(artifact.get("feature_order", ())) != FEATURE_ORDER:
+        raise ValueError("frozen coefficient feature order mismatch")
+    if float(artifact.get("reg_param", -1.0)) != fixed_reg_param:
+        raise ValueError("frozen coefficient regParam mismatch")
+    coefficients = tuple(float(value) for value in artifact.get("coefficients", ()))
+    intercept = float(artifact.get("intercept", float("nan")))
+    if len(coefficients) != len(FEATURE_ORDER):
+        raise ValueError("frozen coefficient vector length mismatch")
+    if any(not math.isfinite(value) for value in (*coefficients, intercept)):
+        raise ValueError("frozen coefficient artifact contains a non-finite value")
+    return coefficients_path, coefficients, intercept
+
+
+def set_initial_lr_model(
+    estimator: Any,
+    spark: Any,
+    coefficients: tuple[float, ...],
+    intercept: float,
+) -> None:
+    """Attach a binary Spark LR model as the optimizer's initial solution."""
+    from pyspark.ml.common import _py2java
+    from pyspark.ml.linalg import Vectors
+
+    context = spark.sparkContext
+    java_coefficients = _py2java(context, Vectors.dense(coefficients))
+    java_model = context._jvm.org.apache.spark.ml.classification.LogisticRegressionModel(
+        f"{estimator.uid}_initial",
+        java_coefficients,
+        float(intercept),
+    )
+    estimator._java_obj.setInitialModel(java_model)
+
+
+def solver_feature_order(constant_features: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the fitted dimensions after enforcing frozen zero coefficients."""
+    constant = set(constant_features)
+    if len(constant) != len(constant_features) or not constant.issubset(
+        FEATURE_ORDER
+    ):
+        raise ValueError("frozen constant-feature set is invalid")
+    features = tuple(name for name in FEATURE_ORDER if name not in constant)
+    if not features:
+        raise ValueError("ranker must retain at least one fitted feature")
+    return features
+
+
+def expand_solver_coefficients(
+    solver_features: tuple[str, ...],
+    fitted_coefficients: tuple[float, ...],
+) -> tuple[float, ...]:
+    """Restore the published feature order with zeroes for omitted dimensions."""
+    if len(solver_features) != len(fitted_coefficients):
+        raise ValueError("solver coefficient vector length mismatch")
+    if len(set(solver_features)) != len(solver_features) or any(
+        name not in FEATURE_ORDER for name in solver_features
         )
         margin = functions.aggregate(
             functions.zip_with(
