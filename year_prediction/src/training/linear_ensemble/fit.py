@@ -56,3 +56,47 @@ def load_prediction(
         raise ValueError(f"{model_name} {split} predictions are empty or duplicated")
     return selected
 
+
+def join_predictions(args: argparse.Namespace, spark: SparkSession, split: str):
+    frames = [
+        load_prediction(spark, getattr(args, f"{name}_{split}"), split, name)
+        for name in MODEL_NAMES
+    ]
+    expected = [frame.count() for frame in frames]
+    joined = frames[0]
+    for frame in frames[1:]:
+        joined = joined.join(frame, list(JOIN_COLUMNS), "inner")
+    joined = joined.cache()
+    actual = joined.count()
+    if any(count != actual for count in expected):
+        raise ValueError(f"{split} prediction keys or labels do not match")
+    return joined, actual
+
+
+def fit_weights(validation: DataFrame) -> tuple[float, dict[str, float]]:
+    rows = validation.select("year", *MODEL_NAMES).collect()
+    features = np.asarray(
+        [[float(row[name]) for name in MODEL_NAMES] for row in rows],
+        dtype=np.float64,
+    )
+    labels = np.asarray([float(row["year"]) for row in rows], dtype=np.float64)
+    design = np.column_stack((np.ones(labels.size, dtype=np.float64), features))
+    solution = np.linalg.lstsq(design, labels, rcond=None)[0]
+    return float(solution[0]), {
+        name: float(value) for name, value in zip(MODEL_NAMES, solution[1:])
+    }
+
+
+def apply_weights(
+    frame: DataFrame, intercept: float, weights: dict[str, float]
+) -> DataFrame:
+    prediction = F.lit(intercept)
+    for name in MODEL_NAMES:
+        prediction = prediction + F.lit(weights[name]) * F.col(name)
+    return add_prediction_columns(frame.withColumn("prediction", prediction)).select(
+        *JOIN_COLUMNS,
+        "raw_prediction_year",
+        "clipped_prediction_year",
+        "absolute_error_years",
+    )
+
