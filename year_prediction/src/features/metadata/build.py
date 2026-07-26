@@ -368,4 +368,39 @@ def build(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         LOCATION_COLUMNS[2],
         F.when(F.col(LOCATION_COLUMNS[0]).isNull(), 1.0).otherwise(0.0),
     )
-    raise NotImplementedError("metadata assembly incomplete")
+    indicator_names = indicator_columns(len(top_terms), len(top_mbtags))
+    top_k_counts = GRAPH_TOP_K_COLUMNS[::3]
+    zero_columns = (
+        *TAG_COUNT_COLUMNS,
+        ERA_COLUMNS[0],
+        TAG_PRIOR_COLUMNS[0],
+        TAG_PRIOR_COLUMNS[6],
+        GRAPH_COLUMNS[0],
+        *top_k_counts,
+        *indicator_names,
+    )
+    artist_features = artist_features.fillna(0.0, subset=list(zero_columns))
+    metadata_predictors = (*BASE_METADATA_COLUMNS, *indicator_names)
+    metadata = scalar_features(spark, args.scalar, labels).join(
+        artist_features.drop("split"), "artist_id", "left"
+    ).select(*AUDIT_COLUMNS, *metadata_predictors).persist(StorageLevel.DISK_ONLY)
+    metadata.write.mode("error").parquet(
+        spark_path(args.output / "metadata_only.parquet")
+    )
+    audio_manifest = read_json(args.audio_manifest)
+    audio_predictors = tuple(
+        audio_manifest["views"]["full_tabular"]["predictor_columns"]
+    )
+    audio = spark.read.parquet(spark_path(args.audio)).where(F.col("split").isNotNull())
+    fused_indicator_names = (
+        *indicator_columns(min(args.fused_top_terms, len(top_terms)), 0),
+        *indicator_columns(0, min(args.fused_top_mbtags, len(top_mbtags))),
+    )
+    fused_metadata_predictors = (*BASE_METADATA_COLUMNS, *fused_indicator_names)
+    fused = audio.join(metadata, list(AUDIT_COLUMNS), "inner").select(
+        *AUDIT_COLUMNS, *audio_predictors, *fused_metadata_predictors
+    )
+    fused.write.mode("error").parquet(
+        spark_path(args.output / "audio_metadata.parquet")
+    )
+    raise NotImplementedError("metadata manifest incomplete")
