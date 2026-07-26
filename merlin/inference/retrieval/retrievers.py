@@ -187,6 +187,27 @@ class BfsRetriever(CandidateRetriever):
         distance = self._distances(source).get(target)
         return None if distance is None else 1.0 / (1.0 + distance)
 
+    def pair_scores(
+        self,
+        pairs: Sequence[tuple[str, str]],
+    ) -> list[float | None]:
+        """Score arbitrary pairs while reusing each source artist's BFS traversal."""
+        distances: dict[str, Mapping[str, int]] = {}
+        results: list[float | None] = []
+        for left_track_id, right_track_id in pairs:
+            source = self.track_to_artist.get(left_track_id)
+            target = self.track_to_artist.get(right_track_id)
+            if source is None or target is None or source == target:
+                results.append(None)
+                continue
+            source_distances = distances.get(source)
+            if source_distances is None:
+                source_distances = self._distances(source)
+                distances[source] = source_distances
+            distance = source_distances.get(target)
+            results.append(None if distance is None else 1.0 / (1.0 + distance))
+        return results
+
     def _distances(self, source: str) -> dict[str, int]:
         cached = self._distance_cache.get(source)
         if cached is not None:
@@ -351,6 +372,25 @@ class TagRetriever(CandidateRetriever):
         if left is None or right is None:
             return None
         return self.pair_similarity(left, right)
+
+    def pair_scores(
+        self,
+        pairs: Sequence[tuple[str, str]],
+    ) -> list[float | None]:
+        """Score arbitrary track pairs once per distinct artist pair."""
+        scores: dict[tuple[str, str], float | None] = {}
+        results: list[float | None] = []
+        for left_track_id, right_track_id in pairs:
+            left = self.track_to_artist.get(left_track_id)
+            right = self.track_to_artist.get(right_track_id)
+            if left is None or right is None:
+                results.append(None)
+                continue
+            key = tuple(sorted((left, right)))
+            if key not in scores:
+                scores[key] = self.pair_similarity(*key)
+            results.append(scores[key])
+        return results
 
     def artist_similarity(self, left_artist: str, right_artist: str) -> float:
         score = self.pair_similarity(left_artist, right_artist)
