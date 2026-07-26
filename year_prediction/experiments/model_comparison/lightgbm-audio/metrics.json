@@ -1,0 +1,155 @@
+{
+  "model_id": "lightgbm-audio",
+  "validation": {
+    "by_decade": [
+      {
+        "count": 4,
+        "decade": 1920,
+        "mae_years": 56.13244388340064,
+        "rmse_years": 56.164400895342176
+      },
+      {
+        "count": 9,
+        "decade": 1930,
+        "mae_years": 49.66646168213684,
+        "rmse_years": 50.024506935045096
+      },
+      {
+        "count": 10,
+        "decade": 1940,
+        "mae_years": 43.748054588665106,
+        "rmse_years": 44.14322385626316
+      },
+      {
+        "count": 182,
+        "decade": 1950,
+        "mae_years": 32.17091141119865,
+        "rmse_years": 32.631848565575154
+      },
+      {
+        "count": 943,
+        "decade": 1960,
+        "mae_years": 21.573970497929587,
+        "rmse_years": 22.513688699294235
+      },
+      {
+        "count": 1956,
+        "decade": 1970,
+        "mae_years": 14.548983548430972,
+        "rmse_years": 15.894540241084185
+      },
+      {
+        "count": 3270,
+        "decade": 1980,
+        "mae_years": 7.060900737915736,
+        "rmse_years": 8.711363329437388
+      },
+      {
+        "count": 11578,
+        "decade": 1990,
+        "mae_years": 4.609024359295227,
+        "rmse_years": 5.801349820166023
+      },
+      {
+        "count": 27443,
+        "decade": 2000,
+        "mae_years": 4.356126364983009,
+        "rmse_years": 5.99675920643505
+      },
+      {
+        "count": 732,
+        "decade": 2010,
+        "mae_years": 7.422702393698087,
+        "rmse_years": 8.552482238154237
+      }
+    ],
+    "count": 46127,
+    "distinct_artists": 2534,
+    "distinct_tracks": 46127,
+    "mae_years": 5.5758493677238175,
+    "median_absolute_error_years": 3.8988966148228883,
+    "raw_mae_years": 5.575871604314238,
+    "raw_out_of_range_rate": 0.00004335855355865328,
+    "raw_rmse_years": 7.927417626903433,
+    "rmse_years": 7.927413356351297,
+    "signed_error_years": -0.23797312680776286,
+    "within_10_years_rate": 0.8480933076072582,
+    "within_5_years_rate": 0.6014048171353004
+  },
+  "test": {
+    "by_decade": [
+      {
+        "count": 8,
+        "decade": 1920,
+        "mae_years": 57.2805550679127,
+        "rmse_years": 57.45497430934162
+      },
+      {
+        "count": 15,
+        "decade": 1930,
+        "mae_years": 54.09412444908689,
+        "rmse_years": 54.24697590938255
+      },
+      {
+        "count": 53,
+        "decade": 1940,
+        "mae_years": 38.66004140517703,
+        "rmse_years": 39.075523759703145
+      },
+      {
+        "count": 196,
+        "decade": 1950,
+        "mae_years": 32.49156713581282,
+        "rmse_years": 32.88125712625461
+      },
+      {
+        "count": 1253,
+        "decade": 1960,
+        "mae_years": 21.291992411478603,
+        "rmse_years": 22.37179303790999
+      },
+      {
+        "count": 2433,
+        "decade": 1970,
+        "mae_years": 14.690982001025917,
+        "rmse_years": 16.093721697881435
+      },
+      {
+        "count": 3678,
+        "decade": 1980,
+        "mae_years": 7.412189538803243,
+        "rmse_years": 8.978378022429819
+      },
+      {
+        "count": 11969,
+        "decade": 1990,
+        "mae_years": 4.41934190953734,
+        "rmse_years": 5.578684671532859
+      },
+      {
+        "count": 29050,
+        "decade": 2000,
+        "mae_years": 4.501317888716406,
+        "rmse_years": 6.207780998059856
+      },
+      {
+        "count": 781,
+        "decade": 2010,
+        "mae_years": 6.629063394951391,
+        "rmse_years": 7.813161560663796
+      }
+    ],
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "mae_years": 5.829895844689949,
+    "median_absolute_error_years": 3.9946499546829273,
+    "raw_mae_years": 5.829962910287324,
+    "raw_out_of_range_rate": 0.00010114086900234647,
+    "raw_rmse_years": 8.362171834381837,
+    "rmse_years": 8.362128945886393,
+    "signed_error_years": -0.06903302713517238,
+    "within_10_years_rate": 0.8327939153653208,
+    "within_5_years_rate": 0.5917145400113277
+  }
+}

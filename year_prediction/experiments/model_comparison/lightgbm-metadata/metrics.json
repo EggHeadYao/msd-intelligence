@@ -1,0 +1,155 @@
+{
+  "model_id": "lightgbm-metadata",
+  "validation": {
+    "by_decade": [
+      {
+        "count": 4,
+        "decade": 1920,
+        "mae_years": 60.96469678634219,
+        "rmse_years": 61.383738727306515
+      },
+      {
+        "count": 9,
+        "decade": 1930,
+        "mae_years": 49.81216981862073,
+        "rmse_years": 50.05584289015075
+      },
+      {
+        "count": 10,
+        "decade": 1940,
+        "mae_years": 42.79635963966864,
+        "rmse_years": 43.78166622853606
+      },
+      {
+        "count": 182,
+        "decade": 1950,
+        "mae_years": 33.74908680426015,
+        "rmse_years": 34.39433378907362
+      },
+      {
+        "count": 943,
+        "decade": 1960,
+        "mae_years": 20.09980811105276,
+        "rmse_years": 20.868064034318504
+      },
+      {
+        "count": 1956,
+        "decade": 1970,
+        "mae_years": 12.974810852853102,
+        "rmse_years": 13.89252411138267
+      },
+      {
+        "count": 3270,
+        "decade": 1980,
+        "mae_years": 7.302476074607997,
+        "rmse_years": 8.314422795358745
+      },
+      {
+        "count": 11578,
+        "decade": 1990,
+        "mae_years": 4.524105917373816,
+        "rmse_years": 5.562146619330311
+      },
+      {
+        "count": 27443,
+        "decade": 2000,
+        "mae_years": 3.6929903690489665,
+        "rmse_years": 5.515881529604984
+      },
+      {
+        "count": 732,
+        "decade": 2010,
+        "mae_years": 6.536892852637194,
+        "rmse_years": 7.841996580985265
+      }
+    ],
+    "count": 46127,
+    "distinct_artists": 2534,
+    "distinct_tracks": 46127,
+    "mae_years": 5.072652679091457,
+    "median_absolute_error_years": 3.3738166337188886,
+    "raw_mae_years": 5.072652679091457,
+    "raw_out_of_range_rate": 0.0,
+    "raw_rmse_years": 7.397888066308749,
+    "rmse_years": 7.397888066308749,
+    "signed_error_years": 0.21994468061548675,
+    "within_10_years_rate": 0.8610358358445163,
+    "within_5_years_rate": 0.6491859431569362
+  },
+  "test": {
+    "by_decade": [
+      {
+        "count": 8,
+        "decade": 1920,
+        "mae_years": 61.47548214995268,
+        "rmse_years": 61.62393498475489
+      },
+      {
+        "count": 15,
+        "decade": 1930,
+        "mae_years": 51.03215290370628,
+        "rmse_years": 51.29426176877152
+      },
+      {
+        "count": 53,
+        "decade": 1940,
+        "mae_years": 39.377616590968074,
+        "rmse_years": 39.68129614087336
+      },
+      {
+        "count": 196,
+        "decade": 1950,
+        "mae_years": 30.53606093208438,
+        "rmse_years": 30.884586704695028
+      },
+      {
+        "count": 1253,
+        "decade": 1960,
+        "mae_years": 19.73480722269958,
+        "rmse_years": 20.453471991714455
+      },
+      {
+        "count": 2433,
+        "decade": 1970,
+        "mae_years": 12.703336423383693,
+        "rmse_years": 13.696199563518453
+      },
+      {
+        "count": 3678,
+        "decade": 1980,
+        "mae_years": 7.0609415310082175,
+        "rmse_years": 8.193798038086982
+      },
+      {
+        "count": 11969,
+        "decade": 1990,
+        "mae_years": 4.67756018505813,
+        "rmse_years": 5.70042311238806
+      },
+      {
+        "count": 29050,
+        "decade": 2000,
+        "mae_years": 3.796743548308862,
+        "rmse_years": 5.727471044161968
+      },
+      {
+        "count": 781,
+        "decade": 2010,
+        "mae_years": 5.562812239706345,
+        "rmse_years": 6.780386873391718
+      }
+    ],
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "mae_years": 5.290883485405224,
+    "median_absolute_error_years": 3.4335554928400143,
+    "raw_mae_years": 5.290883485405224,
+    "raw_out_of_range_rate": 0.0,
+    "raw_rmse_years": 7.719026713441972,
+    "rmse_years": 7.719026713441972,
+    "signed_error_years": 0.339591037013668,
+    "within_10_years_rate": 0.8486932599724897,
+    "within_5_years_rate": 0.6323529411764706
+  }
+}

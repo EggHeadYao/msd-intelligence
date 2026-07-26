@@ -1,0 +1,155 @@
+{
+  "model_id": "lightgbm-t90",
+  "validation": {
+    "by_decade": [
+      {
+        "count": 4,
+        "decade": 1920,
+        "mae_years": 57.68851768631032,
+        "rmse_years": 58.25075858231795
+      },
+      {
+        "count": 9,
+        "decade": 1930,
+        "mae_years": 54.04007338144629,
+        "rmse_years": 54.56503712128683
+      },
+      {
+        "count": 10,
+        "decade": 1940,
+        "mae_years": 44.952815285211315,
+        "rmse_years": 45.357167183523536
+      },
+      {
+        "count": 182,
+        "decade": 1950,
+        "mae_years": 32.67380120297042,
+        "rmse_years": 33.209132624355334
+      },
+      {
+        "count": 943,
+        "decade": 1960,
+        "mae_years": 23.594856419389675,
+        "rmse_years": 24.34016441031252
+      },
+      {
+        "count": 1956,
+        "decade": 1970,
+        "mae_years": 16.101292507931213,
+        "rmse_years": 17.322191609030362
+      },
+      {
+        "count": 3270,
+        "decade": 1980,
+        "mae_years": 7.380077055814924,
+        "rmse_years": 9.142196921219293
+      },
+      {
+        "count": 11578,
+        "decade": 1990,
+        "mae_years": 4.497410871339051,
+        "rmse_years": 5.582055397478986
+      },
+      {
+        "count": 27443,
+        "decade": 2000,
+        "mae_years": 4.623264992315687,
+        "rmse_years": 6.1910120761300185
+      },
+      {
+        "count": 732,
+        "decade": 2010,
+        "mae_years": 7.826882409321548,
+        "rmse_years": 8.937060821607439
+      }
+    ],
+    "count": 46127,
+    "distinct_artists": 2534,
+    "distinct_tracks": 46127,
+    "mae_years": 5.846180471320257,
+    "median_absolute_error_years": 4.12147957570437,
+    "raw_mae_years": 5.846263276167707,
+    "raw_out_of_range_rate": 0.00017343421423461313,
+    "raw_rmse_years": 8.265979965086634,
+    "rmse_years": 8.265903641499024,
+    "signed_error_years": -0.29978089591892243,
+    "within_10_years_rate": 0.8376005376460641,
+    "within_5_years_rate": 0.579682181802415
+  },
+  "test": {
+    "by_decade": [
+      {
+        "count": 8,
+        "decade": 1920,
+        "mae_years": 60.46736860136696,
+        "rmse_years": 60.711452478892454
+      },
+      {
+        "count": 15,
+        "decade": 1930,
+        "mae_years": 54.40768405888343,
+        "rmse_years": 54.46933182098631
+      },
+      {
+        "count": 53,
+        "decade": 1940,
+        "mae_years": 40.69804004856168,
+        "rmse_years": 40.99984294869279
+      },
+      {
+        "count": 196,
+        "decade": 1950,
+        "mae_years": 34.16206738343968,
+        "rmse_years": 34.57161615426579
+      },
+      {
+        "count": 1253,
+        "decade": 1960,
+        "mae_years": 23.709504172851076,
+        "rmse_years": 24.571418961463618
+      },
+      {
+        "count": 2433,
+        "decade": 1970,
+        "mae_years": 16.366902905167272,
+        "rmse_years": 17.628933979518393
+      },
+      {
+        "count": 3678,
+        "decade": 1980,
+        "mae_years": 7.760649625308274,
+        "rmse_years": 9.413782968165547
+      },
+      {
+        "count": 11969,
+        "decade": 1990,
+        "mae_years": 4.420375892984908,
+        "rmse_years": 5.500917525994196
+      },
+      {
+        "count": 29050,
+        "decade": 2000,
+        "mae_years": 4.768795704694822,
+        "rmse_years": 6.378405773473071
+      },
+      {
+        "count": 781,
+        "decade": 2010,
+        "mae_years": 7.234372033489157,
+        "rmse_years": 8.366267472077345
+      }
+    ],
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "mae_years": 6.175985257723828,
+    "median_absolute_error_years": 4.28117087798023,
+    "raw_mae_years": 6.176052533892241,
+    "raw_out_of_range_rate": 0.00012136904280281576,
+    "raw_rmse_years": 8.80729969974066,
+    "rmse_years": 8.807250178157137,
+    "signed_error_years": -0.046095363267885305,
+    "within_10_years_rate": 0.8194837770046121,
+    "within_5_years_rate": 0.565256088680314
+  }
+}

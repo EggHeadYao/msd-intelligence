@@ -1,0 +1,26 @@
+{
+  "model_id": "rff-ridge-d1024",
+  "best_iteration": 300,
+  "validation": {
+    "count": 46127,
+    "distinct_artists": 2534,
+    "distinct_tracks": 46127,
+    "mae_years": 6.430243438538277,
+    "median_absolute_error_years": 4.796342552751412,
+    "raw_out_of_range_rate": 0.006352028096342706,
+    "rmse_years": 8.907341687894318,
+    "within_10_years_rate": 0.8180458299911115,
+    "within_5_years_rate": 0.5186766969453899
+  },
+  "test": {
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "mae_years": 6.716163677365318,
+    "median_absolute_error_years": 4.958167077650842,
+    "raw_out_of_range_rate": 0.006432559268549235,
+    "rmse_years": 9.363322953724614,
+    "within_10_years_rate": 0.8063961485557084,
+    "within_5_years_rate": 0.5044299700623027
+  }
+}

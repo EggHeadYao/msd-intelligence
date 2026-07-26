@@ -1,0 +1,12 @@
+{
+  "fit_split": "validation",
+  "intercept": -251.0433244923958,
+  "model_type": "linear_prediction_ensemble",
+  "objective": "squared_error",
+  "prediction_column": "raw_prediction_year",
+  "weights": {
+    "audio": 0.24497397743085986,
+    "fused": 0.7171282564833785,
+    "metadata": 0.16344833590875796
+  }
+}

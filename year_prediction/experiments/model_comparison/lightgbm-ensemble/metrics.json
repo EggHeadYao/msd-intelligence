@@ -1,0 +1,155 @@
+{
+  "model_id": "lightgbm-ensemble",
+  "validation": {
+    "by_decade": [
+      {
+        "count": 4,
+        "decade": 1920,
+        "mae_years": 58.11272326154898,
+        "rmse_years": 58.26085290764327
+      },
+      {
+        "count": 9,
+        "decade": 1930,
+        "mae_years": 47.33439804197077,
+        "rmse_years": 47.87789664458118
+      },
+      {
+        "count": 10,
+        "decade": 1940,
+        "mae_years": 43.842850087996794,
+        "rmse_years": 44.41520486156963
+      },
+      {
+        "count": 182,
+        "decade": 1950,
+        "mae_years": 30.997828489105284,
+        "rmse_years": 31.516596196133115
+      },
+      {
+        "count": 943,
+        "decade": 1960,
+        "mae_years": 18.24732660482131,
+        "rmse_years": 19.19133979822182
+      },
+      {
+        "count": 1956,
+        "decade": 1970,
+        "mae_years": 11.246238355488357,
+        "rmse_years": 12.349603646858007
+      },
+      {
+        "count": 3270,
+        "decade": 1980,
+        "mae_years": 5.551942501679547,
+        "rmse_years": 6.781999999788407
+      },
+      {
+        "count": 11578,
+        "decade": 1990,
+        "mae_years": 4.38667808529017,
+        "rmse_years": 5.633439119968858
+      },
+      {
+        "count": 27443,
+        "decade": 2000,
+        "mae_years": 3.445217416187604,
+        "rmse_years": 5.2771408258292505
+      },
+      {
+        "count": 732,
+        "decade": 2010,
+        "mae_years": 5.948514513557005,
+        "rmse_years": 7.417908496094485
+      }
+    ],
+    "count": 46127,
+    "distinct_artists": 2534,
+    "distinct_tracks": 46127,
+    "mae_years": 4.634782014901142,
+    "median_absolute_error_years": 2.986403002242696,
+    "raw_mae_years": 4.6347901674543746,
+    "raw_out_of_range_rate": 0.00002167927677932664,
+    "raw_rmse_years": 6.910355275455971,
+    "rmse_years": 6.910352694111827,
+    "signed_error_years": -0.000008152558650165113,
+    "within_10_years_rate": 0.8821080928740217,
+    "within_5_years_rate": 0.694170442474039
+  },
+  "test": {
+    "by_decade": [
+      {
+        "count": 8,
+        "decade": 1920,
+        "mae_years": 60.63136179529414,
+        "rmse_years": 60.78440280272803
+      },
+      {
+        "count": 15,
+        "decade": 1930,
+        "mae_years": 51.8148429354183,
+        "rmse_years": 52.315413392799634
+      },
+      {
+        "count": 53,
+        "decade": 1940,
+        "mae_years": 39.86913150224367,
+        "rmse_years": 40.15065669817278
+      },
+      {
+        "count": 196,
+        "decade": 1950,
+        "mae_years": 28.926844187454183,
+        "rmse_years": 29.34258376349652
+      },
+      {
+        "count": 1253,
+        "decade": 1960,
+        "mae_years": 17.62696165829197,
+        "rmse_years": 18.645636217366906
+      },
+      {
+        "count": 2433,
+        "decade": 1970,
+        "mae_years": 11.11161496948775,
+        "rmse_years": 12.295513588784846
+      },
+      {
+        "count": 3678,
+        "decade": 1980,
+        "mae_years": 5.675914132746611,
+        "rmse_years": 6.981544209280235
+      },
+      {
+        "count": 11969,
+        "decade": 1990,
+        "mae_years": 4.310156831863404,
+        "rmse_years": 5.548580588757968
+      },
+      {
+        "count": 29050,
+        "decade": 2000,
+        "mae_years": 3.573677597166173,
+        "rmse_years": 5.519175578097723
+      },
+      {
+        "count": 781,
+        "decade": 2010,
+        "mae_years": 4.877912611653803,
+        "rmse_years": 6.277662259790528
+      }
+    ],
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "mae_years": 4.819471729014302,
+    "median_absolute_error_years": 3.003903943407522,
+    "raw_mae_years": 4.819471729014302,
+    "raw_out_of_range_rate": 0.0,
+    "raw_rmse_years": 7.240509819549363,
+    "rmse_years": 7.240509819549363,
+    "signed_error_years": 0.06772434154815163,
+    "within_10_years_rate": 0.8693664535965693,
+    "within_5_years_rate": 0.6834290800226556
+  }
+}

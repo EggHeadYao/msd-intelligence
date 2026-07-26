@@ -1,0 +1,155 @@
+{
+  "model_id": "lightgbm-fused",
+  "validation": {
+    "by_decade": [
+      {
+        "count": 4,
+        "decade": 1920,
+        "mae_years": 60.796232693792774,
+        "rmse_years": 60.951351696104744
+      },
+      {
+        "count": 9,
+        "decade": 1930,
+        "mae_years": 49.393694932767204,
+        "rmse_years": 50.10884061508915
+      },
+      {
+        "count": 10,
+        "decade": 1940,
+        "mae_years": 46.35411234637256,
+        "rmse_years": 46.929684777617474
+      },
+      {
+        "count": 182,
+        "decade": 1950,
+        "mae_years": 32.15420942785332,
+        "rmse_years": 32.69011808093938
+      },
+      {
+        "count": 943,
+        "decade": 1960,
+        "mae_years": 19.379529860971797,
+        "rmse_years": 20.356875755377537
+      },
+      {
+        "count": 1956,
+        "decade": 1970,
+        "mae_years": 12.087360407971872,
+        "rmse_years": 13.185568692749186
+      },
+      {
+        "count": 3270,
+        "decade": 1980,
+        "mae_years": 5.980179212690803,
+        "rmse_years": 7.196689406344296
+      },
+      {
+        "count": 11578,
+        "decade": 1990,
+        "mae_years": 4.260670035952745,
+        "rmse_years": 5.424480635543778
+      },
+      {
+        "count": 27443,
+        "decade": 2000,
+        "mae_years": 3.337385131826356,
+        "rmse_years": 5.103226261424549
+      },
+      {
+        "count": 732,
+        "decade": 2010,
+        "mae_years": 6.101555303309325,
+        "rmse_years": 7.426539228219998
+      }
+    ],
+    "count": 46127,
+    "distinct_artists": 2534,
+    "distinct_tracks": 46127,
+    "mae_years": 4.6363416523486505,
+    "median_absolute_error_years": 2.9692977714855715,
+    "raw_mae_years": 4.6363416523486505,
+    "raw_out_of_range_rate": 0.0,
+    "raw_rmse_years": 6.984054061524464,
+    "rmse_years": 6.984054061524464,
+    "signed_error_years": 0.14044909734565217,
+    "within_10_years_rate": 0.8804171092852342,
+    "within_5_years_rate": 0.6963166908751924
+  },
+  "test": {
+    "by_decade": [
+      {
+        "count": 8,
+        "decade": 1920,
+        "mae_years": 63.318278184664194,
+        "rmse_years": 63.47806080410152
+      },
+      {
+        "count": 15,
+        "decade": 1930,
+        "mae_years": 53.208948920494535,
+        "rmse_years": 53.83753979482053
+      },
+      {
+        "count": 53,
+        "decade": 1940,
+        "mae_years": 42.79742635034905,
+        "rmse_years": 43.113082532232966
+      },
+      {
+        "count": 196,
+        "decade": 1950,
+        "mae_years": 29.875634292618752,
+        "rmse_years": 30.35342873013201
+      },
+      {
+        "count": 1253,
+        "decade": 1960,
+        "mae_years": 18.732448242820613,
+        "rmse_years": 19.76327721767499
+      },
+      {
+        "count": 2433,
+        "decade": 1970,
+        "mae_years": 11.876098779619978,
+        "rmse_years": 12.987976661503268
+      },
+      {
+        "count": 3678,
+        "decade": 1980,
+        "mae_years": 5.976777211489465,
+        "rmse_years": 7.253527939381167
+      },
+      {
+        "count": 11969,
+        "decade": 1990,
+        "mae_years": 4.239123648625925,
+        "rmse_years": 5.389315453946815
+      },
+      {
+        "count": 29050,
+        "decade": 2000,
+        "mae_years": 3.4787055191463794,
+        "rmse_years": 5.349140874577932
+      },
+      {
+        "count": 781,
+        "decade": 2010,
+        "mae_years": 5.0913913866482154,
+        "rmse_years": 6.356176195572063
+      }
+    ],
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "mae_years": 4.845624724789897,
+    "median_absolute_error_years": 3.0106095206024293,
+    "raw_mae_years": 4.845624724789897,
+    "raw_out_of_range_rate": 0.0,
+    "raw_rmse_years": 7.333319763488513,
+    "rmse_years": 7.333319763488513,
+    "signed_error_years": 0.22382420181228674,
+    "within_10_years_rate": 0.8687596083825552,
+    "within_5_years_rate": 0.6834088518488551
+  }
+}

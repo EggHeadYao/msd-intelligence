@@ -1,0 +1,29 @@
+{
+  "model_id": "ridge-t90",
+  "validation": {
+    "count": 46127,
+    "mae_years": 6.461947975192165,
+    "raw_mae_years": 6.492789027684831,
+    "raw_out_of_range_rate": 0.006720575801591259,
+    "raw_rmse_years": 9.019560068820631,
+    "rmse_years": 8.95206284783741,
+    "signed_error_years": -0.48514190971483273
+  },
+  "test": {
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "macro_decade_mae_years": 26.381027392420798,
+    "mae_years": 6.74650392650242,
+    "maximum_raw_prediction_year": 2095.643382096535,
+    "median_absolute_error_years": 4.990482756681558,
+    "minimum_raw_prediction_year": 1955.881805825678,
+    "raw_mae_years": 6.776346895792065,
+    "raw_out_of_range_rate": 0.006533700137551582,
+    "raw_rmse_years": 9.455676943048285,
+    "rmse_years": 9.407438325228476,
+    "signed_error_years": -0.1011560350516846,
+    "within_10_years_rate": 0.8059511287320981,
+    "within_5_years_rate": 0.5013552876446314
+  }
+}
