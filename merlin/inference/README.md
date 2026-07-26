@@ -115,33 +115,6 @@ The canonical feature list and persistence rules are in
 [`ranking/features/README.md`](ranking/features/README.md). Set-C protocol and
 metric rules are in [`evaluation/README.md`](evaluation/README.md).
 
-## FAISS artifacts
-
-Install `faiss-cpu`, `numpy`, and `pyarrow` in the inference environment. Production
-C1/C2 must publish a normalized 128D `IndexFlatIP`, matching Parquet map, and
-lineage manifest:
-
-```text
-index_<space>.faiss
-index_<space>_track_ids.parquet  # row_id: long, track_id: string
-index_<space>_manifest.json
-```
-
-Load either embedding space with the same adapter:
-
-```python
-from merlin.inference.retrieval.faiss import load_audio_index
-from merlin.inference.retrieval import VectorRetriever
-
-audio = load_audio_index()  # parquets_new/merlin/audio, shared_audio_628_v1
-audio_retriever = VectorRetriever("audio", audio.search)
-```
-
-The production loader requires the index, mapping, and manifest together. It
-verifies the 128D `IndexFlatIP`, row count, contract version, index hash, and
-mapping hash before exposing search. C2 must provide its frozen graph contract
-before the equivalent production graph loader is enabled.
-
 ## Production assembly
 
 The full pipeline has one fail-closed entry point. C2 must supply its frozen
