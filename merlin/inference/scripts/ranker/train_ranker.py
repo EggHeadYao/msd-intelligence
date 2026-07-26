@@ -50,10 +50,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--train-features", type=Path, required=True)
     parser.add_argument("--train-features-manifest", type=Path, required=True)
+    parser.add_argument("--training-pairs-manifest", type=Path)
     parser.add_argument("--validation-features", type=Path)
     parser.add_argument("--validation-features-manifest", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
+    parser.add_argument(
+        "--training-variant",
+        choices=("full", "no_hard_neg"),
+        default="full",
+    )
     parser.add_argument("--fixed-reg-param", type=float)
     parser.add_argument("--frozen-scaler", type=Path)
     parser.add_argument("--frozen-tuning-manifest", type=Path)
@@ -61,6 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     parser.add_argument("--scratch-root", type=Path)
     parser.add_argument("--min-free-gb", type=float)
+    parser.add_argument("--max-block-size-mb", type=float, default=32.0)
     return parser.parse_args()
 
 
