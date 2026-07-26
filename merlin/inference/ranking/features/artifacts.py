@@ -1,4 +1,4 @@
-"""Export pre-fill Ranker-v2 pair features with lineage."""
+"""Export and validate pre-fill Ranker feature artifacts."""
 
 from __future__ import annotations
 
@@ -6,18 +6,23 @@ from collections import Counter
 from datetime import datetime, timezone
 from itertools import groupby
 import json
+import math
 from pathlib import Path
 from typing import Iterator, Mapping
 
-from ..artifact_lineage import artifact_size_bytes, sha256_path
-from ..feature_schema import RANKER_V2_SCHEMA_VERSION
-from ..features_v2 import RankerV2FeatureComputer
-from ..jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
-from ..parquet_io import parquet_rows
-from ..types import Candidate
+from ...artifacts.integrity import artifact_size_bytes, sha256_path
+from ...artifacts.io import (
+    parquet_rows,
+    read_row_artifact,
+    write_json_atomic,
+    write_row_artifact,
+)
+from ...types import Candidate
+from .compute import FEATURE_SCHEMA, RankerFeatureComputer
 
 
-RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v2"
+RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v3"
+SAMPLE_WEIGHT_COLUMN = "sample_weight"
 RAW_BASE_FEATURES = (
     "cos_audio",
     "cos_graph",
