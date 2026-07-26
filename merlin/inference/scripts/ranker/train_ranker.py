@@ -202,6 +202,31 @@ def expand_solver_coefficients(
         raise ValueError("solver coefficient vector length mismatch")
     if len(set(solver_features)) != len(solver_features) or any(
         name not in FEATURE_ORDER for name in solver_features
+    ):
+        raise ValueError("solver feature order is invalid")
+    fitted_by_name = dict(zip(solver_features, fitted_coefficients, strict=True))
+    return tuple(fitted_by_name.get(name, 0.0) for name in FEATURE_ORDER)
+
+
+def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTable:
+    """Score every Set-B ranker and baseline in one query-grouped Spark job."""
+    coefficient_rows = tuple(
+        tuple(float(value) for value in models[reg_param].coefficients)
+        for reg_param in REG_PARAMS
+    )
+    intercepts = tuple(float(models[reg_param].intercept) for reg_param in REG_PARAMS)
+    model_names = tuple(f"reg:{reg_param:.17g}" for reg_param in REG_PARAMS)
+    reg_by_scorer = dict(zip(model_names, REG_PARAMS, strict=True))
+    scorer_names = model_names + ("c1_only", "c2_only", "bfs")
+
+    def score_query(query):
+        import numpy as np
+        import pandas as pd
+
+        query_id = str(query["query_track_id"].iloc[0])
+        candidate_ids = query["candidate_track_id"].astype(str).to_numpy()
+        feature_matrix = np.vstack(query["feature_array"].to_numpy()).astype(
+            np.float64, copy=False
         )
         margin = functions.aggregate(
             functions.zip_with(
