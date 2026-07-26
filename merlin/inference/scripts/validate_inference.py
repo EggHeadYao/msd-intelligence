@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..artifact_paths import INFERENCE_VALIDATION_PATH
+from ..artifacts.paths import INFERENCE_VALIDATION_PATH
 from ..runtime.factory import load_inference_pipeline
 from ..runtime.validation import validate_pipeline, write_validation_report
 
