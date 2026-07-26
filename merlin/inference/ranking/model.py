@@ -225,6 +225,26 @@ def load_ranker_bundle(
 
     artifact_hashes = manifest.get("artifact_hashes")
     if not isinstance(artifact_hashes, dict):
+        raise ValueError("Ranker training manifest is missing artifact hashes")
+    for path in paths:
+        if artifact_hashes.get(path.name) != sha256_path(path):
+            raise ValueError(f"Ranker artifact hash mismatch: {path.name}")
+
+    parent_hashes = manifest.get("parent_hashes")
+    if not isinstance(parent_hashes, dict):
+        raise ValueError("Ranker training manifest is missing parent hashes")
+    for name, expected in expected_parent_hashes.items():
+        if parent_hashes.get(name) != expected:
+            raise ValueError(f"Ranker parent hash mismatch: {name}")
+
+    ranker = LogisticRanker.from_artifacts(*paths)
+    if ranker.feature_schema_version != FEATURE_SCHEMA:
+        raise ValueError("Ranker scorer schema version mismatch")
+    if ranker.feature_order != FEATURE_ORDER:
+        raise ValueError("Ranker scorer feature order mismatch")
+    return ranker
+
+
 def _floats(values: Sequence[object]) -> tuple[float, ...]:
     return tuple(float(value) for value in values)
 
