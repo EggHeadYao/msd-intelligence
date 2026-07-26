@@ -165,16 +165,22 @@ def export_raw_pair_features(
         grouped_rows = groupby(pair_rows(), key=lambda pair: str(pair["query_track_id"]))
         for query_id, grouped in grouped_rows:
             pairs = list(grouped)
-            for pair, candidate, raw in compute(query_id, pairs):
+            for pair, candidate_id, raw in compute(query_id, pairs):
                 label = int(pair["label"])
                 if label not in {0, 1}:
                     raise ValueError("training pair label must be binary")
+                sample_weight = float(pair[SAMPLE_WEIGHT_COLUMN])
+                if not math.isfinite(sample_weight) or sample_weight < 0.0:
+                    raise ValueError("training pair sample weight must be finite and non-negative")
                 counts["rows"] += 1
                 counts[f"label_{label}"] += 1
+                source = str(pair.get("negative_source") or "positive")
+                loss_weight_sums[source] += sample_weight
                 yield {
                     "query_track_id": query_id,
-                    "candidate_track_id": candidate.track_id,
+                    "candidate_track_id": candidate_id,
                     "label": label,
+                    SAMPLE_WEIGHT_COLUMN: sample_weight,
                     **raw,
                 }
 
