@@ -85,6 +85,76 @@ class LogisticRanker:
             logit += coefficient * ((value - mean) / std)
         return logit
 
+
+def write_ranker_artifacts(
+    output_dir: str | Path,
+    *,
+    fill_values: Mapping[str, float],
+    means: Sequence[float],
+    stds: Sequence[float],
+    coefficients: Sequence[float],
+    intercept: float,
+    reg_param: float,
+    stage: str,
+    converged: bool,
+    iterations: int,
+    selection: Mapping[str, object],
+    parent_paths: Mapping[str, str | Path],
+    scope: str,
+    constant_features: Sequence[str] = (),
+) -> dict[str, object]:
+    if scope not in {"formal", "smoke"}:
+        raise ValueError("ranker scope must be formal or smoke")
+    size = len(FEATURE_ORDER)
+    if not (len(means) == len(stds) == len(coefficients) == size):
+        raise ValueError("ranker artifact vector length mismatch")
+    if any(float(value) <= 0.0 for value in stds):
+        raise ValueError("ranker scaler standard deviations must be positive")
+    constant = tuple(str(name) for name in constant_features)
+    if len(set(constant)) != len(constant) or any(
+        name not in FEATURE_ORDER for name in constant
+    ):
+        raise ValueError("ranker constant-feature list is invalid")
+    if not converged:
+        raise ValueError("ranker run did not converge")
+    root = Path(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    schema_path = root / "ranker_feature_schema.json"
+    scaler_path = root / "ranker_scaler.json"
+    coefficients_path = root / "ranker_coefficients.json"
+    manifest_path = root / "training_manifest.json"
+    common = {
+        "feature_schema_version": FEATURE_SCHEMA,
+        "feature_order": list(FEATURE_ORDER),
+    }
+    write_json_atomic(
+        {
+            **common,
+            "artifact_type": "ranker_feature_schema",
+            "schema_version": 1,
+        },
+        schema_path,
+    )
+    write_json_atomic(
+        {
+            **common,
+            "artifact_type": "ranker_scaler",
+            "fit_split": "set_a",
+            "training_universe": "set_a" if stage == "tuning" else "a_b_remaining",
+            "fill_values": {name: float(value) for name, value in fill_values.items()},
+            "means": [float(value) for value in means],
+            "stds": [float(value) for value in stds],
+            "constant_features": list(constant),
+            "constant_feature_scale": "effective_std_1_with_zero_model_weight",
+        },
+        scaler_path,
+    )
+    write_json_atomic(
+        {
+            **common,
+            "artifact_type": "ranker_coefficients",
+            "model_type": "logistic_regression",
+            "model_version": "full-merlin-lr-v1",
 def _floats(values: Sequence[object]) -> tuple[float, ...]:
     return tuple(float(value) for value in values)
 
