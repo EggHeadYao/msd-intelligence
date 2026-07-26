@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Mapping, Sequence
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Any, Mapping, Sequence
 
-from ..candidate_policy import validate_canonical_policy
-from ..interfaces import CandidateRetriever, PairFeatureComputer, Ranker
+from ..recall.policy import validate_canonical_policy
+from ..retrieval.faiss import FaissTrackIndex
 from ..recall import recall_candidates
 from ..types import Candidate, RecallAudit, Recommendation
 
