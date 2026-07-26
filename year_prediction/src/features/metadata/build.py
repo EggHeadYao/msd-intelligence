@@ -73,3 +73,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shuffle-partitions", type=int, default=32)
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
+
+
+def spark_path(path: Path) -> str:
+    return path.resolve().as_uri()
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    with path.open(encoding="ascii") as handle:
+        return json.load(handle)
+
+
+def write_json(path: Path, payload: Any) -> None:
+    with path.open("w", encoding="ascii", newline="\n") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True, ensure_ascii=True)
+        handle.write("\n")
+
+
+def prepare_output(path: Path, overwrite: bool) -> None:
+    if path.exists():
+        if not overwrite:
+            raise FileExistsError(f"output already exists: {path}")
+        shutil.rmtree(path)
+    path.mkdir(parents=True)
+
+
+def load_labels(spark: SparkSession, path: Path) -> DataFrame:
+    labels = spark.read.parquet(spark_path(path)).select(*AUDIT_COLUMNS)
+    invalid = labels.groupBy("artist_id").agg(F.countDistinct("split").alias("splits"))
+    if invalid.where(F.col("splits") != 1).limit(1).count():
+        raise ValueError("an artist appears in multiple splits")
+    return labels.persist(StorageLevel.DISK_ONLY)
+
