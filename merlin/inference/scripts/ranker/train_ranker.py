@@ -126,12 +126,12 @@ def load_frozen_preprocessing(
     return fill_values, means, stds, constant_features
 
 
-def _collect_validation_scores(frame: Any, models: Mapping, functions, window):
-    collected_by_reg = {}
-    for reg_param in REG_PARAMS:
-        fitted = models[reg_param]
-        coefficients = functions.array(
-            *(functions.lit(float(value)) for value in fitted.coefficients)
+def load_frozen_initial_parameters(
+    tuning_manifest_path: Path,
+    fixed_reg_param: float,
+) -> tuple[Path, tuple[float, ...], float]:
+    """Load the lineage-bound tuning solution used to warm-start LR."""
+    with tuning_manifest_path.open("r", encoding="utf-8") as stream:
         )
         margin = functions.aggregate(
             functions.zip_with(
