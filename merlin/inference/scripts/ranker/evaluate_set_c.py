@@ -138,3 +138,73 @@ def _query_groups(path: Path) -> Iterable[tuple[str, list[dict[str, object]]]]:
 def _candidate_metrics(rows: list[Mapping[str, object]]) -> list[dict[str, object]]:
     states = {
         group: {
+            "eligible": None,
+            "candidate_count": 0,
+            "union_hits": 0,
+            "source_hits": Counter(),
+            "minus_hits": Counter(),
+            "exclusive_hits": Counter(),
+        }
+        for group in VALIDATION_QUERY_GROUPS
+    }
+    sources = ("audio", "graph", "bfs", "tag")
+    for row in rows:
+        recalled_by = {str(source) for source in row.get("recall_sources", ())}
+        for membership in row["validation_groups"]:
+            group = str(membership["query_group"])
+            state = states.get(group)
+            if state is None:
+                continue
+            state["candidate_count"] += 1
+            denominator = int(membership["eligible_positive_count"])
+            if state["eligible"] is None:
+                state["eligible"] = denominator
+            elif state["eligible"] != denominator:
+                raise ValueError("candidate denominator changed within query")
+            if int(membership["label"]) != 1:
+                continue
+            state["union_hits"] += 1
+            state["source_hits"].update(recalled_by)
+            if len(recalled_by) == 1:
+                state["exclusive_hits"].update(recalled_by)
+            for source in sources:
+                if recalled_by - {source}:
+                    state["minus_hits"][source] += 1
+
+    result = []
+    for group in VALIDATION_QUERY_GROUPS:
+        state = states[group]
+        eligible = state["eligible"]
+        if eligible is None:
+            continue
+        candidate_count = state["candidate_count"]
+        union_hits = state["union_hits"]
+        result.append({
+            "query_group": group,
+            "eligible_positive_count": eligible,
+            "union_recall@1000": union_hits / eligible,
+            "random_expectation": random_ranking_expectation(
+                candidate_count,
+                union_hits,
+                eligible,
+            ),
+            "single_source_recall@250": {
+                source: state["source_hits"][source] / eligible
+                for source in sources
+            },
+            "all_minus_one_recall@1000": {
+                source: state["minus_hits"][source] / eligible
+                for source in sources
+            },
+            "exclusive_positive_hits": dict(state["exclusive_hits"]),
+        })
+    return result
+
+
+def _aggregate_candidate(rows: Iterable[Mapping[str, object]]) -> dict[str, object]:
+    grouped = defaultdict(list)
+    exclusive = defaultdict(Counter)
+    for row in rows:
+        group = str(row["query_group"])
+        grouped[group].append(row)
+        exclusive[group].update(row["exclusive_positive_hits"])
