@@ -887,6 +887,76 @@ def _run_random_only_derived(
         raise ValueError("Full pair and feature Parquet parts are not aligned")
 
     (
+        assignments,
+        allowed,
+        _queries,
+        scope,
+        output,
+        manifest_path,
+        feature_output,
+        feature_manifest,
+    ) = _run_config(args, paths)
+    universe = tuple(sorted(allowed))
+    checkpoint_path = output.with_suffix(output.suffix + ".checkpoint.json")
+    contract = {
+        "scope": scope,
+        "source_pair_manifest_sha256": sha256_path(
+            args.full_training_pairs_manifest
+        ),
+        "source_feature_manifest_sha256": sha256_path(
+            args.full_features_manifest
+        ),
+        "source_part_count": len(pair_parts),
+        "rows_per_query": rows_per_query,
+        "rows_per_file": args.rows_per_file,
+        "output": str(output.resolve()),
+        "features_output": str(feature_output.resolve()),
+    }
+    initial = _load_derivation_checkpoint(
+        checkpoint_path,
+        contract,
+        output,
+        feature_output,
+    )
+    start_part = int(initial.get("next_input_part", 0)) if initial else 0
+    totals = Counter(initial.get("totals", {})) if initial else Counter()
+    rejection_totals = (
+        Counter(initial.get("rejection_totals", {})) if initial else Counter()
+    )
+    processed_queries = int(initial.get("query_count", 0)) if initial else 0
+    thresholds, audio, audio_retriever, tag, computer, _recall = _runtime(
+        args,
+        paths,
+        assignments,
+        include_recall=False,
+    )
+
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    pair_schema = training_pair_parquet_schema()
+    feature_schema = raw_feature_parquet_schema("training")
+    resume = initial is not None
+    with PartitionedParquetWriter(
+        output,
+        pair_schema,
+        rows_per_file=args.rows_per_file,
+        resume=resume,
+    ) as pair_writer, PartitionedParquetWriter(
+        feature_output,
+        feature_schema,
+        rows_per_file=args.rows_per_file,
+        resume=resume,
+    ) as feature_writer:
+        expected_pair_rows = int(initial.get("pair_count", 0)) if initial else 0
+        expected_feature_rows = int(initial.get("feature_count", 0)) if initial else 0
+        if (
+            pair_writer.count != expected_pair_rows
+            or feature_writer.count != expected_feature_rows
+        ):
+            raise ValueError("derived checkpoint row counts do not match its parts")
+        for part_index in range(start_part, len(pair_parts)):
         allowed,
         queries,
         scope,
