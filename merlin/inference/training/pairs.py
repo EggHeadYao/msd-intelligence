@@ -70,6 +70,7 @@ def training_pair_parquet_schema():
         pa.field("query_track_id", pa.string(), nullable=False),
         pa.field("candidate_track_id", pa.string(), nullable=False),
         pa.field("label", pa.int64(), nullable=False),
+        pa.field(SAMPLE_WEIGHT_COLUMN, pa.float32(), nullable=False),
         pa.field("positive_sources", pa.list_(pa.string()), nullable=False),
         pa.field("negative_source", pa.string()),
         pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
