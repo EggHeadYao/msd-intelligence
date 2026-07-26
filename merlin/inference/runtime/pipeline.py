@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 from ..recall.policy import validate_canonical_policy
 from ..retrieval.faiss import FaissTrackIndex
 from ..recall import recall_candidates
-from ..types import Candidate, RecallAudit, Recommendation
+from ..types import (
 
 
 @dataclass(slots=True)
