@@ -29,6 +29,76 @@ class TagData:
     term_artists: Mapping[str, frozenset[str]]
 
 
+@dataclass(frozen=True, slots=True)
+class SparseArtistTagIndex:
+    """Exact normalized TF-IDF matrices for batched artist cosine queries."""
+
+    artists: tuple[str, ...]
+    artist_to_row: Mapping[str, int]
+    normalized: object
+    recall_queries: object
+
+    @classmethod
+    def build(
+        cls,
+        data: TagData,
+        idf_values: Mapping[str, float],
+        norms: Mapping[str, float],
+        *,
+        max_term_artists: int,
+    ) -> SparseArtistTagIndex:
+        from scipy.sparse import coo_matrix
+
+        artists = tuple(sorted(data.artist_terms))
+        terms = tuple(sorted(data.term_artists))
+        artist_to_row = {artist: row for row, artist in enumerate(artists)}
+        term_to_column = {term: column for column, term in enumerate(terms)}
+        rows: list[int] = []
+        columns: list[int] = []
+        values: list[float] = []
+        recall_values: list[float] = []
+        for artist in artists:
+            norm = float(norms.get(artist, 0.0))
+            if norm <= 0.0:
+                continue
+            row = artist_to_row[artist]
+            for term in data.artist_terms[artist]:
+                value = float(idf_values[term]) / norm
+                rows.append(row)
+                columns.append(term_to_column[term])
+                values.append(value)
+                recall_values.append(
+                    value
+                    if len(data.term_artists.get(term, ())) <= max_term_artists
+                    else 0.0
+                )
+        shape = (len(artists), len(terms))
+        normalized = coo_matrix(
+            (values, (rows, columns)), shape=shape, dtype="float64"
+        ).tocsr()
+        recall_queries = coo_matrix(
+            (recall_values, (rows, columns)), shape=shape, dtype="float64"
+        ).tocsr()
+        recall_queries.eliminate_zeros()
+        return cls(artists, artist_to_row, normalized, recall_queries)
+
+    def similar_many(
+        self,
+        artist_ids: Sequence[str],
+        top_k: int,
+        *,
+        chunk_size: int = 64,
+    ) -> dict[str, tuple[tuple[str, float], ...]]:
+        """Return exact nonzero top artists for many roots in sparse chunks."""
+        import numpy as np
+
+        results = {artist_id: () for artist_id in artist_ids}
+        available = [artist_id for artist_id in artist_ids if artist_id in self.artist_to_row]
+        for start in range(0, len(available), chunk_size):
+            chunk = available[start : start + chunk_size]
+            rows = [self.artist_to_row[artist_id] for artist_id in chunk]
+
+
 def artist_tag_cosine(
     data: TagData,
     left_artist: str,
