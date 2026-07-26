@@ -230,7 +230,9 @@ def main() -> None:
 
     spark_local_temporary = TemporaryDirectory(prefix="merlin-c3-spark-", dir=scratch_root)
     spark = (
-        SparkSession.builder.appName("MerlinBuildSetBValidationGroups")
+        SparkSession.builder.appName(
+            f"MerlinBuild{args.apply_split.title().replace('_', '')}ValidationGroups"
+        )
         .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
         .config("spark.local.dir", spark_local_temporary.name)
         .getOrCreate()
