@@ -68,3 +68,69 @@ def create_set_c_protocol(
         "artifact_type": "set_c_evaluation_protocol",
         "artifact_version": EVALUATION_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "scope": scope,
+        "fit_split": "set_a",
+        "selection_split": "set_b",
+        "evaluation_split": "set_c",
+        "seed": EVALUATION_SEED,
+        "cutoffs": list(EVALUATION_CUTOFFS),
+        "primary_cutoff": PRIMARY_CUTOFF,
+        "query_bootstrap_samples": QUERY_BOOTSTRAP_SAMPLES,
+        "artist_bootstrap_samples": ARTIST_BOOTSTRAP_SAMPLES,
+        "scorers": list(SCORERS),
+        "robustness_configs": list(ROBUSTNESS_CONFIGS),
+        "report_sections": list(REPORT_SECTIONS),
+        "claims": "weak_label_task_consistency_not_user_relevance",
+        "parent_hashes": {
+            name: sha256_path(path) for name, path in sorted(parent_paths.items())
+        },
+    }
+    write_json_atomic(payload, output)
+    return payload
+
+
+def load_set_c_protocol(
+    path: str | Path,
+    *,
+    expected_scope: str,
+    expected_parent_hashes: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    with Path(path).open("r", encoding="utf-8") as stream:
+        protocol = json.load(stream)
+    if protocol.get("artifact_type") != "set_c_evaluation_protocol":
+        raise ValueError("Set-C evaluation protocol artifact type mismatch")
+    if protocol.get("artifact_version") != EVALUATION_VERSION:
+        raise ValueError("Set-C evaluation protocol version mismatch")
+    if protocol.get("scope") != expected_scope:
+        raise ValueError("Set-C evaluation protocol scope mismatch")
+    boundary = (
+        protocol.get("fit_split"),
+        protocol.get("selection_split"),
+        protocol.get("evaluation_split"),
+    )
+    if boundary != ("set_a", "set_b", "set_c"):
+        raise ValueError("Set-C evaluation split boundary mismatch")
+    if protocol.get("cutoffs") != list(EVALUATION_CUTOFFS):
+        raise ValueError("Set-C evaluation cutoffs changed after freezing")
+    if protocol.get("primary_cutoff") != PRIMARY_CUTOFF:
+        raise ValueError("Set-C primary cutoff changed after freezing")
+    if protocol.get("scorers") != list(SCORERS):
+        raise ValueError("Set-C scorer set changed after freezing")
+    if protocol.get("robustness_configs") != list(ROBUSTNESS_CONFIGS):
+        raise ValueError("Set-C robustness configuration changed after freezing")
+    frozen_statistics = (
+        protocol.get("seed") == EVALUATION_SEED
+        and protocol.get("query_bootstrap_samples") == QUERY_BOOTSTRAP_SAMPLES
+        and protocol.get("artist_bootstrap_samples") == ARTIST_BOOTSTRAP_SAMPLES
+        and protocol.get("claims") == "weak_label_task_consistency_not_user_relevance"
+        and protocol.get("report_sections") == list(REPORT_SECTIONS)
+    )
+    if not frozen_statistics:
+        raise ValueError("Set-C statistical or report protocol changed after freezing")
+    parents = protocol.get("parent_hashes")
+    if not isinstance(parents, dict):
+        raise ValueError("Set-C evaluation protocol is missing parent hashes")
+    for name, expected in (expected_parent_hashes or {}).items():
+        if parents.get(name) != expected:
+            raise ValueError(f"Set-C protocol parent hash mismatch: {name}")
+    return protocol
