@@ -696,14 +696,16 @@ def main() -> None:
         validation_pair_count = int(layout_counts["pair_count"])
         validation_group_row_count = int(layout_counts["group_row_count"] or 0)
         if validation_pair_count == 0:
-            raise ValueError("Set-B validation pairs are empty")
+            raise ValueError(f"{args.apply_split} validation pairs are empty")
         missing_candidate_queries = eligible.select("query_track_id").distinct().join(
             pool_queries.select(F.col("track_id").alias("query_track_id")),
             "query_track_id",
             "left_anti",
         ).limit(1).count()
         if missing_candidate_queries:
-            raise ValueError("an eligible Set-B validation query has no canonical candidates")
+            raise ValueError(
+                f"an eligible {args.apply_split} query has no canonical candidates"
+            )
 
         positive_stats = {
             row["query_group"]: row.asDict()
@@ -737,29 +739,32 @@ def main() -> None:
         if args.scope == "formal" and any(
             int(group_stats[group]["eligible_query_count"]) == 0 for group in VALIDATION_QUERY_GROUPS
         ):
-            raise ValueError("formal Set-B validation is missing an eligible query group")
+            raise ValueError(
+                f"formal {args.apply_split} validation is missing an eligible query group"
+            )
         release(recalled_positives)
         release(eligible)
         release(pool_queries)
 
-        threshold_payload = {
-            "artifact_type": "set_b_validation_thresholds",
-            "artifact_version": "merlin_validation_groups_v1",
-            "created_at_utc": datetime.now(timezone.utc).isoformat(),
-            "fit_split": "set_a",
-            "seed": VALIDATION_GROUP_SEED,
-            "sample_method": "deterministic_hash_sampled_cross_artist_pairs",
-            "quantile_method": "numpy_linear_exact",
-            "max_sample_pairs": args.max_threshold_pairs,
-            "sampled_cross_artist_pairs": threshold_sample_count,
-            "pre_pca_acoustic_cosine_p50": acoustic_p50,
-            "pre_pca_acoustic_cosine_p90": acoustic_p90,
-            "tag_positive_threshold": tag_positive_threshold,
-            "tag_positive_threshold_source": str(args.weak_thresholds),
-            "audio_pair_engine": args.audio_pair_engine,
-            "audio_block_size": args.audio_block_size,
-        }
-        write_json_atomic(threshold_payload, args.thresholds)
+        if not is_set_c:
+            threshold_payload = {
+                "artifact_type": "set_b_validation_thresholds",
+                "artifact_version": "merlin_validation_groups_v1",
+                "created_at_utc": datetime.now(timezone.utc).isoformat(),
+                "fit_split": "set_a",
+                "seed": VALIDATION_GROUP_SEED,
+                "sample_method": "deterministic_hash_sampled_cross_artist_pairs",
+                "quantile_method": "numpy_linear_exact",
+                "max_sample_pairs": args.max_threshold_pairs,
+                "sampled_cross_artist_pairs": threshold_sample_count,
+                "pre_pca_acoustic_cosine_p50": acoustic_p50,
+                "pre_pca_acoustic_cosine_p90": acoustic_p90,
+                "tag_positive_threshold": tag_positive_threshold,
+                "tag_positive_threshold_source": str(args.weak_thresholds),
+                "audio_pair_engine": args.audio_pair_engine,
+                "audio_block_size": args.audio_block_size,
+            }
+            write_json_atomic(threshold_payload, args.thresholds)
         positives.write.mode("errorifexists").parquet(_uri(args.positives))
         release(positives)
         validation_pairs.repartition(
@@ -784,16 +789,23 @@ def main() -> None:
                 "candidate_pool": args.candidate_pool,
                 "weak_label_thresholds": args.weak_thresholds,
                 "tag_idf": args.tag_idf,
+                **(
+                    {"evaluation_protocol": args.evaluation_protocol}
+                    if is_set_c
+                    else {}
+                ),
             },
             scope=args.scope,
             threshold_sample_count=threshold_sample_count,
             pair_count=validation_pair_count,
             group_row_count=validation_group_row_count,
             group_stats=group_stats,
+            apply_split=args.apply_split,
         )
         print(
             "validation_groups_ready "
-            f"scope={manifest['scope']} set_a_sample={threshold_sample_count} "
+            f"scope={manifest['scope']} split={args.apply_split} "
+            f"set_a_sample={threshold_sample_count} "
             f"candidate_queries={candidate_manifest['query_count']} output={args.validation_pairs}"
         )
     finally:
