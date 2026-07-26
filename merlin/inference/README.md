@@ -115,53 +115,6 @@ The canonical feature list and persistence rules are in
 [`ranking/features/README.md`](ranking/features/README.md). Set-C protocol and
 metric rules are in [`evaluation/README.md`](evaluation/README.md).
 
-## Set-C evaluation
-
-Set C remains unopened during tuning, retraining, and ablation construction.
-After both the Full and no-hard-negative models are complete, freeze their
-lineage and the evaluation rules before producing any Set-C-derived artifact:
-
-```bash
-python -m merlin.inference.scripts.ranker.freeze_set_c_protocol \
-  --scope formal
-```
-
-Then run the evaluation stages in order:
-
-```bash
-python -m merlin.inference.scripts.recall.export_candidates \
-  --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
-  --split-manifest parquets_new/merlin/ranker/split_manifest.json \
-  --query-split set_c \
-  --evaluation-protocol parquets_new/merlin/ranker/set_c_evaluation/protocol.json
-
-spark-submit --master 'local[6]' --driver-memory 5g \
-  --conf spark.hadoop.fs.defaultFS=file:/// \
-  merlin/inference/scripts/ranker/build_validation_groups.py \
-  --apply-split set_c \
-  --evaluation-protocol parquets_new/merlin/ranker/set_c_evaluation/protocol.json \
-  --scope formal \
-  --shuffle-partitions 64 \
-  --scratch-root parquets_new/merlin/ranker/.c3-scratch
-
-python -m merlin.inference.scripts.ranker.export_ranker_features \
-  --pair-kind validation \
-  --stage final_evaluation \
-  --evaluation-protocol parquets_new/merlin/ranker/set_c_evaluation/protocol.json \
-  --scope formal
-
-python -m merlin.inference.scripts.ranker.evaluate_set_c \
-  --scope formal
-```
-
-Canonical Set-C outputs live under
-`parquets_new/merlin/ranker/set_c_evaluation/`. The resulting
-`evaluation_report.json` includes candidate-layer diagnostics, stratified
-nDCG/Recall metrics, paired query and artist-cluster bootstrap comparisons,
-ablation results, and robustness slices. The protocol binds every stage to the
-frozen splits, indexes, policies, preprocessing, and both model manifests; a
-lineage mismatch fails closed.
-
 ## Cold Audio-only queries
 
 Cold queries use a separate path and must provide a C1-compatible 128D audio
