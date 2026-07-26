@@ -217,13 +217,15 @@ def _streamed_feature_manifest(
     output: Path,
     manifest_path: str | Path,
     scope: str,
+    candidate_aware_fraction: float,
 ) -> dict[str, object]:
     totals = stats["totals"]
     assert isinstance(totals, Counter)
+    loss_weight_totals = stats["loss_weight_totals"]
     feature_parents = {
         **parent_hashes,
-        "final_training_pairs": sha256_path(output),
-        "final_training_pairs_manifest": sha256_path(manifest_path),
+        "training_pairs": sha256_path(output),
+        "training_pairs_manifest": sha256_path(manifest_path),
     }
     return {
         "artifact_type": "ranker_raw_pair_features",
@@ -233,7 +235,7 @@ def _streamed_feature_manifest(
         "pair_kind": "training",
         "stage": "final_retrain",
         "row_layout": "one_row_per_training_pair",
-        "feature_schema_version": RANKER_V2_SCHEMA_VERSION,
+        "feature_schema_version": FEATURE_SCHEMA,
         "raw_feature_order": list(RAW_BASE_FEATURES),
         "row_count": stats["feature_count"],
         "counts": {
@@ -241,6 +243,11 @@ def _streamed_feature_manifest(
             "label_0": int(totals["negative_count"]),
             "label_1": int(totals["positive_count"]),
         },
+        "loss_weighting": _loss_weight_manifest(
+            loss_weight_totals,
+            candidate_aware_fraction,
+            stats,
+        ),
         "output_file": feature_output.name,
         "storage_format": "partitioned_parquet",
         "part_count": stats["feature_part_count"],
