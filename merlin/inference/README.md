@@ -115,23 +115,14 @@ The canonical feature list and persistence rules are in
 [`ranking/features/README.md`](ranking/features/README.md). Set-C protocol and
 metric rules are in [`evaluation/README.md`](evaluation/README.md).
 
-## Cold Audio-only queries
+## Operational notes
 
-Cold queries use a separate path and must provide a C1-compatible 128D audio
-embedding. They never invoke Graph, BFS, Tag, LR, or MMR:
-
-```python
-from merlin.inference import ColdAudioPipeline
-from merlin.inference.retrieval.faiss import load_audio_index
-
-cold = ColdAudioPipeline(load_audio_index(), track_to_song)
-recommendations, audit = cold.recommend_with_audit(
-    query_embedding,
-    query_song_id="optional-song-id",
-)
-```
-
-The adapter converts to float32, rejects non-finite and zero-norm vectors, L2
-normalizes, overfetches 3001 Audio neighbors, filters the query/same-song items,
-keeps at most 1000 candidates, and returns the top 20 by C1 cosine. Transforming
-raw 563D features into this embedding remains a C1 artifact responsibility.
+- Formal high-volume row artifacts use partitioned Parquet with Zstandard
+  compression; legacy JSONL-Gzip remains readable for smoke compatibility.
+- High-volume commands reserve free disk space and place temporary data under
+  the output filesystem. Use `--scratch-root` for a dedicated volume.
+- Never delete an active Spark block-manager directory.
+- On hosts whose FAISS wheel requires unsupported SIMD instructions, use
+  `MERLIN_FAISS_SEARCH_ENGINE=numpy` with the command's low-memory mode.
+- Smoke outputs must use explicit paths outside the canonical formal artifact
+  directory.
