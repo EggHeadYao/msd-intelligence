@@ -104,7 +104,7 @@ def materialize_raw_features(
 
 def export_raw_pair_features(
     pair_path: str | Path,
-    computer: RankerV2FeatureComputer,
+    computer: RankerFeatureComputer,
     output_path: str | Path,
     manifest_path: str | Path,
     *,
@@ -117,9 +117,14 @@ def export_raw_pair_features(
         raise ValueError("raw-feature scope must be formal or smoke")
     if pair_kind not in {"training", "validation"}:
         raise ValueError("raw-feature pair kind must be training or validation")
-    if stage not in {"tuning", "final_retrain"}:
-        raise ValueError("raw-feature stage must be tuning or final_retrain")
+    if stage not in {"tuning", "final_retrain", "final_evaluation"}:
+        raise ValueError(
+            "raw-feature stage must be tuning, final_retrain, or final_evaluation"
+        )
+    if stage == "final_evaluation" and pair_kind != "validation":
+        raise ValueError("evaluation features require validation pairs")
     counts: Counter[str] = Counter()
+    loss_weight_sums: Counter[str] = Counter()
 
     def pair_rows() -> Iterator[Mapping[str, object]]:
         if pair_kind == "training":
