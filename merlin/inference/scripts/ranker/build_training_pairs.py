@@ -340,9 +340,32 @@ def _positive_checks(
                 (track_id, _finite(score))
                 for track_id, score in zip(missing, scores, strict=True)
             )
-        return [is_positive(query_id, track_id) for track_id in candidate_ids]
+        results: list[bool] = []
+        for candidate_id in candidate_ids:
+            candidate_artist = tag.track_to_artist.get(candidate_id)
+            if artist is not None and artist == candidate_artist:
+                results.append(True)
+                continue
+            if artist is None or candidate_artist is None:
+                results.append(False)
+                continue
+            audio_score = audio_cache[candidate_id]
+            if audio_score is not None and audio_score >= audio_threshold:
+                results.append(True)
+                continue
+            if candidate_artist not in tag_cache:
+                tag_cache[candidate_artist] = _finite(
+                    tag.pair_score(query_id, candidate_id)
+                )
+            tag_score = tag_cache[candidate_artist]
+            tag_pair_cache[candidate_id] = tag_score
+            results.append(tag_score is not None and tag_score >= tag_threshold)
+        return results
 
-    return is_positive, is_positive_batch
+    return is_positive, is_positive_batch, {
+        "audio": audio_cache,
+        "tag": tag_pair_cache,
+    }
 
 
 def _final_feature_rows(
