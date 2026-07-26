@@ -1153,6 +1153,8 @@ def write_training_pair_artifacts(
     allowed = allowed_training_tracks(assignments, stage)
     universe = tuple(sorted(allowed))
     totals: Counter[str] = Counter()
+    loss_weight_totals: Counter[str] = Counter()
+    loss_weight_shape_histogram: Counter[str] = Counter()
     rejection_totals: Counter[str] = Counter()
     query_count = 0
 
