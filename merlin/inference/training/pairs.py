@@ -285,6 +285,7 @@ def _random_negatives(
     rejected: set[str],
     same_song: SameSong,
     is_positive: IsPositive,
+    is_positive_batch: IsPositiveBatch | None,
     rejection_counts: Counter[str],
 ) -> list[str]:
     if count <= 0:
@@ -294,22 +295,43 @@ def _random_negatives(
     attempts = 0
     maximum_attempts = max(len(universe) * 4, count * 100)
     while len(selected) < count and attempts < maximum_attempts:
-        digest = hashlib.sha256(
-            f"{PAIR_SEED}\0{query_id}\0random\0{attempts}".encode("utf-8")
-        ).digest()
-        candidate_id = universe[int.from_bytes(digest[:8], "big") % len(universe)]
-        attempts += 1
-        if candidate_id == query_id:
-            rejection_counts["query_self"] += 1
-        elif candidate_id in rejected or candidate_id in selected_set:
-            rejection_counts["duplicate_pair"] += 1
-        elif same_song(query_id, candidate_id):
-            rejection_counts["same_song"] += 1
-        elif is_positive(query_id, candidate_id):
-            rejection_counts["known_positive"] += 1
-        else:
-            selected.append(candidate_id)
-            selected_set.add(candidate_id)
+        batch_end = min(attempts + max(64, count * 4), maximum_attempts)
+        proposals = []
+        for attempt in range(attempts, batch_end):
+            digest = hashlib.sha256(
+                f"{PAIR_SEED}\0{query_id}\0random\0{attempt}".encode("utf-8")
+            ).digest()
+            proposals.append(universe[int.from_bytes(digest[:8], "big") % len(universe)])
+        predicate_ids = list(dict.fromkeys(
+            candidate_id
+            for candidate_id in proposals
+            if candidate_id != query_id
+            and candidate_id not in rejected
+            and not same_song(query_id, candidate_id)
+        ))
+        predicate_results = (
+            is_positive_batch(query_id, predicate_ids)
+            if is_positive_batch is not None
+            else [is_positive(query_id, candidate_id) for candidate_id in predicate_ids]
+        )
+        if len(predicate_results) != len(predicate_ids):
+            raise ValueError("batch positive predicate returned the wrong number of results")
+        positive_by_id = dict(zip(predicate_ids, predicate_results, strict=True))
+        for candidate_id in proposals:
+            attempts += 1
+            if candidate_id == query_id:
+                rejection_counts["query_self"] += 1
+            elif candidate_id in rejected or candidate_id in selected_set:
+                rejection_counts["duplicate_pair"] += 1
+            elif same_song(query_id, candidate_id):
+                rejection_counts["same_song"] += 1
+            elif positive_by_id[candidate_id]:
+                rejection_counts["known_positive"] += 1
+            else:
+                selected.append(candidate_id)
+                selected_set.add(candidate_id)
+                if len(selected) == count:
+                    break
     return selected
 
 
