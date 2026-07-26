@@ -40,8 +40,8 @@ PairListLookup = Callable[
 
 
 @dataclass(frozen=True, slots=True)
-class TrackMetadataV2:
-    """Metadata whose availability is meaningful to the v2 ranker."""
+class TrackMetadata:
+    """Metadata whose availability is meaningful to the Ranker."""
 
     release_id: str | None = None
     year: int | None = None
