@@ -341,35 +341,35 @@ def main() -> None:
             indexed_schema = indexed_source.schema.add(
                 "sample_row_id", "long", nullable=False
             )
-            .orderBy("sample_hash")
-            .limit(args.max_threshold_pairs)
-            .select("q_track_id", "c_track_id")
-            .persist(StorageLevel.MEMORY_AND_DISK)
-        )
-        cached.append(threshold_pair_ids)
-        threshold_sample_count = threshold_pair_ids.count()
-        if threshold_sample_count == 0:
-            raise ValueError("Set-A pre-PCA threshold sample is empty")
-        vector_positions, normalized_vectors = collect_normalized_vector_matrix(
-            set_a.select(
-                TRACK_ID_COLUMN, "pre_pca_vector", "pre_pca_norm"
-            ).toLocalIterator(),
-            capacity=set_a_count,
-            dimension=len(feature_columns),
-        )
-        threshold_sample_count, acoustic_p50, acoustic_p90 = sampled_pair_cosine_quantiles(
-            threshold_pair_ids.toLocalIterator(),
-            vector_positions,
-            normalized_vectors,
-            expected_pairs=threshold_sample_count,
-        )
-        del normalized_vectors, vector_positions
-        if not math.isfinite(acoustic_p50) or not math.isfinite(acoustic_p90):
-            raise ValueError("Set-A pre-PCA thresholds are not finite")
-        if acoustic_p90 < acoustic_p50:
-            raise ValueError("Set-A pre-PCA thresholds are not monotonic")
-        release(threshold_pair_ids)
-        release(indexed)
+            indexed = spark.createDataFrame(
+                indexed_source.orderBy(TRACK_ID_COLUMN).rdd.zipWithIndex().map(
+                    lambda item: (*item[0], int(item[1]))
+                ),
+                schema=indexed_schema,
+            ).persist(StorageLevel.MEMORY_AND_DISK)
+            cached.append(indexed)
+            queries = indexed.select(
+                F.col(TRACK_ID_COLUMN).alias("q_track_id"),
+                F.col("song_id").alias("q_song_id"),
+                F.col("artist_id").alias("q_artist_id"),
+                F.col("pre_pca_norm").alias("q_norm"),
+            ).withColumn(
+                "sample_slot",
+                F.explode(F.sequence(F.lit(0), F.lit(slots - 1))),
+            )
+            queries = queries.withColumn(
+                "candidate_row_id",
+                F.pmod(
+                    F.xxhash64(
+                        "q_track_id", "sample_slot", F.lit(VALIDATION_GROUP_SEED)
+                    ),
+                    F.lit(set_a_count),
+                ),
+            )
+            candidates = indexed.select(
+                F.col("sample_row_id").alias("candidate_row_id"),
+                F.col(TRACK_ID_COLUMN).alias("c_track_id"),
+                F.col("song_id").alias("c_song_id"),
 
         set_b = vectors.where(F.col("split") == "set_b").drop("split").persist(
             StorageLevel.MEMORY_AND_DISK
