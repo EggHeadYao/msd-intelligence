@@ -681,49 +681,50 @@ def main() -> None:
                 + json.dumps(selection["set_b_diagnostics"], sort_keys=True),
                 flush=True,
             )
-            release(scaled_validation)
-            query_scores = {}
-            for reg_param in REG_PARAMS:
-                collected = collected_by_reg[reg_param]
-                group_counts = {
-                    group: sum(row["query_group"] == group for row in collected)
-                    for group in QUERY_GROUPS
-                }
-                if any(count == 0 for count in group_counts.values()):
-                    raise ValueError("Set-B validation is missing a frozen query group")
-                total = len(collected)
-                query_scores[reg_param] = [
-                    float(row["ndcg20"])
-                    * total
-                    / (len(QUERY_GROUPS) * group_counts[row["query_group"]])
-                    for row in sorted(
-                        collected,
-                        key=lambda item: (item["query_group"], item["query_track_id"]),
-                    )
-                ]
-            selected_reg, selection = select_reg_param(query_scores)
-            model = models[selected_reg]
         else:
             selected_reg = float(args.fixed_reg_param)
             model = fit(selected_reg)
-            release(scaled_train)
             selection = {
                 "selected_reg_param": selected_reg,
                 "selection_source": "frozen_from_set_b",
+                "warm_start": "tuning_ranker_coefficients",
             }
 
-        coefficients = tuple(float(value) for value in model.coefficients)
+        fitted_coefficients = tuple(float(value) for value in model.coefficients)
+        if args.stage == "final_retrain":
+            coefficients = expand_solver_coefficients(
+                solver_features,
+                fitted_coefficients,
+            )
+        else:
+            coefficients = fitted_coefficients
         constant_indexes = {
             index
-            for index, name in enumerate(RANKER_V2_FEATURES)
+            for index, name in enumerate(FEATURE_ORDER)
             if name in constant_features
         }
         if any(abs(coefficients[index]) > 1e-12 for index in constant_indexes):
             raise ValueError("LR assigned weight to a zero-variance feature")
         selection = {
             **selection,
+            "training_variant": args.training_variant,
             "constant_features": list(constant_features),
+            "solver_feature_count": len(solver_features),
+            "max_block_size_mb": float(args.max_block_size_mb),
+            "rdd_compression_codec": RDD_COMPRESSION_CODEC,
+            "class_weight": "none",
         }
+
+        parent_paths = parse_parents(args.parent)
+        parent_paths.setdefault("train_features", args.train_features)
+        parent_paths.setdefault("train_features_manifest", args.train_features_manifest)
+        if args.stage == "final_retrain":
+            assert frozen_coefficients_path is not None
+            parent_paths.setdefault("frozen_scaler", args.frozen_scaler)
+            parent_paths.setdefault("frozen_tuning_manifest", args.frozen_tuning_manifest)
+            parent_paths.setdefault("frozen_tuning_coefficients", frozen_coefficients_path)
+        if args.training_variant == "no_hard_neg":
+            parent_paths.setdefault("training_pairs_manifest", pair_manifest_path)
 
         write_ranker_artifacts(
             args.output,
@@ -737,13 +738,14 @@ def main() -> None:
             converged=True,
             iterations=int(model.summary.totalIterations),
             selection=selection,
-            parent_paths=parse_parents(args.parent),
+            parent_paths=parent_paths,
             scope=args.scope,
             constant_features=constant_features,
         )
         print(
             "ranker_training_ready "
-            f"stage={args.stage} reg_param={selected_reg} output={args.output}",
+            f"stage={args.stage.removeprefix('final_')} "
+            f"reg_param={selected_reg} output={args.output}",
         )
     finally:
         for frame in reversed(cached):
