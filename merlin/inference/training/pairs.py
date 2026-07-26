@@ -653,34 +653,49 @@ def finish_query_pairs(
     if len(candidate_selected) + len(random_selected) != negative_target:
         raise ValueError(f"negative sampling shortage for query {query_id}")
 
+    def evidence(value: object) -> tuple[frozenset[str], Mapping[str, float]]:
+        if isinstance(candidates, EncodedCandidates):
+            return candidates.evidence(int(value))
+        sources, scores = value  # type: ignore[misc]
+        return sources, scores
+
+    candidate_weight, random_weight = _negative_loss_weights(
+        negative_target,
+        len(candidate_selected),
+        len(random_selected),
+        candidate_target,
+    )
+    positive_ids = set(selected_positives)
     rows = [
         {
             "query_track_id": query_id,
             "candidate_track_id": track_id,
             "label": 1,
+            SAMPLE_WEIGHT_COLUMN: 1.0,
             "positive_sources": sorted(sources),
             "negative_source": None,
             "recall_sources": [],
         }
         for track_id, sources in sorted(selected_positives.items())
     ]
-    rows.extend(
-        {
+    for track_id, recall_evidence in candidate_selected:
+        recall_sources, recall_scores = evidence(recall_evidence)
+        rows.append({
             "query_track_id": query_id,
             "candidate_track_id": track_id,
             "label": 0,
+            SAMPLE_WEIGHT_COLUMN: candidate_weight,
             "positive_sources": [],
             "negative_source": "candidate_aware",
-            "recall_sources": sorted(sources),
-            "recall_scores": dict(scores),
-        }
-        for track_id, sources, scores in candidate_selected
-    )
+            "recall_sources": sorted(recall_sources),
+            "recall_scores": dict(recall_scores),
+        })
     rows.extend(
         {
             "query_track_id": query_id,
             "candidate_track_id": track_id,
             "label": 0,
+            SAMPLE_WEIGHT_COLUMN: random_weight,
             "positive_sources": [],
             "negative_source": "random",
             "recall_sources": [],
@@ -700,6 +715,18 @@ def finish_query_pairs(
         "random_count": len(random_selected),
         "candidate_shortage": candidate_target - len(candidate_selected),
         "negative_shortage": 0,
+        "loss_weight_sums": {
+            "positive": float(len(positive_ids)),
+            "candidate_aware": candidate_weight * len(candidate_selected),
+            "random": random_weight * len(random_selected),
+        },
+        "loss_weight_audit": {
+            "candidate_weight": candidate_weight,
+            "candidate_count": len(candidate_selected),
+            "effective_candidate_aware_fraction": (
+                candidate_weight * len(candidate_selected) / negative_target
+            ),
+        },
         "rejections": dict(sorted(rejection_counts.items())),
     }
 
