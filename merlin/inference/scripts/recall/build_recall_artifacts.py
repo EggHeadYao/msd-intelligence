@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ...artifact_paths import CANDIDATE_POLICY_PATH, GRAPH_EDGES_PATH, TAG_IDF_PATH
-from ...candidate_policy import write_candidate_policy
-from ...tag_data import (
+from ...artifacts.paths import CANDIDATE_POLICY_PATH, GRAPH_EDGES_PATH, TAG_IDF_PATH
+from ...recall.policy import write_candidate_policy
+from ...data.tags import (
     build_tag_idf_artifact,
     load_artist_term_data,
     write_tag_idf_artifact,
