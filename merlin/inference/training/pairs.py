@@ -1239,6 +1239,8 @@ def write_training_pair_artifacts(
 def write_training_and_feature_artifacts(
     query_rows: Iterable[
         tuple[list[dict[str, object]], list[dict[str, object]], Mapping[str, object]]
+        | StreamCheckpoint
+        | StreamTableBatch
     ],
     output_path: str | Path,
     manifest_path: str | Path,
@@ -1248,13 +1250,26 @@ def write_training_and_feature_artifacts(
     parent_paths: Mapping[str, str | Path],
     scope: str,
     rows_per_file: int = 250_000,
+    checkpoint_path: str | Path | None = None,
+    checkpoint_contract: Mapping[str, object] | None = None,
+    initial_checkpoint: Mapping[str, object] | None = None,
+    candidate_aware_fraction: float = CANDIDATE_AWARE_FRACTION,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    """Write streamed final-retrain pairs and features in one partitioned pass."""
+    """Write streamed retrain pairs and features in one partitioned pass."""
     if scope not in {"formal", "smoke"}:
         raise ValueError("training scope must be formal or smoke")
     output = Path(output_path)
     feature_output = Path(feature_output_path)
-    stats = _write_streamed_rows(query_rows, output, feature_output, rows_per_file)
+    stats = _write_streamed_rows(
+        query_rows,
+        output,
+        feature_output,
+        rows_per_file,
+        candidate_aware_fraction=candidate_aware_fraction,
+        checkpoint_path=Path(checkpoint_path) if checkpoint_path is not None else None,
+        checkpoint_contract=checkpoint_contract,
+        initial_checkpoint=initial_checkpoint,
+    )
     query_count = int(stats["query_count"])
     pair_count = int(stats["pair_count"])
     feature_count = int(stats["feature_count"])
@@ -1263,7 +1278,9 @@ def write_training_and_feature_artifacts(
     parent_hashes = {
         name: sha256_path(path) for name, path in sorted(parent_paths.items())
     }
-    manifest = _streamed_pair_manifest(output, stats, parent_hashes, scope)
+    manifest = _streamed_pair_manifest(
+        output, stats, parent_hashes, scope, candidate_aware_fraction
+    )
     write_json_atomic(manifest, manifest_path)
     feature_manifest = _streamed_feature_manifest(
         feature_output, stats, parent_hashes, output, manifest_path, scope
