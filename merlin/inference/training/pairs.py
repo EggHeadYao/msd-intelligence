@@ -927,6 +927,17 @@ def _write_streamed_rows(
                         "candidate_aware_count",
                         "random_count",
                         "candidate_shortage",
+                    ):
+                        totals[key] += int(audit[key])
+                    loss_weight_totals.update(audit["loss_weight_sums"])
+                    loss_weight_shape_histogram[_loss_weight_shape_key(audit)] += 1
+                    rejection_totals.update(audit["rejections"])
+                weak_source_totals.update(item.weak_source_totals)
+                recall_source_totals.update(item.recall_source_totals)
+                pair_writer.write_table(item.pairs)
+                feature_writer.write_table(item.features)
+                continue
+            pairs, features, audit = item
             if len(pairs) != len(features):
                 raise ValueError("streamed pair and feature query counts differ")
             query_count += 1
@@ -938,6 +949,8 @@ def _write_streamed_rows(
                 "candidate_shortage",
             ):
                 totals[key] += int(audit[key])
+            loss_weight_totals.update(audit["loss_weight_sums"])
+            loss_weight_shape_histogram[_loss_weight_shape_key(audit)] += 1
             rejection_totals.update(audit["rejections"])
             for row in pairs:
                 weak_source_totals.update(row["positive_sources"])
@@ -947,6 +960,7 @@ def _write_streamed_rows(
                     "query_track_id": row["query_track_id"],
                     "candidate_track_id": row["candidate_track_id"],
                     "label": row["label"],
+                    SAMPLE_WEIGHT_COLUMN: row[SAMPLE_WEIGHT_COLUMN],
                     "positive_sources": row["positive_sources"],
                     "negative_source": row["negative_source"],
                     "recall_sources": row["recall_sources"],
@@ -961,10 +975,65 @@ def _write_streamed_rows(
         "pair_part_count": pair_writer.part_count,
         "feature_part_count": feature_writer.part_count,
         "totals": totals,
+        "loss_weight_totals": loss_weight_totals,
+        "loss_weight_shape_histogram": loss_weight_shape_histogram,
+        "legacy_candidate_weight_histogram": legacy_candidate_weights,
+        "legacy_effective_fraction_histogram": legacy_effective_fractions,
+        "legacy_queries_without_candidate_aware": legacy_queries_without_candidate,
         "rejection_totals": rejection_totals,
         "weak_source_totals": weak_source_totals,
         "recall_source_totals": recall_source_totals,
     }
+
+
+def load_stream_checkpoint(
+    checkpoint_path: str | Path,
+    checkpoint_contract: Mapping[str, object],
+    output: str | Path,
+    feature_output: str | Path,
+) -> dict[str, object] | None:
+    """Validate a retrain checkpoint and discard uncommitted tail parts."""
+    path = Path(checkpoint_path)
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as stream:
+        checkpoint = json.load(stream)
+    if checkpoint.get("artifact_type") != "final_retrain_checkpoint":
+        raise ValueError("retrain checkpoint artifact type mismatch")
+    checkpoint_version = checkpoint.get("artifact_version")
+    if checkpoint_version not in {2, 3}:
+        raise ValueError("retrain checkpoint version mismatch")
+    if checkpoint.get("contract") != dict(checkpoint_contract):
+        raise ValueError("retrain checkpoint contract mismatch")
+    for dataset, part_key in (
+        (Path(output).with_suffix(Path(output).suffix + ".tmp"), "pair_part_count"),
+        (
+            Path(feature_output).with_suffix(Path(feature_output).suffix + ".tmp"),
+            "feature_part_count",
+        ),
+    ):
+        if not dataset.is_dir():
+            raise FileNotFoundError(f"checkpoint Parquet directory is missing: {dataset}")
+        keep = int(checkpoint.get(part_key, -1))
+        if keep < 0:
+            raise ValueError("retrain checkpoint part count is invalid")
+        for part in dataset.glob("part-*.parquet"):
+            index = int(part.stem.split("-")[-1])
+            if index >= keep:
+                part.unlink()
+        (dataset / "_SUCCESS").unlink(missing_ok=True)
+    if checkpoint_version == 2:
+        checkpoint["legacy_candidate_weight_histogram"] = checkpoint.pop(
+            "candidate_weight_histogram", {}
+        )
+        checkpoint["legacy_effective_fraction_histogram"] = checkpoint.pop(
+            "effective_fraction_histogram", {}
+        )
+        checkpoint["legacy_queries_without_candidate_aware"] = checkpoint.pop(
+            "queries_without_candidate_aware", 0
+        )
+        checkpoint["loss_weight_shape_histogram"] = {}
+    return checkpoint
 
 
 def iter_candidate_positives(
