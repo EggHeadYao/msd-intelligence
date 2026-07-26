@@ -1167,6 +1167,28 @@ def _run_random_only_derived(
             "audio_index_manifest": paths.audio_manifest,
             "graph_index_manifest": paths.graph_manifest,
             "candidate_policy_manifest": paths.candidate_policy,
+            "tag_idf": paths.tag_idf,
+            "songs_metadata": paths.songs_metadata,
+            "graph_edges": paths.graph_edges,
+        },
+        scope=scope,
+        candidate_aware_fraction=0.0,
+    )
+    checkpoint_path.unlink(missing_ok=True)
+    print(
+        f"training_pairs_ready scope={scope} stage=retrain "
+        f"pairs={pair_manifest['pair_count']} output={output} "
+        f"features={feature_output}",
+        flush=True,
+    )
+
+
+def _run(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
+    if args.negative_mode == "random_only":
+        _run_random_only_derived(args, paths)
+        return
+    (
+        assignments,
         allowed,
         queries,
         scope,
