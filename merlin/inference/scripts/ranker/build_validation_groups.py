@@ -85,14 +85,56 @@ def _require_new_outputs(paths: tuple[Path, ...]) -> None:
 
 def main() -> None:
     args = parse_args()
+    defaults = InferenceArtifactPaths()
+    is_set_c = args.apply_split == "set_c"
+    if is_set_c:
+        if args.evaluation_protocol is None:
+            raise ValueError("Set-C groups require a frozen evaluation protocol")
+        replacements = (
+            ("candidate_pool", defaults.set_b_candidate_pool, defaults.set_c_candidate_pool),
+            (
+                "candidate_pool_manifest",
+                defaults.set_b_candidate_pool_manifest,
+                defaults.set_c_candidate_pool_manifest,
+            ),
+            ("positives", defaults.validation_group_positives, defaults.set_c_positives),
+            ("validation_pairs", defaults.validation_pairs, defaults.set_c_validation_pairs),
+            ("manifest", defaults.validation_groups_manifest, defaults.set_c_groups_manifest),
+        )
+        for name, old_default, set_c_default in replacements:
+            if getattr(args, name) == old_default:
+                setattr(args, name, set_c_default)
     if args.max_threshold_pairs <= 0 or args.max_threshold_pairs > MAX_THRESHOLD_PAIRS:
         raise ValueError("max-threshold-pairs must be in [1, 1000000]")
     if args.shuffle_partitions <= 0 or args.audio_block_size <= 0:
         raise ValueError("shuffle partitions and audio block size must be positive")
-    _require_new_outputs((args.thresholds, args.positives, args.validation_pairs, args.manifest))
+    new_outputs = (args.positives, args.validation_pairs, args.manifest)
+    _require_new_outputs(new_outputs if is_set_c else (args.thresholds, *new_outputs))
     split_manifest = load_split_manifest(args.split_manifest, args.split_assignments)
     if args.scope == "formal" and split_manifest.get("scope") != "formal":
         raise ValueError("formal validation groups require a formal split artifact")
+    if is_set_c:
+        load_set_c_protocol(
+            args.evaluation_protocol,
+            expected_scope=args.scope,
+            expected_parent_hashes={
+                "split_manifest": sha256_path(args.split_manifest),
+                "split_assignments": sha256_path(args.split_assignments),
+                "candidate_policy_manifest": sha256_path(defaults.candidate_policy),
+                "validation_group_thresholds": sha256_path(args.thresholds),
+                "ranker_training_manifest": sha256_path(
+                    defaults.ranker_training_manifest
+                ),
+                "no_hard_neg_training_manifest": sha256_path(
+                    defaults.no_hard_neg_training_manifest
+                ),
+                "audio_index_manifest": sha256_path(defaults.audio_manifest),
+                "graph_index_manifest": sha256_path(defaults.graph_manifest),
+                "tag_idf": sha256_path(args.tag_idf),
+                "songs_metadata": sha256_path(args.songs_metadata),
+                "graph_edges": sha256_path(args.graph_edges),
+            },
+        )
     candidate_manifest = load_candidate_pool_manifest(
         args.candidate_pool_manifest,
         args.candidate_pool,
@@ -105,6 +147,25 @@ def main() -> None:
     tag_positive_threshold = float(weak_thresholds["tag_tfidf_cosine_p90"])
     if not math.isfinite(tag_positive_threshold):
         raise ValueError("tag positive threshold must be finite")
+    frozen_thresholds = None
+    if is_set_c:
+        with args.thresholds.open("r", encoding="utf-8") as stream:
+            frozen_thresholds = json.load(stream)
+        if (
+            frozen_thresholds.get("artifact_type") != "set_b_validation_thresholds"
+            or frozen_thresholds.get("artifact_version") != "merlin_validation_groups_v1"
+            or frozen_thresholds.get("fit_split") != "set_a"
+        ):
+            raise ValueError("Set-C requires frozen Set-A validation thresholds")
+        acoustic_p50 = float(frozen_thresholds["pre_pca_acoustic_cosine_p50"])
+        acoustic_p90 = float(frozen_thresholds["pre_pca_acoustic_cosine_p90"])
+        threshold_sample_count = int(frozen_thresholds["sampled_cross_artist_pairs"])
+        if not all(math.isfinite(value) for value in (acoustic_p50, acoustic_p90)):
+            raise ValueError("frozen acoustic thresholds are not finite")
+        if acoustic_p50 > acoustic_p90 or threshold_sample_count <= 0:
+            raise ValueError("frozen acoustic threshold contract is invalid")
+        if float(frozen_thresholds["tag_positive_threshold"]) != tag_positive_threshold:
+            raise ValueError("frozen validation and weak-label tag thresholds differ")
     tag_idf = load_tag_idf(args.tag_idf, expected_graph_edges_path=args.graph_edges)
 
     encoder_metadata_path = args.audio_root / "audio_encoder_metadata.json"
@@ -126,8 +187,8 @@ def main() -> None:
     projected_scratch_gb = 0.0
     if args.scope == "formal":
         projected_scratch_gb = estimate_validation_scratch_gb(
-            set_a_tracks=int(split_counts.get("set_a", 0)),
-            set_b_tracks=int(split_counts.get("set_b", 0)),
+            set_a_tracks=int(split_counts.get("set_a", 0)) if not is_set_c else 1,
+            set_b_tracks=int(split_counts.get(args.apply_split, 0)),
             feature_dimension=len(feature_columns),
             unique_candidates=int(candidate_totals.get("unique_candidates", 0)),
             max_sample_pairs=args.max_threshold_pairs,
