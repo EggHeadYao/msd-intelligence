@@ -47,22 +47,22 @@ class TrackMetadata:
     year: int | None = None
 
 
-def build_track_metadata_v2(
+def build_track_metadata(
     rows: Iterable[tuple[str, object, int | None, bool]],
-) -> dict[str, TrackMetadataV2]:
+) -> dict[str, TrackMetadata]:
     """Build metadata from real release IDs and the prepared year mask."""
-    tracks: dict[str, TrackMetadataV2] = {}
+    tracks: dict[str, TrackMetadata] = {}
     for track_id, release_id, year, has_year in rows:
         if not track_id:
             continue
         release = str(release_id) if release_id not in (None, "", 0, "0") else None
-        metadata = TrackMetadataV2(
+        metadata = TrackMetadata(
             release_id=release,
             year=int(year) if has_year and year is not None else None,
         )
         previous = tracks.setdefault(track_id, metadata)
         if previous != metadata:
-            raise ValueError(f"track {track_id!r} has conflicting v2 metadata")
+            raise ValueError(f"track {track_id!r} has conflicting ranker metadata")
     return tracks
 
 
