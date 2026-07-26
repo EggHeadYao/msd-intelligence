@@ -66,10 +66,10 @@ def build_track_metadata(
     return tracks
 
 
-def load_track_metadata_v2(path: str | Path) -> dict[str, TrackMetadataV2]:
-    """Read only ranker-v2 metadata columns in bounded Parquet batches."""
+def load_track_metadata(path: str | Path) -> dict[str, TrackMetadata]:
+    """Read only Ranker metadata columns in bounded Parquet batches."""
     columns = ["track_id", "release_7digitalid", "year", "has_year"]
-    return build_track_metadata_v2(parquet_rows(path, columns))
+    return build_track_metadata(parquet_rows(path, columns))
 
 
 @dataclass(frozen=True, slots=True)
