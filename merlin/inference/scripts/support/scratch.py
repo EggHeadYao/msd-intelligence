@@ -11,12 +11,22 @@ def estimate_ranker_scratch_gb(
     validation_rows: int,
     feature_count: int,
     model_count: int,
+    training_storage_ratio: float = 1.0,
 ) -> float:
     """Estimate the peak serialized vectors and ranking shuffle, not Parquet bytes."""
     values = (training_rows, feature_count, model_count)
-    if any(value <= 0 for value in values) or validation_rows < 0:
+    if (
+        any(value <= 0 for value in values)
+        or validation_rows < 0
+        or not 0.0 < training_storage_ratio <= 1.0
+    ):
         raise ValueError("ranker scratch estimate inputs are invalid")
-    training_vectors = training_rows * (feature_count * 8 + 24) * 1.5
+    training_vectors = (
+        training_rows
+        * (feature_count * 8 + 24)
+        * 1.5
+        * training_storage_ratio
+    )
     validation_vectors = validation_rows * (feature_count * 8 + 96) * 1.5
     ranking_shuffle = validation_rows * model_count * 64 * 2
     projected_gib = max(training_vectors, validation_vectors + ranking_shuffle) / (1024**3)
