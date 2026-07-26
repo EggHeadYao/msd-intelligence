@@ -328,7 +328,7 @@ class RankerFeatureComputer:
         )
 
     @staticmethod
-    def _vector_values(
+    def _signal_values(
         query_track_id: str,
         candidates: Sequence[Candidate],
         source: str,
@@ -354,6 +354,51 @@ class RankerFeatureComputer:
             )
             if len(computed) != len(missing_ids):
                 raise ValueError("batch pair lookup returned the wrong number of scores")
+            for index, value in zip(missing_indexes, computed, strict=True):
+                values[index] = _finite(value)
+        return values
+
+    @staticmethod
+    def _id_signal_values(
+        query_track_id: str,
+        candidate_ids: Sequence[str],
+        lookup: PairLookup,
+        batch_lookup: BatchPairLookup | None,
+    ) -> list[float | None]:
+        computed = (
+            batch_lookup(query_track_id, candidate_ids)
+            if batch_lookup is not None
+            else [lookup(query_track_id, candidate_id) for candidate_id in candidate_ids]
+        )
+        if len(computed) != len(candidate_ids):
+            raise ValueError("batch pair lookup returned the wrong number of scores")
+        return [_finite(value) for value in computed]
+
+    @staticmethod
+    def _pair_values(
+        pairs: Sequence[tuple[str, str, Mapping[str, float]]],
+        source: str,
+        lookup: PairLookup,
+        pair_lookup: PairListLookup | None,
+    ) -> list[float | None]:
+        values: list[float | None] = [None] * len(pairs)
+        missing_indexes: list[int] = []
+        missing_pairs: list[tuple[str, str]] = []
+        for index, (query_id, candidate_id, hints) in enumerate(pairs):
+            hinted = hints.get(source)
+            if hinted is None:
+                missing_indexes.append(index)
+                missing_pairs.append((query_id, candidate_id))
+            else:
+                values[index] = _finite(hinted)
+        if missing_pairs:
+            computed = (
+                pair_lookup(missing_pairs)
+                if pair_lookup is not None
+                else [lookup(query_id, candidate_id) for query_id, candidate_id in missing_pairs]
+            )
+            if len(computed) != len(missing_pairs):
+                raise ValueError("pair-list lookup returned the wrong number of scores")
             for index, value in zip(missing_indexes, computed, strict=True):
                 values[index] = _finite(value)
         return values
