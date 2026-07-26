@@ -92,7 +92,7 @@ class MerlinPipeline:
     retriever_limits: Mapping[str, int]
     feature_computer: PairFeatureComputer
     ranker: Ranker
-    final_limit: int = 20
+    limit: int = 20
     candidate_limit: int = 1_000
     canonical: bool = False
 
