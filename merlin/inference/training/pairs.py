@@ -407,6 +407,76 @@ def sample_random_negatives_many_by_query(
         query_id: Counter() for query_id in states
     }
     unfinished = [query_id for query_id, state in states.items() if state["target"]]
+    while unfinished:
+        proposals_by_query: dict[str, list[str]] = {}
+        predicate_pairs: list[tuple[str, str]] = []
+        for query_id in unfinished:
+            state = states[query_id]
+            attempts = int(state["attempts"])
+            target = int(state["target"])
+            maximum = int(state["maximum_attempts"])
+            batch_end = min(attempts + max(64, target * 4), maximum)
+            proposals = []
+            for attempt in range(attempts, batch_end):
+                digest = hashlib.sha256(
+                    f"{PAIR_SEED}\0{query_id}\0random\0{attempt}".encode("utf-8")
+                ).digest()
+                proposals.append(
+                    universe[int.from_bytes(digest[:8], "big") % len(universe)]
+                )
+            proposals_by_query[query_id] = proposals
+            rejected = state["rejected"]
+            selected_set = state["selected_set"]
+            assert isinstance(rejected, set) and isinstance(selected_set, set)
+            predicate_pairs.extend(
+                (query_id, candidate_id)
+                for candidate_id in proposals
+                if candidate_id != query_id
+                and candidate_id not in rejected
+                and candidate_id not in selected_set
+                and not same_song(query_id, candidate_id)
+            )
+        predicate_pairs = list(dict.fromkeys(predicate_pairs))
+        predicate_results = is_positive_pairs(predicate_pairs)
+        if len(predicate_results) != len(predicate_pairs):
+            raise ValueError("pair positive predicate returned the wrong number of results")
+        positive_by_pair = dict(zip(predicate_pairs, predicate_results, strict=True))
+        next_unfinished = []
+        for query_id in unfinished:
+            state = states[query_id]
+            rejected = state["rejected"]
+            selected = state["selected"]
+            selected_set = state["selected_set"]
+            assert isinstance(rejected, set)
+            assert isinstance(selected, list) and isinstance(selected_set, set)
+            for candidate_id in proposals_by_query[query_id]:
+                state["attempts"] = int(state["attempts"]) + 1
+                if candidate_id == query_id:
+                    rejection_counts[query_id]["query_self"] += 1
+                elif candidate_id in rejected or candidate_id in selected_set:
+                    rejection_counts[query_id]["duplicate_pair"] += 1
+                elif same_song(query_id, candidate_id):
+                    rejection_counts[query_id]["same_song"] += 1
+                elif positive_by_pair[(query_id, candidate_id)]:
+                    rejection_counts[query_id]["known_positive"] += 1
+                else:
+                    selected.append(candidate_id)
+                    selected_set.add(candidate_id)
+                    if len(selected) == int(state["target"]):
+                        break
+            if len(selected) < int(state["target"]):
+                if int(state["attempts"]) >= int(state["maximum_attempts"]):
+                    raise ValueError(f"random-negative shortage for query {query_id}")
+                next_unfinished.append(query_id)
+        unfinished = next_unfinished
+    return (
+        {query_id: list(state["selected"]) for query_id, state in states.items()},
+        {
+            query_id: dict(sorted(counts.items()))
+            for query_id, counts in rejection_counts.items()
+        },
+    )
+
     positives: Mapping[str, frozenset[str]],
     candidates: Sequence[CandidateInput],
     allowed_tracks: set[str],
