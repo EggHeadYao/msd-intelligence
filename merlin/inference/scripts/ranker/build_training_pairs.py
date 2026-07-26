@@ -269,10 +269,11 @@ def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None
     )
 
 
-def _select_final_positives(
+def _select_positives(
     query_id: str,
     allowed: set[str],
     neighbors: Sequence[tuple[str, float]],
+    tag_neighbors: Sequence[tuple[str, float]],
     audio_retriever: VectorRetriever,
     tag: TagRetriever,
     thresholds: Mapping[str, object],
@@ -284,7 +285,7 @@ def _select_final_positives(
         tag.track_to_artist,
         tag.artist_tracks.get(artist, ()) if artist else (),
         neighbors,
-        _tag_neighbors(tag, query_id),
+        tag_neighbors,
         audio_retriever.same_song,
         thresholds,
         limit=MAX_POSITIVES_PER_QUERY,
