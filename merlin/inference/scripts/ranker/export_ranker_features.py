@@ -37,7 +37,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
-    parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
+    parser.add_argument(
+        "--stage",
+        choices=("tuning", "final_retrain", "final_evaluation"),
+        default="tuning",
+    )
+    parser.add_argument("--evaluation-protocol", type=Path)
     parser.add_argument("--graph-contract-key", default=GRAPH_CONTRACT_KEY)
     parser.add_argument("--graph-contract-version", default=GRAPH_CONTRACT_VERSION)
     parser.add_argument("--min-free-gb", type=float)
