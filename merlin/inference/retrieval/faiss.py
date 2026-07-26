@@ -255,7 +255,11 @@ class FaissTrackIndex:
         if missing:
             raise KeyError(f"query track is not in FAISS mapping: {missing[0]}")
         if not query_track_ids:
-            return []
+            shape = (0, min(limit, int(self.index.ntotal)))
+            return (
+                np.empty(shape, dtype=np.float32),
+                np.empty(shape, dtype=np.int64),
+            )
         queries = self._reconstruct_many(list(query_track_ids))
         result_limit = min(limit, int(self.index.ntotal))
         search_engine = os.environ.get("MERLIN_FAISS_SEARCH_ENGINE", "faiss")
@@ -267,15 +271,10 @@ class FaissTrackIndex:
             row_ids = np.concatenate([item[1] for item in searched], axis=0)
         else:
             raise ValueError("MERLIN_FAISS_SEARCH_ENGINE must be faiss or numpy")
-        results = []
-        for query_scores, query_rows in zip(scores, row_ids, strict=True):
-            neighbors = [
-                (self.row_to_track[int(row_id)], float(score))
-                for row_id, score in zip(query_rows, query_scores, strict=True)
-                if 0 <= int(row_id) < len(self.row_to_track)
-            ]
-            results.append(sorted(neighbors, key=lambda item: (-item[1], item[0])))
-        return results
+        return (
+            np.asarray(scores, dtype=np.float32),
+            np.asarray(row_ids, dtype=np.int64),
+        )
 
     def search_vector(
         self,
