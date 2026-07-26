@@ -488,3 +488,32 @@ def main() -> None:
         "paired_inference_full_minus_baseline": inference,
         "robustness": {
             "coverage_popularity_tail": _coverage_report(
+                paths.songs_metadata, top_counts
+            ),
+            "precomputed_acoustic_cold": ranking_report[
+                "precomputed_acoustic_cold"
+            ],
+            "decade_slices": _decade_slices(ranking_rows, years),
+            "eligible_query_candidate_shortage_count": eligible_candidate_shortages,
+            "year_semantics": "MSD static year; not first-release time",
+        },
+        "lineage": {
+            "protocol_sha256": sha256_path(args.protocol),
+            "candidate_pool_manifest_sha256": sha256_path(args.candidate_pool_manifest),
+            "validation_groups_manifest_sha256": sha256_path(args.groups_manifest),
+            "raw_features_manifest_sha256": sha256_path(args.features_manifest),
+            "full_ranker_manifest_sha256": sha256_path(paths.ranker_training_manifest),
+            "no_hard_neg_ranker_manifest_sha256": sha256_path(
+                paths.no_hard_neg_training_manifest
+            ),
+        },
+    }
+    write_json_atomic(report, args.output)
+    print(
+        f"set_c_evaluation_ready queries={len(query_ids)} output={args.output}",
+        flush=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
