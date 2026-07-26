@@ -395,6 +395,68 @@ def _table_batch(
         )
         for row in rows:
             pair_rows.append(row)
+            weak_sources.update(row["positive_sources"])
+            recall_sources.update(row["recall_sources"])
+            candidate_id = str(row["candidate_track_id"])
+            if isinstance(candidates, EncodedCandidates):
+                candidate_code = candidates.codec.code(candidate_id)
+                candidate_position = candidates.position(candidate_code)
+                scores = (
+                    candidates.evidence(candidate_position)[1]
+                    if candidate_position is not None
+                    else {}
+                )
+            else:
+                assert recalled_by_id is not None
+                recalled = recalled_by_id.get(candidate_id)
+                scores = dict(recalled.recall_scores) if recalled else {}
+            for source, cache in signal_caches.items():
+                score = cache.get(candidate_id)
+                if score is not None and (
+                    source == "audio" or source not in scores
+                ):
+                    scores[source] = score
+            pair_inputs.append((query_id, candidate_id, scores))
+    raw_columns = {name: [] for name in RAW_BASE_FEATURES}
+    for start in range(0, len(pair_inputs), FEATURE_PAIR_BATCH_SIZE):
+        columns = computer.compute_raw_pair_columns(
+            pair_inputs[start : start + FEATURE_PAIR_BATCH_SIZE]
+        )
+        for name in RAW_BASE_FEATURES:
+            raw_columns[name].extend(columns[name])
+    if any(len(pair_rows) != len(values) for values in raw_columns.values()):
+        raise ValueError("pair and raw-feature batch counts differ")
+    pair_columns = {
+        "query_track_id": [str(row["query_track_id"]) for row in pair_rows],
+        "candidate_track_id": [str(row["candidate_track_id"]) for row in pair_rows],
+        "label": [int(row["label"]) for row in pair_rows],
+        SAMPLE_WEIGHT_COLUMN: [
+            float(row[SAMPLE_WEIGHT_COLUMN]) for row in pair_rows
+        ],
+        "positive_sources": [row["positive_sources"] for row in pair_rows],
+        "negative_source": [row["negative_source"] for row in pair_rows],
+        "recall_sources": [row["recall_sources"] for row in pair_rows],
+    }
+    feature_columns = {
+        name: pair_columns[name]
+        for name in (
+            "query_track_id",
+            "candidate_track_id",
+            "label",
+            SAMPLE_WEIGHT_COLUMN,
+        )
+    }
+    feature_columns.update(raw_columns)
+    return StreamTableBatch(
+        pa.Table.from_pydict(pair_columns, schema=training_pair_parquet_schema()),
+        pa.Table.from_pydict(
+            feature_columns,
+            schema=raw_feature_parquet_schema("training"),
+        ),
+        tuple(audits),
+        weak_sources,
+        recall_sources,
+    )
 
 
 def _final_query_rows(
