@@ -73,35 +73,28 @@ recommendations = pipeline.recommend(query_track_id)
 A separate `ColdAudioPipeline` accepts a C1-compatible 128D query embedding and
 ranks Audio neighbors directly. It never invokes Graph, BFS, Tag, or LR.
 
-## Supervised artifact order
-
-The supervised C3 artifacts are built in one direction only:
+## Offline supervised flow
 
 ```text
-split_manifest + split_assignments
-  -> weak_label_thresholds + weak_positives
-  -> candidate_pool + candidate_audit
-  -> tuning/training_pairs + tuning/raw_pair_features
-  -> Set-B validation_group_thresholds + validation_group_positives
-  -> validation_pairs + validation_raw_features
-  -> tuning ranker schema + scaler + coefficients + training manifest
-  -> streamed training_pairs + raw_pair_features
-  -> Full and no-hard-negative rankers with frozen Set-A preprocessing
+split assignments
+  -> weak-label thresholds and positives
+  -> Set-A candidate pool and tuning pairs/features
+  -> Set-B candidate pool and validation groups/features
+  -> regularization selection and tuning model
+  -> streamed A+B+Remaining retrain pairs/features
+  -> Full and no-hard-negative models
   -> frozen Set-C protocol
-  -> Set-C candidates + groups + raw features
-  -> one evaluation report
+  -> Set-C candidates, groups, features, and evaluation report
 ```
 
-Recall commands live under `scripts/recall`; supervised dataset, feature, and
-training commands live under `scripts/ranker`. Every CLI supports explicit
-paths; smoke outputs should be written outside the formal `ranker/` directory.
+Set-A tuning artifacts live below `ranker/tuning/`. Root
+`training_pairs.parquet` and `raw_pair_features.parquet` are the canonical
+retrain datasets. Retraining streams bounded query batches and checkpoints
+published parts instead of persisting a 980K-query candidate pool.
 
-Set-A-only datasets live under `parquets_new/merlin/ranker/tuning/`. The root
-`training_pairs.parquet` and `raw_pair_features.parquet` names are reserved for
-the canonical A+B+Remaining retrain datasets. This separates tuning inputs
-without encoding lifecycle words such as `final` in published filenames. The
-`final_retrain` value remains the manifest stage name because it distinguishes
-the frozen retrain protocol from Set-A tuning.
+The exact command order and stage-specific requirements are documented in
+[`scripts/ranker/README.md`](scripts/ranker/README.md). Recall-only commands are
+documented in [`scripts/recall/README.md`](scripts/recall/README.md).
 
 High-volume row artifacts use Parquet with Zstandard compression by default,
 including split assignments, candidate pools, weak positives, training pairs,
