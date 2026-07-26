@@ -348,3 +348,73 @@ def _coverage_report(
             ),
             "pop_lift_ratio": (
                 accumulators[cutoff]["pop_sum"]
+                / accumulators[cutoff]["pop_count"]
+                / catalog_average
+                if accumulators[cutoff]["pop_count"] and catalog_average else None
+            ),
+            "tail_coverage": len(accumulators[cutoff]["tail_tracks"]) / catalog_tail_count,
+            "within_list_duplicate_rate": 0.0,
+        }
+        for cutoff, counts in sorted(top_counts.items())
+    } | {
+        "catalog": {
+            "track_count": catalog_tracks,
+            "artist_count": len(catalog_artists),
+            "mean_song_popularity": catalog_average,
+            "tail_quantile": 0.2,
+            "tail_popularity_threshold": tail_threshold,
+            "tail_track_count": catalog_tail_count,
+        }
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    if args.output.exists():
+        raise FileExistsError(f"Set-C evaluation report already exists: {args.output}")
+    paths = InferenceArtifactPaths()
+    protocol = load_set_c_protocol(
+        args.protocol,
+        expected_scope=args.scope,
+        expected_parent_hashes=_protocol_parents(paths),
+    )
+    candidate_manifest = load_candidate_pool_manifest(
+        args.candidate_pool_manifest,
+        args.candidate_pool,
+        expected_scope=args.scope,
+        expected_parent_hashes={"evaluation_protocol": sha256_path(args.protocol)},
+    )
+    group_manifest = load_validation_group_manifest(
+        args.groups_manifest,
+        thresholds_path=paths.validation_group_thresholds,
+        positives_path=args.positives,
+        validation_pairs_path=args.validation_pairs,
+        expected_scope=args.scope,
+        expected_apply_split="set_c",
+        expected_parent_hashes={"evaluation_protocol": sha256_path(args.protocol)},
+    )
+    feature_manifest = load_raw_feature_manifest(
+        args.features_manifest,
+        args.features,
+        expected_scope=args.scope,
+        expected_pair_kind="validation",
+        expected_stage="final_evaluation",
+    )
+    if feature_manifest.get("parent_hashes", {}).get(
+        "evaluation_protocol"
+    ) != sha256_path(args.protocol):
+        raise ValueError("Set-C features are not bound to the frozen protocol")
+    full, fills = _load_ranker(paths.ranker_coefficients.parent, scope=args.scope, variant="full")
+    no_hard, no_hard_fills = _load_ranker(
+        paths.no_hard_neg_coefficients.parent,
+        scope=args.scope,
+        variant="no_hard_neg",
+    )
+    if no_hard.feature_order != full.feature_order or no_hard_fills != fills:
+        raise ValueError("Full and no-hard-neg models do not share frozen preprocessing")
+
+    ranking_rows = []
+    candidate_rows = []
+    top_counts = {cutoff: Counter() for cutoff in EVALUATION_CUTOFFS}
+    query_ids = set()
+    eligible_candidate_shortages = 0
