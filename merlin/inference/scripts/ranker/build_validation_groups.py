@@ -444,7 +444,9 @@ def main() -> None:
         release(assignments)
         query_b = set_b.join(F.broadcast(pool_queries), TRACK_ID_COLUMN, "inner")
         if query_b.limit(1).count() == 0:
-            raise ValueError("candidate pool has no Set-B query with a C1 vector")
+            raise ValueError(
+                f"candidate pool has no {args.apply_split} query with a C1 vector"
+            )
 
         b_artists = set_b.where(
             F.col("artist_id").isNotNull() & (F.length("artist_id") > 0)
@@ -455,7 +457,7 @@ def main() -> None:
             tag_idf,
         )
         if not artist_terms:
-            raise ValueError("Set B has no artist-term vectors")
+            raise ValueError(f"{args.apply_split} has no artist-term vectors")
         tag_pair_temporary = TemporaryDirectory(
             prefix="merlin-setb-tag-pairs-", dir=scratch_root
         )
