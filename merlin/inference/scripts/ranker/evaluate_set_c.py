@@ -278,3 +278,73 @@ def _decade_slices(rows: Iterable[Mapping[str, object]], years: Mapping[str, int
             "mean_ndcg@20": sum(missing) / len(missing) if missing else None,
         },
     }
+
+
+def _coverage_report(
+    metadata_path: Path,
+    top_counts: Mapping[int, Counter[str]],
+) -> dict[str, object]:
+    import numpy as np
+
+    popularity = []
+    catalog_artists = set()
+    catalog_tracks = 0
+    for _track, artist, song_popularity in parquet_rows(
+        metadata_path,
+        ("track_id", "artist_id", "song_hotttnesss"),
+        engine="pyarrow",
+    ):
+        catalog_tracks += 1
+        if artist:
+            catalog_artists.add(str(artist))
+        if song_popularity is not None and math.isfinite(float(song_popularity)):
+            popularity.append(float(song_popularity))
+    if not popularity:
+        raise ValueError("catalog contains no finite popularity values")
+    tail_threshold = float(np.quantile(np.asarray(popularity), 0.2, method="linear"))
+    catalog_average = sum(popularity) / len(popularity)
+    accumulators = {
+        cutoff: {
+            "artists": set(),
+            "pop_sum": 0.0,
+            "pop_count": 0,
+            "tail_tracks": set(),
+        }
+        for cutoff in top_counts
+    }
+    catalog_tail_count = 0
+    for track, artist, song_popularity in parquet_rows(
+        metadata_path,
+        ("track_id", "artist_id", "song_hotttnesss"),
+        engine="pyarrow",
+    ):
+        track_id = str(track)
+        finite_pop = (
+            float(song_popularity)
+            if song_popularity is not None and math.isfinite(float(song_popularity))
+            else None
+        )
+        if finite_pop is not None and finite_pop <= tail_threshold:
+            catalog_tail_count += 1
+        for cutoff, counts in top_counts.items():
+            occurrences = counts.get(track_id, 0)
+            if not occurrences:
+                continue
+            accumulator = accumulators[cutoff]
+            if artist:
+                accumulator["artists"].add(str(artist))
+            if finite_pop is not None:
+                accumulator["pop_sum"] += occurrences * finite_pop
+                accumulator["pop_count"] += occurrences
+                if finite_pop <= tail_threshold:
+                    accumulator["tail_tracks"].add(track_id)
+    return {
+        f"top_{cutoff}": {
+            "catalog_track_coverage": len(counts) / catalog_tracks,
+            "artist_coverage": len(accumulators[cutoff]["artists"]) / len(catalog_artists),
+            "average_popularity": (
+                accumulators[cutoff]["pop_sum"] / accumulators[cutoff]["pop_count"]
+                if accumulators[cutoff]["pop_count"] else None
+            ),
+            "pop_lift_ratio": (
+                accumulators[cutoff]["pop_sum"]
