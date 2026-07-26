@@ -263,16 +263,24 @@ def main() -> None:
         cached.append(pool_queries)
         invalid_pool_queries = (
             pool_queries.join(assignments, "track_id", "left")
-            .where(F.col("split").isNull() | (F.col("split") != "set_b"))
+            .where(
+                F.col("split").isNull()
+                | (F.col("split") != F.lit(args.apply_split))
+            )
             .limit(1)
             .count()
         )
         if invalid_pool_queries:
-            raise ValueError("candidate pool contains a query outside Set B")
+            raise ValueError(
+                f"candidate pool contains a query outside {args.apply_split}"
+            )
 
-        selected_ids = assignments.where(F.col("split").isin("set_a", "set_b")).select(
-            TRACK_ID_COLUMN
+        selected_splits = (
+            ("set_a", args.apply_split) if not is_set_c else (args.apply_split,)
         )
+        selected_ids = assignments.where(
+            F.col("split").isin(*selected_splits)
+        ).select(TRACK_ID_COLUMN)
         raw = spark.read.parquet(_uri(args.raw_audio)).join(
             F.broadcast(selected_ids), TRACK_ID_COLUMN, "inner"
         )
@@ -319,52 +327,13 @@ def main() -> None:
         ).localCheckpoint(eager=True)
         cached.append(vectors)
 
-        set_a = vectors.where(F.col("split") == "set_a").drop("split")
-        set_a_count = set_a.count()
-        if set_a_count < 2:
-            raise ValueError("Set A has too few C1 vectors for threshold fitting")
-        slots = max(1, math.ceil(2 * args.max_threshold_pairs / set_a_count) + 4)
-        indexed_source = set_a.select(
-            TRACK_ID_COLUMN, "song_id", "artist_id", "pre_pca_norm"
-        )
-        indexed_schema = indexed_source.schema.add("sample_row_id", "long", nullable=False)
-        indexed = spark.createDataFrame(
-            indexed_source.orderBy(TRACK_ID_COLUMN).rdd.zipWithIndex().map(
-                lambda row_and_index: (*row_and_index[0], int(row_and_index[1]))
-            ),
-            schema=indexed_schema,
-        ).persist(StorageLevel.MEMORY_AND_DISK)
-        cached.append(indexed)
-        queries = indexed.select(
-            F.col(TRACK_ID_COLUMN).alias("q_track_id"),
-            F.col("song_id").alias("q_song_id"),
-            F.col("artist_id").alias("q_artist_id"),
-            F.col("pre_pca_norm").alias("q_norm"),
-        ).withColumn("sample_slot", F.explode(F.sequence(F.lit(0), F.lit(slots - 1))))
-        queries = queries.withColumn(
-            "candidate_row_id",
-            F.pmod(
-                F.xxhash64("q_track_id", "sample_slot", F.lit(VALIDATION_GROUP_SEED)),
-                F.lit(set_a_count),
-            ),
-        )
-        candidates = indexed.select(
-            F.col("sample_row_id").alias("candidate_row_id"),
-            F.col(TRACK_ID_COLUMN).alias("c_track_id"),
-            F.col("song_id").alias("c_song_id"),
-            F.col("artist_id").alias("c_artist_id"),
-            F.col("pre_pca_norm").alias("c_norm"),
-        )
-        threshold_pair_ids = (
-            queries.join(candidates, "candidate_row_id", "inner")
-            .where(F.col("q_track_id") < F.col("c_track_id"))
-            .where(not_same_song("q", "c"))
-            .where(
-                F.col("q_artist_id").isNotNull()
-                & F.col("c_artist_id").isNotNull()
-                & (F.length("q_artist_id") > 0)
-                & (F.length("c_artist_id") > 0)
-                & (F.col("q_artist_id") != F.col("c_artist_id"))
+        if not is_set_c:
+            set_a = vectors.where(F.col("split") == "set_a").drop("split")
+            set_a_count = set_a.count()
+            if set_a_count < 2:
+                raise ValueError("Set A has too few C1 vectors for threshold fitting")
+            slots = max(
+                1, math.ceil(2 * args.max_threshold_pairs / set_a_count) + 4
             )
             .where(
                 F.col("q_norm").isNotNull()
