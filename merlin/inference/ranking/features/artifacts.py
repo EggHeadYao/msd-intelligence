@@ -55,7 +55,10 @@ def raw_feature_parquet_schema(pair_kind: str):
         pa.field("candidate_track_id", pa.string(), nullable=False),
     ]
     if pair_kind == "training":
-        fields.append(pa.field("label", pa.int64(), nullable=False))
+        fields.extend((
+            pa.field("label", pa.int64(), nullable=False),
+            pa.field(SAMPLE_WEIGHT_COLUMN, pa.float32(), nullable=False),
+        ))
     else:
         fields.extend((
             pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
