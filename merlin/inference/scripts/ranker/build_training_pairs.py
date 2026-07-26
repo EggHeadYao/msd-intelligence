@@ -735,7 +735,7 @@ def _runtime(
     return thresholds, audio, audio_retriever, tag, computer, recall_engine
 
 
-def _run_final(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
+def _parquet_parts(path: Path) -> tuple[Path, ...]:
     (
         allowed,
         queries,
