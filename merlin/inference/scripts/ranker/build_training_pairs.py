@@ -957,6 +957,76 @@ def _run_random_only_derived(
         ):
             raise ValueError("derived checkpoint row counts do not match its parts")
         for part_index in range(start_part, len(pair_parts)):
+            pair_table = pq.read_table(pair_parts[part_index]).select(pair_schema.names)
+            feature_table = pq.read_table(feature_parts[part_index]).select(
+                feature_schema.names
+            )
+            pair_weight_index = pair_table.schema.get_field_index(
+                SAMPLE_WEIGHT_COLUMN
+            )
+            feature_weight_index = feature_table.schema.get_field_index(
+                SAMPLE_WEIGHT_COLUMN
+            )
+            if not pa.types.is_floating(pair_table.schema[pair_weight_index].type):
+                raise ValueError("Full pair sample weights are not floating point")
+            if not pa.types.is_floating(
+                feature_table.schema[feature_weight_index].type
+            ):
+                raise ValueError("Full feature sample weights are not floating point")
+            pair_table = pair_table.set_column(
+                pair_weight_index,
+                SAMPLE_WEIGHT_COLUMN,
+                pc.cast(pair_table[SAMPLE_WEIGHT_COLUMN], pa.float32()),
+            )
+            feature_table = feature_table.set_column(
+                feature_weight_index,
+                SAMPLE_WEIGHT_COLUMN,
+                pc.cast(feature_table[SAMPLE_WEIGHT_COLUMN], pa.float32()),
+            )
+            if pair_table.schema != pair_schema or feature_table.schema != feature_schema:
+                raise ValueError("Full Parquet schema changed before derivation")
+            if pair_table.num_rows != feature_table.num_rows:
+                raise ValueError("Full aligned Parquet part row counts differ")
+            for name in (
+                "query_track_id",
+                "candidate_track_id",
+                "label",
+                SAMPLE_WEIGHT_COLUMN,
+            ):
+                if not pair_table[name].equals(feature_table[name]):
+                    raise ValueError(f"Full pair/feature alignment mismatch: {name}")
+            if pair_table.num_rows % rows_per_query:
+                raise ValueError("Full Parquet part splits a query group")
+            hard_mask = pc.fill_null(
+                pc.equal(pair_table["negative_source"], "candidate_aware"),
+                False,
+            )
+            keep_mask = pc.invert(hard_mask)
+            reused_pairs = pair_table.filter(keep_mask)
+            reused_features = feature_table.filter(keep_mask)
+            unit_weights = pa.repeat(
+                pa.scalar(1.0, type=pa.float32()), reused_pairs.num_rows
+            )
+            reused_pairs = reused_pairs.set_column(
+                pair_weight_index, SAMPLE_WEIGHT_COLUMN, unit_weights
+            )
+            reused_features = reused_features.set_column(
+                feature_weight_index, SAMPLE_WEIGHT_COLUMN, unit_weights
+            )
+            labels = pair_table["label"].combine_chunks()
+            positive_count = int(pc.sum(labels).as_py())
+            hard_count = int(pc.sum(pc.cast(hard_mask, pa.int64())).as_py())
+            random_count = pair_table.num_rows - positive_count - hard_count
+
+            query_ids = pair_table["query_track_id"].combine_chunks()
+            candidate_ids = pair_table["candidate_track_id"].combine_chunks()
+            negative_sources = pair_table["negative_source"].combine_chunks()
+            requests = []
+            request_rows = []
+            audio_caches: dict[str, dict[str, float | None]] = {}
+            part_query_count = pair_table.num_rows // rows_per_query
+            previous_query = None
+            for query_offset in range(0, pair_table.num_rows, rows_per_query):
         allowed,
         queries,
         scope,
