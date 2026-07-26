@@ -97,6 +97,76 @@ class SparseArtistTagIndex:
         for start in range(0, len(available), chunk_size):
             chunk = available[start : start + chunk_size]
             rows = [self.artist_to_row[artist_id] for artist_id in chunk]
+            similarities = self.recall_queries[rows] @ self.normalized.T
+            for artist_id, result in zip(chunk, similarities, strict=True):
+                valid = (
+                    (result.data > 0.0)
+                    & (result.indices != self.artist_to_row[artist_id])
+                )
+                candidate_rows = result.indices[valid]
+                candidate_scores = result.data[valid]
+                order = np.lexsort((candidate_rows, -candidate_scores))[:top_k]
+                results[artist_id] = tuple(
+                    (
+                        self.artists[int(candidate_rows[position])],
+                        float(candidate_scores[position]),
+                    )
+                    for position in order
+                )
+        return results
+
+    def similarities(
+        self,
+        source_artist: str,
+        target_artists: Sequence[str],
+    ) -> list[float]:
+        source = self.artist_to_row.get(source_artist)
+        if source is None:
+            return [0.0] * len(target_artists)
+        positions = [
+            index for index, artist in enumerate(target_artists)
+            if artist in self.artist_to_row
+        ]
+        results = [0.0] * len(target_artists)
+        if positions:
+            rows = [self.artist_to_row[target_artists[index]] for index in positions]
+            values = (self.normalized[source] @ self.normalized[rows].T).toarray()[0]
+            for position, value in zip(positions, values, strict=True):
+                results[position] = float(value)
+        return results
+
+    def similarities_many(
+        self,
+        targets_by_source: Mapping[str, Sequence[str]],
+        *,
+        chunk_size: int = 64,
+    ) -> dict[str, list[float]]:
+        """Score several source/target groups with one sparse product per chunk."""
+        results = {
+            source: [0.0] * len(targets)
+            for source, targets in targets_by_source.items()
+        }
+        available = [
+            source for source in targets_by_source if source in self.artist_to_row
+        ]
+        for start in range(0, len(available), chunk_size):
+            sources = available[start : start + chunk_size]
+            target_artists = tuple(dict.fromkeys(
+                target
+                for source in sources
+                for target in targets_by_source[source]
+                if target in self.artist_to_row
+            ))
+            if not target_artists:
+                continue
+            target_positions = {
+                artist: position for position, artist in enumerate(target_artists)
+            }
+            source_rows = [self.artist_to_row[source] for source in sources]
+            target_rows = [self.artist_to_row[target] for target in target_artists]
+            similarities = (
+                self.normalized[source_rows] @ self.normalized[target_rows].T
+            )
 
 
 def artist_tag_cosine(
