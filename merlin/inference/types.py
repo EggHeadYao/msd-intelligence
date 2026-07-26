@@ -68,3 +68,34 @@ class RecallAudit:
             raise ValueError("recall audit candidate counts are inconsistent")
         if not 0.0 <= self.deduplication_rate <= 1.0:
             raise ValueError("recall audit deduplication rate must be in [0, 1]")
+
+
+class CandidateRetriever(Protocol):
+    """A Stage-1 source such as Audio FAISS, Graph FAISS, BFS, or Tag."""
+
+    @property
+    def name(self) -> str: ...
+
+    def retrieve(self, query_track_id: str, limit: int) -> Sequence[Candidate]: ...
+
+
+class PairFeatureComputer(Protocol):
+    """Compute the canonical features for one query-candidate pair."""
+
+    @property
+    def schema_version(self) -> str: ...
+
+    def compute(
+        self,
+        query_track_id: str,
+        candidate: Candidate,
+    ) -> Mapping[str, float]: ...
+
+
+class Ranker(Protocol):
+    """Turn named pair features into one comparable relevance score."""
+
+    @property
+    def feature_schema_version(self) -> str: ...
+
+    def score(self, features: Mapping[str, float]) -> float: ...
