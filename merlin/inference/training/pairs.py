@@ -514,13 +514,16 @@ def _empty_pair_audit() -> dict[str, object]:
 def prepare_query_pairs(
     query_id: str,
     positives: Mapping[str, frozenset[str]],
-    candidates: Sequence[CandidateInput],
+    candidates: CandidateCollection,
     allowed_tracks: set[str],
     same_song: SameSong,
     is_positive: IsPositive,
     is_positive_batch: IsPositiveBatch | None = None,
-) -> tuple[list[dict[str, object]], dict[str, object]]:
-    """Construct one query's exact 1:3 curriculum and rejection audit."""
+    candidate_aware_fraction: float = CANDIDATE_AWARE_FRACTION,
+) -> PreparedQueryPairs | None:
+    """Select positives and candidate-aware negatives before random backfill."""
+    if not 0.0 <= candidate_aware_fraction <= 1.0:
+        raise ValueError("candidate-aware fraction must be in [0, 1]")
     if query_id not in allowed_tracks:
         raise ValueError(f"query endpoint is outside the training universe: {query_id}")
     selected_positives = {
@@ -531,21 +534,13 @@ def prepare_query_pairs(
         and not same_song(query_id, track_id)
     }
     if not selected_positives:
-        return [], {
-            "positive_count": 0,
-            "negative_count": 0,
-            "candidate_aware_count": 0,
-            "random_count": 0,
-            "candidate_shortage": 0,
-            "negative_shortage": 0,
-            "rejections": {},
-        }
+        return None
     positive_ids = set(selected_positives)
     negative_target = NEGATIVE_RATIO * len(positive_ids)
-    candidate_target = int(negative_target * CANDIDATE_AWARE_FRACTION)
+    candidate_target = int(negative_target * candidate_aware_fraction)
     rejection_counts: Counter[str] = Counter()
-    eligible_candidates: list[tuple[str, frozenset[str], Mapping[str, float]]] = []
-    predicate_candidates: list[tuple[str, frozenset[str], Mapping[str, float]]] = []
+    eligible_candidates: list[tuple[str, object]] = []
+    predicate_candidates: list[tuple[str, object]] = []
     seen_candidates: set[str] = set()
     for candidate in candidates:
         if isinstance(candidate, Candidate):
