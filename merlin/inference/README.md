@@ -96,30 +96,6 @@ The exact command order and stage-specific requirements are documented in
 [`scripts/ranker/README.md`](scripts/ranker/README.md). Recall-only commands are
 documented in [`scripts/recall/README.md`](scripts/recall/README.md).
 
-`build_validation_groups` is a Spark stage. It reconstructs cleaned and scaled
-pre-PCA C1 vectors from the frozen C1 preprocessing and scaler; it does not use
-PCA-128/FAISS cosine. It fits acoustic p50/p90 on at most one million
-deterministic Set-A cross-artist pairs, applies those thresholds to Set B, and
-writes Audio-dominant, Relation-dominant, and per-query balanced Mixed
-positives. Validation rows contain all canonical candidates plus the total
-eligible-positive denominator, so a query with zero recalled positives remains
-in nDCG with score zero.
-
-Set-A training candidates and Set-B validation candidates are separate lineage
-artifacts. Build the Set-B pool from the frozen split, then export validation
-features separately from training features:
-
-```bash
-python -m merlin.inference.scripts.recall.export_candidates \
-  --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
-  --split-manifest parquets_new/merlin/ranker/split_manifest.json \
-  --query-split set_b
-spark-submit merlin/inference/scripts/ranker/build_validation_groups.py \
-  --scope formal --scratch-root /path/to/large/scratch
-python -m merlin.inference.scripts.ranker.export_ranker_features \
-  --pair-kind validation --scope formal --stage tuning
-```
-
 `train_ranker` uses Spark LR-L2 with the frozen `{0.001, 0.01, 0.1}` grid,
 100 iterations, tolerance `1e-6`, intercept, and standardization. Set-A medians
 and scaler statistics are serialized for Python inference. Set-B validation is
