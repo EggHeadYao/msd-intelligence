@@ -7,8 +7,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Callable, Mapping, Sequence
 
-from .interfaces import CandidateRetriever
-from .types import Candidate
+from ..types import Candidate, CandidateRetriever
 
 
 def _different_song(_left: str, _right: str) -> bool:
