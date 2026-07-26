@@ -375,6 +375,8 @@ class TagRetriever(CandidateRetriever):
                 and artist_id in data.artist_terms
             ),
             per_artist_cap=per_artist_cap,
+            artist_neighbor_limit=artist_neighbor_limit,
+            _sparse_index=sparse_index,
         )
 
     @property
