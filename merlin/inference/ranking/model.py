@@ -1,12 +1,20 @@
-"""Versioned JSON logistic-ranker artifact and local scorer."""
+"""Logistic Ranker scoring, artifact publication, and lineage loading."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
+
+from ..artifacts.integrity import sha256_path
+from ..artifacts.io import write_json_atomic
+from .features import FEATURE_ORDER, FEATURE_SCHEMA
+
+
+RANKER_TRAINING_VERSION = "merlin_ranker_training_v1"
 
 
 @dataclass(frozen=True, slots=True)
