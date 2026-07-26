@@ -231,6 +231,76 @@ class RankerFeatureComputer:
             )
         ]
 
+    def compute_raw_ids(
+        self,
+        query_track_id: str,
+        candidate_ids: Sequence[str],
+    ) -> list[Mapping[str, float | None]]:
+        """Compute a candidate-ID batch without allocating Candidate wrappers."""
+        values = [
+            self._id_signal_values(query_track_id, candidate_ids, lookup, batch_lookup)
+            for lookup, batch_lookup in (
+                (self.signals.audio, self.signals.audio_batch),
+                (self.signals.graph, self.signals.graph_batch),
+                (self.signals.bfs, self.signals.bfs_batch),
+                (self.signals.tags, self.signals.tags_batch),
+            )
+        ]
+        return [
+            self._raw_values(query_track_id, candidate_id, *signals)
+            for candidate_id, signals in zip(
+                candidate_ids,
+                zip(*values, strict=True),
+                strict=True,
+            )
+        ]
+
+    def compute_raw_pairs(
+        self,
+        pairs: Sequence[tuple[str, str, Mapping[str, float]]],
+    ) -> list[Mapping[str, float | None]]:
+        """Compute arbitrary query/candidate pairs in one bounded signal batch."""
+        columns = self.compute_raw_pair_columns(pairs)
+        return [
+            dict(zip(RAW_FEATURE_ORDER, values, strict=True))
+            for values in zip(
+                *(columns[name] for name in RAW_FEATURE_ORDER),
+                strict=True,
+            )
+        ]
+
+    def compute_raw_pair_columns(
+        self,
+        pairs: Sequence[tuple[str, str, Mapping[str, float]]],
+    ) -> dict[str, list[float | None]]:
+        """Compute arbitrary pair features without allocating one dict per row."""
+        values = [
+            self._pair_values(pairs, source, lookup, pair_lookup)
+            for source, lookup, pair_lookup in (
+                ("audio", self.signals.audio, self.signals.audio_pairs),
+                ("graph", self.signals.graph, self.signals.graph_pairs),
+                ("bfs", self.signals.bfs, self.signals.bfs_pairs),
+                ("tag", self.signals.tags, self.signals.tags_pairs),
+            )
+        ]
+        columns: dict[str, list[float | None]] = {
+            name: [] for name in RAW_FEATURE_ORDER
+        }
+        for (query_id, candidate_id, _hints), signals in zip(
+            pairs,
+            zip(*values, strict=True),
+            strict=True,
+        ):
+            for name, value in zip(
+                RAW_FEATURE_ORDER,
+                self._raw_tuple(query_id, candidate_id, *signals),
+                strict=True,
+            ):
+                columns[name].append(value)
+        return columns
+
+    def _raw_tuple(
+        self,
     @staticmethod
     def _vector_values(
         query_track_id: str,
