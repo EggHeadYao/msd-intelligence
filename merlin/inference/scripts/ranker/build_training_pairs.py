@@ -1,8 +1,10 @@
-"""Construct tuning pairs or streamed final-retrain pairs and features."""
+"""Construct tuning pairs or streamed retrain pairs and features."""
 
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 import json
 import math
@@ -11,27 +13,52 @@ from typing import Iterator, Mapping, Sequence
 
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
-from ...artifact_paths import InferenceArtifactPaths
-from ...candidate_policy import load_candidate_policy
-from ...candidate_pool import load_candidate_pool_manifest
-from ...catalog_data import load_catalog_context
-from ...faiss_index import FaissTrackIndex
-from ...features_v2 import PairSignalLookups, RankerV2FeatureComputer
-from ...loaders import load_audio_index
-from ...recall import RecallPipeline
-from ...recall_factory import build_canonical_retrievers
+from ...artifacts.integrity import sha256_path
+from ...artifacts.paths import InferenceArtifactPaths
+from ...recall.policy import load_candidate_policy
+from ...recall.pool import load_candidate_pool_manifest
+from ...data.catalog import load_catalog_context
+from ...recall.streaming import EncodedCandidates, StreamingRecallEngine, TrackCodec
+from ...retrieval.faiss import FaissTrackIndex
+from ...artifacts.io import PartitionedParquetWriter, write_json_atomic
+from ...retrieval.faiss import load_audio_index
+from ...recall.factory import build_canonical_retrievers
 from ...retrieval import TagRetriever, VectorRetriever
-from ...scratch import prepare_scratch_root
-from ...split import load_split_assignments, load_split_manifest
-from ...tag_data import load_tag_idf
-from ...training.pairs import construct_query_pairs, write_training_and_feature_artifacts
+from ..support.scratch import prepare_scratch_root
+from ...training.split import load_split_assignments, load_split_manifest
+from ...data.tags import load_tag_idf
+from ...training.pairs import (
+    CANDIDATE_AWARE_FRACTION,
+    finish_query_pairs,
+    prepare_query_pairs,
+    StreamCheckpoint,
+    StreamTableBatch,
+    construct_query_pairs,
+    load_stream_checkpoint,
+    load_training_pair_manifest,
+    sample_random_negatives_many,
+    sample_random_negatives_many_by_query,
+    training_pair_parquet_schema,
+    write_training_manifests_from_stats,
+    write_training_and_feature_artifacts,
+)
+from ...ranking.features import (
+    PairSignalLookups,
+    RAW_BASE_FEATURES,
+    RankerFeatureComputer,
+    SAMPLE_WEIGHT_COLUMN,
+    load_raw_feature_manifest,
+    raw_feature_parquet_schema,
+)
 from ...training.pairs import write_training_pair_artifacts
 from ...training.weak_labels import MAX_POSITIVES_PER_QUERY, WEAK_LABEL_VERSION
 from ...training.weak_labels import load_weak_positive_manifest, select_weak_positives
 from ...types import Candidate
 
 
-FINAL_SPLITS = frozenset({"set_a", "set_b", "remaining"})
+SPLITS = frozenset({"set_a", "set_b", "remaining"})
+FEATURE_PAIR_BATCH_SIZE = 32_768
+CHECKPOINT_QUERY_INTERVAL = 1_024
 
 
 def _load_thresholds(path: Path) -> dict[str, object]:
