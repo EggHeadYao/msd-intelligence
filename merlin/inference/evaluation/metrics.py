@@ -208,3 +208,73 @@ def score_query(
                 raise ValueError(
                     f"validation labels are incomplete for query {query_id}, "
                     f"group {group}"
+                )
+            labels = [labels_by_id[candidate_id] for candidate_id in ranking]
+            eligible_counts = group_denominators[group]
+            if len(eligible_counts) != 1:
+                raise ValueError("eligible-positive denominator changed within query")
+            eligible = next(iter(eligible_counts))
+            query_metrics.append({
+                "query_track_id": query_id,
+                "query_group": group,
+                "scorer": scorer,
+                "candidate_count": len(labels),
+                "eligible_positive_count": eligible,
+                **retrieval_metrics(labels, eligible),
+            })
+    return query_metrics, rankings
+
+
+def macro_metrics(rows: Iterable[Mapping[str, object]]) -> dict[str, object]:
+    """Average query metrics per group and with equal three-strata weight."""
+    grouped: dict[str, list[Mapping[str, object]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row["query_group"])].append(row)
+    if set(grouped) != set(VALIDATION_QUERY_GROUPS):
+        raise ValueError("macro metrics require all frozen validation groups")
+    metric_names = (
+        *(f"{name}@{cutoff}" for cutoff in EVALUATION_CUTOFFS for name in ("recall", "hit", "ndcg")),
+        "mrr",
+    )
+    by_group = {}
+    for group in VALIDATION_QUERY_GROUPS:
+        values = grouped[group]
+        by_group[group] = {
+            "query_count": len(values),
+            **{
+                name: sum(float(row[name]) for row in values) / len(values)
+                for name in metric_names
+            },
+        }
+    return {
+        "by_group": by_group,
+        "three_strata_macro": {
+            name: sum(float(by_group[group][name]) for group in VALIDATION_QUERY_GROUPS)
+            / len(VALIDATION_QUERY_GROUPS)
+            for name in metric_names
+        },
+    }
+
+
+def paired_bootstrap_ci(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    baseline: str,
+    metric: str,
+    samples: int,
+    seed: int = EVALUATION_SEED,
+    clusters: Mapping[str, str] | None = None,
+) -> dict[str, float | int]:
+    """Bootstrap Full-minus-baseline with equal validation-stratum weight."""
+    import numpy as np
+
+    values = {
+        (str(row["query_track_id"]), str(row["query_group"]), str(row["scorer"])):
+        float(row[metric])
+        for row in rows
+        if row["scorer"] in {"full", baseline}
+    }
+    differences: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    for query_id, group, scorer in values:
+        if scorer != "full":
+            continue
