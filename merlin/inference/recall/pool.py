@@ -60,16 +60,39 @@ def export_candidate_pool(
     def rows() -> Iterator[dict[str, object]]:
         for start in range(0, len(queries), CANDIDATE_BATCH_SIZE):
             batch = queries[start : start + CANDIDATE_BATCH_SIZE]
-            recalled = pipeline.recall_many(batch)
-            for query_id in batch:
-                candidates, audit = recalled[query_id]
+            streaming = isinstance(pipeline, StreamingRecallEngine)
+            recalled = (
+                pipeline.search_candidates_many(batch)
+                if streaming
+                else pipeline.recall_many(batch)
+            )
+            for position, query_id in enumerate(batch):
+                candidates, audit = (
+                    pipeline.candidate_query(recalled, position)
+                    if streaming
+                    else recalled[query_id]
+                )
                 totals["raw_candidates"] += audit.raw_candidates
                 totals["unique_candidates"] += audit.unique_candidates
                 for name, count in audit.source_counts.items():
                     source_totals[name] += count
                 yield {
                     "query_track_id": query_id,
-                    "candidates": [_candidate_payload(candidate) for candidate in candidates],
+                    "candidates": (
+                        [
+                            {
+                                "track_id": candidates.track_id(index),
+                                "recall_sources": sorted(
+                                    name
+                                    for source, name in enumerate(SOURCE_NAMES)
+                                    if int(candidates.source_masks[index]) & (1 << source)
+                                ),
+                            }
+                            for index in range(len(candidates))
+                        ]
+                        if streaming
+                        else [_candidate_payload(candidate) for candidate in candidates]
+                    ),
                     "audit": {
                         "raw_candidates": audit.raw_candidates,
                         "unique_candidates": audit.unique_candidates,
@@ -106,7 +129,12 @@ def export_candidate_pool(
                 pa.field("source_shortages", pa.map_(pa.string(), pa.int64()), nullable=False),
             )), nullable=False),
         ))
-    row_count = write_row_artifact(rows(), output, parquet_schema=parquet_schema)
+    row_count = write_row_artifact(
+        rows(),
+        output,
+        parquet_schema=parquet_schema,
+        batch_size=CANDIDATE_BATCH_SIZE,
+    )
     parents = {
         name: sha256_path(path) for name, path in sorted(parent_paths.items())
     }
