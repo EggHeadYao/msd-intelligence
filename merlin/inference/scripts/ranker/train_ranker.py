@@ -3,21 +3,47 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Mapping
 
-from ...feature_schema import RANKER_V2_FEATURES, RANKER_V2_SCHEMA_VERSION
-from ...ranking.artifacts import write_ranker_artifacts
-from ...ranking.features import FILL_FEATURES, RAW_BASE_FEATURES
-from ...ranking.features import load_raw_feature_manifest
-from ...ranking.selection import REG_PARAMS, select_reg_param
-from ...scratch import estimate_ranker_scratch_gb, prepare_scratch_root
+from ...artifacts.integrity import sha256_path
+from ...artifacts.paths import InferenceArtifactPaths
+from ...ranking.model import write_ranker_artifacts
+from ...ranking.features import (
+    FEATURE_ORDER,
+    FEATURE_SCHEMA,
+    FILL_FEATURES,
+    RAW_BASE_FEATURES,
+    load_raw_feature_manifest,
+)
+from ...ranking.selection import (
+    REG_PARAMS,
+    select_grouped_reg_param,
+)
+from ..support.scratch import estimate_ranker_scratch_gb, prepare_scratch_root
 
 
 QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
+RDD_COMPRESSION_CODEC = "lz4"
+# Formal feature blocks measured 0.46; retain headroom for distribution changes.
+RDD_STORAGE_RATIO = 0.60
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationScoreTable:
+    query_ids: tuple[str, ...]
+    query_groups: tuple[str, ...]
+    columns: Mapping[object, tuple[float, ...]]
+
+    def column(self, key: object) -> tuple[float, ...]:
+        values = self.columns[key]
+        if len(values) != len(self.query_ids):
+            raise ValueError("Set-B score column length mismatch")
+        return values
 
 
 def parse_args() -> argparse.Namespace:
