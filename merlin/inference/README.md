@@ -27,22 +27,24 @@ then derives query/candidate signals independently of recall provenance. The
 ranker applies frozen Set-A preprocessing and scores every candidate by its raw
 LR margin. The production path does not apply MMR.
 
-## Flow
+## Package map
 
-1. `CandidateRetriever` implementations nominate Audio, Graph, BFS, and Tag candidates.
-2. `merge_candidates` unions candidates and preserves source evidence.
-3. `PairFeatureComputer` produces the canonical named pair features.
-4. `LogisticRanker` standardizes features and computes the raw LR margin.
-5. Candidates are sorted by raw margin to produce the top 20.
+| Package | Responsibility |
+| --- | --- |
+| [`artifacts/`](artifacts/README.md) | Canonical paths, JSON/Parquet IO, hashes, and lineage |
+| [`data/`](data/README.md) | Catalog identity, graph adjacency, and sparse artist Tags |
+| [`retrieval/`](retrieval/README.md) | FAISS adapters and individual candidate retrievers |
+| [`recall/`](recall/README.md) | Quotas, online/streaming recall, and candidate pools |
+| [`ranking/`](ranking/README.md) | Pair features, LR artifacts, inference, and model selection |
+| [`training/`](training/README.md) | Splits, weak labels, pair sampling, and validation groups |
+| [`evaluation/`](evaluation/README.md) | Frozen Set-C protocol and ranking statistics |
+| [`runtime/`](runtime/README.md) | Production assembly, validation, and recommendation APIs |
+| [`scripts/`](scripts/README.md) | Supported recall, training, and evaluation commands |
 
-`VectorRetriever` accepts an injected nearest-neighbor function so C1 and C2
-can expose their FAISS index without coupling this package to index construction.
-`BfsRetriever` consumes mappings derived from `artist_similarity_edges` and
-`track_artist`; `TagRetriever` uses artist-level terms from `artist_term`.
-Expanded song-level terms are not canonical input.
-
-The main pipeline does not apply MMR. It ranks the canonical candidate union by
-the LR raw margin and returns the top 20. MMR is deferred future work.
+Import public package paths such as `merlin.inference.recall`,
+`merlin.inference.retrieval`, and `merlin.inference.ranking.features`. Older
+flat modules, numbered feature modules, and compatibility scripts are not part
+of the supported interface.
 
 ## Recall-only assembly
 
