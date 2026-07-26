@@ -633,6 +633,23 @@ def prepare_query_pairs(
         candidate_target,
         rejection_counts,
     )
+
+
+def finish_query_pairs(
+    prepared: PreparedQueryPairs,
+    random_selected: Sequence[str],
+    random_rejections: Mapping[str, int],
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Finish one prepared query with its deterministic random backfill."""
+    query_id = prepared.query_id
+    candidate_selected = prepared.candidate_selected
+    negative_target = prepared.negative_target
+    candidate_target = prepared.candidate_target
+    selected_positives = prepared.selected_positives
+    candidates = prepared.candidates
+    rejection_counts = prepared.rejection_counts.copy()
+    rejection_counts.update(random_rejections)
+    random_selected = list(random_selected)
     if len(candidate_selected) + len(random_selected) != negative_target:
         raise ValueError(f"negative sampling shortage for query {query_id}")
 
