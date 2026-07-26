@@ -239,10 +239,20 @@ def export_raw_pair_features(
             if pair_kind == "training"
             else "one_feature_row_per_pair_with_nested_validation_groups"
         ),
-        "feature_schema_version": RANKER_V2_SCHEMA_VERSION,
+        "feature_schema_version": FEATURE_SCHEMA,
         "raw_feature_order": list(RAW_BASE_FEATURES),
         "row_count": row_count,
         "counts": dict(sorted(counts.items())),
+        **({
+            "loss_weighting": {
+                "column": SAMPLE_WEIGHT_COLUMN,
+                "positive_weight_sum": float(loss_weight_sums["positive"]),
+                "candidate_aware_weight_sum": float(
+                    loss_weight_sums["candidate_aware"]
+                ),
+                "random_weight_sum": float(loss_weight_sums["random"]),
+            }
+        } if pair_kind == "training" else {}),
         "output_file": output.name,
         "storage_format": "parquet" if output.suffix == ".parquet" else "jsonl_gzip",
         "output_sha256": sha256_path(output),
