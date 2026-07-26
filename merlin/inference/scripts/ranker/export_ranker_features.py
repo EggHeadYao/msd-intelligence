@@ -52,24 +52,46 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     paths = InferenceArtifactPaths()
-    pairs = args.pairs or (
-        paths.training_pairs if args.pair_kind == "training" else paths.validation_pairs
-    )
-    pairs_manifest = args.pairs_manifest or (
-        paths.training_pairs_manifest
-        if args.pair_kind == "training"
-        else paths.validation_groups_manifest
-    )
-    output = args.output or (
-        paths.raw_pair_features
-        if args.pair_kind == "training"
-        else paths.validation_raw_features
-    )
-    output_manifest = args.manifest or (
-        paths.raw_pair_features_manifest
-        if args.pair_kind == "training"
-        else paths.validation_raw_features_manifest
-    )
+    is_set_c = args.stage == "final_evaluation"
+    is_tuning = args.stage == "tuning"
+    if is_set_c and args.pair_kind != "validation":
+        raise ValueError("evaluation requires validation pairs")
+    if is_set_c and args.evaluation_protocol is None:
+        raise ValueError("evaluation requires a frozen Set-C protocol")
+    if is_set_c and args.validation_positives == paths.validation_group_positives:
+        args.validation_positives = paths.set_c_positives
+    if args.pair_kind == "training":
+        default_pairs = (
+            paths.tuning_training_pairs if is_tuning else paths.training_pairs
+        )
+        default_pairs_manifest = (
+            paths.tuning_training_pairs_manifest
+            if is_tuning
+            else paths.training_pairs_manifest
+        )
+        default_output = (
+            paths.tuning_raw_pair_features if is_tuning else paths.raw_pair_features
+        )
+        default_output_manifest = (
+            paths.tuning_raw_pair_features_manifest
+            if is_tuning
+            else paths.raw_pair_features_manifest
+        )
+    else:
+        default_pairs = paths.set_c_validation_pairs if is_set_c else paths.validation_pairs
+        default_pairs_manifest = (
+            paths.set_c_groups_manifest if is_set_c else paths.validation_groups_manifest
+        )
+        default_output = paths.set_c_raw_features if is_set_c else paths.validation_raw_features
+        default_output_manifest = (
+            paths.set_c_raw_features_manifest
+            if is_set_c
+            else paths.validation_raw_features_manifest
+        )
+    pairs = args.pairs or default_pairs
+    pairs_manifest = args.pairs_manifest or default_pairs_manifest
+    output = args.output or default_output
+    output_manifest = args.manifest or default_output_manifest
     projected_gb = artifact_size_bytes(pairs) * 2 / (1024 ** 3)
     prepare_scratch_root(
         output.parent,
