@@ -208,3 +208,73 @@ def _aggregate_candidate(rows: Iterable[Mapping[str, object]]) -> dict[str, obje
         group = str(row["query_group"])
         grouped[group].append(row)
         exclusive[group].update(row["exclusive_positive_hits"])
+    report = {}
+    for group in VALIDATION_QUERY_GROUPS:
+        values = grouped[group]
+        report[group] = {
+            "query_count": len(values),
+            "union_recall@1000": sum(float(row["union_recall@1000"]) for row in values)
+            / len(values),
+            "single_source_recall@250": {
+                source: sum(float(row["single_source_recall@250"][source]) for row in values)
+                / len(values)
+                for source in ("audio", "graph", "bfs", "tag")
+            },
+            "all_minus_one_recall@1000": {
+                source: sum(float(row["all_minus_one_recall@1000"][source]) for row in values)
+                / len(values)
+                for source in ("audio", "graph", "bfs", "tag")
+            },
+            "exclusive_positive_hits": dict(exclusive[group]),
+        }
+    return report
+
+
+def _aggregate_random_expectation(
+    rows: Iterable[Mapping[str, object]],
+) -> dict[str, object]:
+    expanded = []
+    for index, row in enumerate(rows):
+        expanded.append({
+            "query_track_id": str(index),
+            "query_group": row["query_group"],
+            "scorer": "random_expectation",
+            **row["random_expectation"],
+        })
+    return macro_metrics(expanded)
+
+
+def _query_metadata(path: Path, query_ids: set[str]) -> tuple[dict[str, str], dict[str, int]]:
+    artists = {}
+    years = {}
+    for track_id, artist_id, year, has_year in parquet_rows(
+        path, ("track_id", "artist_id", "year", "has_year"), engine="pyarrow"
+    ):
+        key = str(track_id)
+        if key not in query_ids:
+            continue
+        artists[key] = str(artist_id) if artist_id else f"missing:{key}"
+        if has_year and year is not None and int(year) > 0:
+            years[key] = int(year)
+    return artists, years
+
+
+def _decade_slices(rows: Iterable[Mapping[str, object]], years: Mapping[str, int]):
+    slices = defaultdict(list)
+    missing = []
+    for row in rows:
+        if row["scorer"] != "full":
+            continue
+        year = years.get(str(row["query_track_id"]))
+        target = missing if year is None else slices[f"{year // 10 * 10}s"]
+        target.append(float(row[f"ndcg@{PRIMARY_CUTOFF}"]))
+    return {
+        **{
+            decade: {"query_group_rows": len(values), "mean_ndcg@20": sum(values) / len(values)}
+            for decade, values in sorted(slices.items())
+        },
+        "missing_year": {
+            "query_group_rows": len(missing),
+            "mean_ndcg@20": sum(missing) / len(missing) if missing else None,
+        },
+    }
