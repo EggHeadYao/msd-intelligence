@@ -370,13 +370,76 @@ def main() -> None:
                 F.col("sample_row_id").alias("candidate_row_id"),
                 F.col(TRACK_ID_COLUMN).alias("c_track_id"),
                 F.col("song_id").alias("c_song_id"),
+                F.col("artist_id").alias("c_artist_id"),
+                F.col("pre_pca_norm").alias("c_norm"),
+            )
+            threshold_pair_ids = (
+                queries.join(candidates, "candidate_row_id", "inner")
+                .where(F.col("q_track_id") < F.col("c_track_id"))
+                .where(not_same_song("q", "c"))
+                .where(
+                    F.col("q_artist_id").isNotNull()
+                    & F.col("c_artist_id").isNotNull()
+                    & (F.length("q_artist_id") > 0)
+                    & (F.length("c_artist_id") > 0)
+                    & (F.col("q_artist_id") != F.col("c_artist_id"))
+                )
+                .where(
+                    F.col("q_norm").isNotNull()
+                    & F.col("c_norm").isNotNull()
+                    & ~F.isnan("q_norm")
+                    & ~F.isnan("c_norm")
+                    & (F.col("q_norm") > 0.0)
+                    & (F.col("c_norm") > 0.0)
+                )
+                .dropDuplicates(["q_track_id", "c_track_id"])
+                .select(
+                    "q_track_id",
+                    "c_track_id",
+                    F.xxhash64(
+                        "q_track_id",
+                        "c_track_id",
+                        F.lit(VALIDATION_GROUP_SEED),
+                    ).alias("sample_hash"),
+                )
+                .orderBy("sample_hash")
+                .limit(args.max_threshold_pairs)
+                .select("q_track_id", "c_track_id")
+                .persist(StorageLevel.MEMORY_AND_DISK)
+            )
+            cached.append(threshold_pair_ids)
+            threshold_sample_count = threshold_pair_ids.count()
+            if threshold_sample_count == 0:
+                raise ValueError("Set-A pre-PCA threshold sample is empty")
+            vector_positions, normalized_vectors = collect_normalized_vector_matrix(
+                set_a.select(
+                    TRACK_ID_COLUMN, "pre_pca_vector", "pre_pca_norm"
+                ).toLocalIterator(),
+                capacity=set_a_count,
+                dimension=len(feature_columns),
+            )
+            threshold_sample_count, acoustic_p50, acoustic_p90 = (
+                sampled_pair_cosine_quantiles(
+                    threshold_pair_ids.toLocalIterator(),
+                    vector_positions,
+                    normalized_vectors,
+                    expected_pairs=threshold_sample_count,
+                )
+            )
+            del normalized_vectors, vector_positions
+            if not all(math.isfinite(value) for value in (acoustic_p50, acoustic_p90)):
+                raise ValueError("Set-A pre-PCA thresholds are not finite")
+            if acoustic_p90 < acoustic_p50:
+                raise ValueError("Set-A pre-PCA thresholds are not monotonic")
+            release(threshold_pair_ids)
+            release(indexed)
 
-        set_b = vectors.where(F.col("split") == "set_b").drop("split").persist(
+        set_b = vectors.where(F.col("split") == args.apply_split).drop("split").persist(
             StorageLevel.MEMORY_AND_DISK
         )
         cached.append(set_b)
         if set_b.count() == 0:
-            raise ValueError("split has no Set-B C1 vectors")
+            raise ValueError(f"split has no {args.apply_split} C1 vectors")
         release(vectors)
         release(assignments)
         query_b = set_b.join(F.broadcast(pool_queries), TRACK_ID_COLUMN, "inner")
