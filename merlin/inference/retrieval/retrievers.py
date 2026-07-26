@@ -488,3 +488,39 @@ class TagRetriever(CandidateRetriever):
                 if len(result) == limit:
                     return result
         return result
+
+    def retrieve_with_positive_neighbors(
+        self,
+        query_track_id: str,
+        limit: int,
+    ) -> tuple[list[Candidate], list[tuple[str, float]]]:
+        """Build Tag recall and the wider weak-positive pool in one artist scan."""
+        root = self.track_to_artist.get(query_track_id)
+        if root is None:
+            return [], []
+        artists = (
+            self.similar_artists(root)
+            if callable(self.similar_artists)
+            else self.similar_artists.get(root, ())
+        )
+        candidates: list[Candidate] = []
+        positive_neighbors: list[tuple[str, float]] = []
+        for artist, similarity in artists:
+            tracks = self.artist_tracks.get(artist, ())
+            positive_neighbors.extend(
+                (track_id, float(similarity)) for track_id in sorted(tracks)
+            )
+            if len(candidates) == limit:
+                continue
+            for track_id in tracks[: self.per_artist_cap]:
+                if track_id == query_track_id or self.same_song(query_track_id, track_id):
+                    continue
+                candidates.append(Candidate(
+                    track_id=track_id,
+                    sources=frozenset({self.name}),
+                    recall_scores={self.name: float(similarity)},
+                    source_ranks={self.name: len(candidates) + 1},
+                ))
+                if len(candidates) == limit:
+                    break
+        return candidates, positive_neighbors
