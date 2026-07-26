@@ -559,25 +559,50 @@ def _query_rows(
                 prepared.query_id: signal_caches["audio"]
                 for prepared, _candidates, signal_caches in prepared_states
             }
-            checks = _final_positive_checks(
-                query_id, artist, audio_cache, audio, tag, computer, thresholds
-            )
-            rows, audit = construct_query_pairs(
-                query_id,
-                positives,
-                candidates,
-                allowed,
-                universe,
-                audio_retriever.same_song,
-                *checks,
-            )
-            if rows:
-                features = _final_feature_rows(
-                    query_id, rows, candidates, audio_cache, computer
+            tag_caches = {
+                prepared.query_id: signal_caches["tag"]
+                for prepared, _candidates, signal_caches in prepared_states
+            }
+            random_by_query, random_rejections = (
+                sample_random_negatives_many_by_query(
+                    requests,
+                    universe,
+                    audio_retriever.same_song,
+                    lambda pairs: _derived_positive_pair_flags(
+                        pairs,
+                        audio,
+                        tag,
+                        thresholds,
+                        audio_caches,
+                        tag_caches,
+                    ),
                 )
-                yield rows, features, audit
-        processed = min(start + len(batch), len(queries))
-        print(f"final_retrain_progress queries={processed}/{len(queries)}", flush=True)
+            )
+            states = []
+            audits = []
+            for prepared, candidates, signal_caches in prepared_states:
+                rows, audit = finish_query_pairs(
+                    prepared,
+                    random_by_query[prepared.query_id],
+                    random_rejections[prepared.query_id],
+                )
+                states.append((prepared.query_id, rows, candidates, signal_caches))
+                audits.append(audit)
+            if states:
+                yield _table_batch(states, computer, audits)
+            processed = query_offset + min(start + len(batch), len(queries))
+            if (
+                processed == total
+                or processed - last_checkpoint >= CHECKPOINT_QUERY_INTERVAL
+            ):
+                yield StreamCheckpoint(processed, total)
+                last_checkpoint = processed
+            print(
+                f"retrain_progress queries={processed}/{total}",
+                flush=True,
+            )
+            current = following
+            recalled_job = following_job
 
 
 def _final_run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
