@@ -77,6 +77,76 @@ def training_pair_parquet_schema():
     ))
 
 
+def _negative_loss_weights(
+    negative_count: int,
+    candidate_count: int,
+    random_count: int,
+    candidate_target: int,
+) -> tuple[float, float]:
+    """Preserve 1:3 total loss while restoring the hard-negative target mix."""
+    if negative_count != candidate_count + random_count or negative_count <= 0:
+        raise ValueError("negative loss-weight counts are inconsistent")
+    if not 0 <= candidate_target <= negative_count:
+        raise ValueError("candidate loss-weight target is invalid")
+    if candidate_count == 0:
+        return 0.0, negative_count / random_count
+    if random_count == 0:
+        return negative_count / candidate_count, 0.0
+    candidate_weight = min(
+        candidate_target / candidate_count,
+        MAX_CANDIDATE_SAMPLE_WEIGHT,
+    )
+    candidate_weight_sum = candidate_weight * candidate_count
+    return candidate_weight, (negative_count - candidate_weight_sum) / random_count
+
+
+def _histogram_percentiles(
+    histogram: Mapping[str, int], probabilities: Mapping[str, float]
+) -> dict[str, float | None]:
+    count = sum(int(value) for value in histogram.values())
+    if count == 0:
+        return {name: None for name in probabilities}
+    ordered = sorted(
+        ((float(key), int(item)) for key, item in histogram.items())
+    )
+    result = {}
+    for name, probability in probabilities.items():
+        target = max(1, int(np.ceil(probability * count)))
+        cumulative = 0
+        for value, frequency in ordered:
+            cumulative += frequency
+            if cumulative >= target:
+                result[name] = value
+                break
+        else:
+            raise AssertionError("loss-weight histogram percentile is incomplete")
+    return result
+
+
+def _loss_weight_shape_key(audit: Mapping[str, object]) -> str:
+    candidate_count = int(audit["candidate_aware_count"])
+    candidate_target = candidate_count + int(audit["candidate_shortage"])
+    return f'{int(audit["negative_count"])}:{candidate_count}:{candidate_target}'
+
+
+def _loss_weight_histograms(
+    stats: Mapping[str, object],
+) -> tuple[Counter[str], Counter[str], int]:
+    shapes = stats.get("loss_weight_shape_histogram")
+    if shapes is None:
+        return (
+            Counter(stats.get("candidate_weight_histogram", {})),
+            Counter(stats.get("effective_fraction_histogram", {})),
+            int(stats.get("queries_without_candidate_aware", 0)),
+        )
+    weights: Counter[str] = Counter(
+        stats.get("legacy_candidate_weight_histogram", {})
+    )
+    fractions: Counter[str] = Counter(
+        stats.get("legacy_effective_fraction_histogram", {})
+    )
+    queries_without_candidate = int(
+        stats.get("legacy_queries_without_candidate_aware", 0)
 def _streamed_feature_manifest(
     feature_output: Path,
     stats: Mapping[str, object],
