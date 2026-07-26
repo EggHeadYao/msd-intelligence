@@ -238,6 +238,8 @@ class PartitionedParquetWriter:
     def write_rows(self, rows: Iterable[Mapping[str, object]]) -> None:
         if self._closed:
             raise ValueError("cannot write to a closed Parquet dataset")
+        if self._table_buffer:
+            self._flush_tables()
         for row in rows:
             self._buffer.append(row)
             if len(self._buffer) == self.rows_per_file:
