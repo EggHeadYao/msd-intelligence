@@ -134,10 +134,12 @@ def _positive_predicates(audio, tag: TagRetriever, thresholds: Mapping[str, obje
 def main() -> None:
     args = parse_args()
     paths = InferenceArtifactPaths()
+    if args.stage == "tuning" and args.negative_mode != "candidate_aware":
+        raise ValueError("random-only negatives are defined for retrain only")
     if args.stage == "tuning":
         _run_tuning(args, paths)
     else:
-        _run_final(args, paths)
+        _run(args, paths)
 
 
 def parse_args() -> argparse.Namespace:
