@@ -123,13 +123,13 @@ class FeatureFillValues:
 
 
 @dataclass(frozen=True, slots=True)
-class RankerV2FeatureComputer:
-    """Compute v2 features for every candidate in the canonical union."""
+class RankerFeatureComputer:
+    """Compute features for every candidate in the canonical union."""
 
-    tracks: Mapping[str, TrackMetadataV2]
+    tracks: Mapping[str, TrackMetadata]
     signals: PairSignalLookups
     fills: FeatureFillValues = field(default_factory=FeatureFillValues)
-    schema_version: str = RANKER_V2_SCHEMA_VERSION
+    schema_version: str = FEATURE_SCHEMA
 
     def compute(self, query_track_id: str, candidate: Candidate) -> Mapping[str, float]:
         raw = self.compute_raw(query_track_id, candidate)
