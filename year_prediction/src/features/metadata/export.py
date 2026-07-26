@@ -67,3 +67,24 @@ def export_query(
         connection.close()
     return count
 
+
+def export_locations(source: Path, output: Path) -> int:
+    schema = pa.schema(
+        [
+            ("artist_id", pa.string()),
+            ("latitude", pa.float64()),
+            ("longitude", pa.float64()),
+            ("location", pa.string()),
+        ]
+    )
+    rows: list[tuple[str, float, float, str]] = []
+    with source.open(encoding="utf-8") as handle:
+        for line in handle:
+            artist_id, latitude, longitude, _name, location = line.rstrip("\n").split(
+                "<SEP>", 4
+            )
+            rows.append((artist_id, float(latitude), float(longitude), location))
+    records = [dict(zip(schema.names, row, strict=True)) for row in rows]
+    pq.write_table(pa.Table.from_pylist(records, schema), output)
+    return len(rows)
+
