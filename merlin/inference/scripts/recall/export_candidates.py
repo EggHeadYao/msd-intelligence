@@ -8,16 +8,18 @@ from pathlib import Path
 
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
-from ...candidate_policy import CANONICAL_CANDIDATE_LIMIT
-from ...artifact_paths import (
+from ...recall.policy import CANONICAL_CANDIDATE_LIMIT
+from ...artifacts.paths import (
     CANDIDATE_POOL_MANIFEST_PATH,
     CANDIDATE_POOL_PATH,
     InferenceArtifactPaths,
 )
-from ...candidate_pool import export_candidate_pool
-from ...split import load_split_assignments, load_split_manifest
-from ...recall_factory import load_recall_pipeline
-from ...scratch import prepare_scratch_root
+from ...recall.pool import export_candidate_pool
+from ...artifacts.integrity import sha256_path
+from ...evaluation.protocol import load_set_c_protocol
+from ...training.split import load_split_assignments, load_split_manifest
+from ...recall.factory import load_streaming_recall_engine, load_recall_pipeline
+from ..support.scratch import prepare_scratch_root
 from .validate_recall import read_queries
 
 
