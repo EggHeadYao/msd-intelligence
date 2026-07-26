@@ -125,9 +125,16 @@ the one-time Set-C evaluation. Retraining does not persist a 980K-query
 candidate pool. The `build_training_pairs --stage final_retrain` branch applies
 the frozen Set-A
 weak-label thresholds, recalls one bounded query batch, samples its negatives,
-reuses exact Audio/Graph recall scores, computes raw features, and writes only
-partitioned final pair and feature datasets. Spark reads those part files as
-one Parquet dataset.
+reuses exact recall scores, computes raw features, and writes only partitioned
+pair and feature datasets. Audio and Graph FAISS searches run concurrently;
+candidate unions stay integer-coded, while exact Tag/BFS artist similarities are
+computed in sparse batches. Spark reads the output parts as one Parquet dataset.
+
+The retrain writer records a recoverable checkpoint approximately every
+1,024 queries and removes it after successful publication. Re-running the same
+command resumes from the last committed query; a changed input/output contract is
+rejected. The interval keeps parts near `--rows-per-file` instead of flushing one
+small Parquet file per recall batch.
 
 High-volume formal stages reserve 16 GiB by default and fail before writing
 when the target filesystem is below that threshold. Spark stages place shuffle
@@ -170,7 +177,7 @@ computed once per `(regParam, query)` before the nested group labels are
 expanded for nDCG aggregation. The three frozen `regParam` values are ranked
 sequentially so only one validation shuffle is live at a time.
 
-Final retraining requires the selected tuning `regParam`, tuning manifest, and
+Retraining requires the selected tuning `regParam`, tuning manifest, and
 Set-A scaler. Fill values, means, standard deviations, and zero-variance feature
 handling remain frozen from Set A; only the LR coefficients are fitted again on
 A+B+Remaining. Availability masks that are constant in Set A stay in the fixed
@@ -180,9 +187,10 @@ The pair builder enforces split-before-pair, excludes every Set-C endpoint,
 checks the complete positive predicate before writing a negative, keeps an exact
 1:3 ratio, and records candidate-aware/random composition plus rejection causes.
 
-## Ranker-v2 features
+## Ranker features
 
-The fixed feature order is exported as `RANKER_V2_FEATURES`:
+The fixed feature order is exported as `FEATURE_ORDER` from
+`merlin.inference.ranking.features`:
 
 ```text
 cos_audio, cos_graph, has_graph, bfs_score, has_bfs,
@@ -200,7 +208,7 @@ audit fields, not ranker features.
 Person A must hand off the frozen Set-A preprocessing and trained model together:
 
 ```text
-ranker_feature_schema.json  # version and ordered feature names
+ranker_feature_schema.json  # contract and ordered feature names
 ranker_scaler.json          # fill values, means, and standard deviations
 ranker_coefficients.json    # coefficients and intercept
 ```
@@ -212,8 +220,8 @@ computer. Fixed Spark/Python pairs must match on features and raw margin within
 
 ## FAISS artifacts
 
-Install `faiss-cpu`, `numpy`, and `pyarrow` in the inference environment. Final
-C1/C2 v2 must publish a normalized 128D `IndexFlatIP`, matching Parquet map, and
+Install `faiss-cpu`, `numpy`, and `pyarrow` in the inference environment. Production
+C1/C2 must publish a normalized 128D `IndexFlatIP`, matching Parquet map, and
 lineage manifest:
 
 ```text
@@ -225,7 +233,7 @@ index_<space>_manifest.json
 Load either embedding space with the same adapter:
 
 ```python
-from merlin.inference.loaders import load_audio_index
+from merlin.inference.retrieval.faiss import load_audio_index
 from merlin.inference.retrieval import VectorRetriever
 
 audio = load_audio_index()  # parquets_new/merlin/audio, shared_audio_628_v1
