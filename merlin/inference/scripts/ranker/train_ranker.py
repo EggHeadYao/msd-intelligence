@@ -337,15 +337,63 @@ def _validation_summary(
         for group in QUERY_GROUPS
     }
     if any(not values for values in grouped.values()):
-                    functions.lit(0.0),
-                    lambda total, rank: total
-                    + 1.0 / functions.log2(rank.cast("double") + 1.0),
-                ),
-            )
-            .withColumn("ndcg20", functions.col("dcg") / functions.col("idcg20"))
-        )
-        collected_by_reg[reg_param] = per_query.collect()
-    return collected_by_reg
+        raise ValueError("Set-B validation is missing a frozen query group")
+    by_group = {
+        group: sum(values) / len(values) for group, values in grouped.items()
+    }
+    return {
+        "by_group": by_group,
+        "three_strata_macro": sum(by_group.values()) / len(QUERY_GROUPS),
+    }
+
+
+def _grouped_query_scores(
+    table: ValidationScoreTable,
+    key: object,
+) -> dict[str, dict[str, float]]:
+    grouped = {group: {} for group in QUERY_GROUPS}
+    for query_id, group, value in zip(
+        table.query_ids,
+        table.query_groups,
+        table.column(key),
+        strict=True,
+    ):
+        if group not in grouped:
+            raise ValueError(f"unknown Set-B query group: {group}")
+        if query_id in grouped[group]:
+            raise ValueError("duplicate Set-B query-group score")
+        grouped[group][query_id] = value
+    if any(not scores for scores in grouped.values()):
+        raise ValueError("Set-B validation is missing a frozen query group")
+    return grouped
+
+
+def _select_reg_configuration(
+    validation_scores: ValidationScoreTable,
+) -> tuple[float, dict[str, object]]:
+    """Choose the sole tunable Ranker parameter from Set-B query metrics."""
+    summaries = {
+        reg_param: _validation_summary(validation_scores, reg_param)
+        for reg_param in REG_PARAMS
+    }
+    c1_summary = _validation_summary(validation_scores, "c1_only")
+    c2_summary = _validation_summary(validation_scores, "c2_only")
+    bfs_summary = _validation_summary(validation_scores, "bfs")
+    query_scores = {
+        reg_param: _grouped_query_scores(validation_scores, reg_param)
+        for reg_param in REG_PARAMS
+    }
+    selected_reg, report = select_grouped_reg_param(query_scores)
+    report["set_b_diagnostics"] = {
+        "full": summaries[selected_reg],
+        "c1_only": c1_summary,
+        "c2_only": c2_summary,
+        "bfs": bfs_summary,
+    }
+    report["configuration_metrics"] = {
+        f"reg={reg_param:g}": summaries[reg_param] for reg_param in REG_PARAMS
+    }
+    return selected_reg, report
 
 
 def main() -> None:
