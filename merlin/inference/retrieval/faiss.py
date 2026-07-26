@@ -232,6 +232,23 @@ class FaissTrackIndex:
         limit: int,
     ) -> list[list[tuple[str, float]]]:
         """Search a bounded query batch with one FAISS matrix operation."""
+        scores, row_ids = self.search_many_raw(query_track_ids, limit)
+        results = []
+        for query_scores, query_rows in zip(scores, row_ids, strict=True):
+            neighbors = [
+                (self.row_to_track[int(row_id)], float(score))
+                for row_id, score in zip(query_rows, query_scores, strict=True)
+                if 0 <= int(row_id) < len(self.row_to_track)
+            ]
+            results.append(sorted(neighbors, key=lambda item: (-item[1], item[0])))
+        return results
+
+    def search_many_raw(
+        self,
+        query_track_ids: Sequence[str],
+        limit: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return exact scores and index rows without Python tuple materialization."""
         if limit <= 0:
             raise ValueError("FAISS search limit must be positive")
         missing = [track_id for track_id in query_track_ids if not self.contains(track_id)]
