@@ -11,8 +11,8 @@ from pathlib import Path
 from itertools import islice
 from typing import Callable, Iterable, Iterator, Mapping, Sequence
 
-from ..artifact_lineage import artifact_size_bytes, sha256_path
-from ..jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
+from ..artifacts.integrity import artifact_size_bytes, sha256_path
+from ..artifacts.io import read_row_artifact, write_json_atomic, write_row_artifact
 
 
 WEAK_LABEL_VERSION = "merlin_weak_labels_v1"
