@@ -1027,6 +1027,76 @@ def _run_random_only_derived(
             part_query_count = pair_table.num_rows // rows_per_query
             previous_query = None
             for query_offset in range(0, pair_table.num_rows, rows_per_query):
+                query_id = str(query_ids[query_offset].as_py())
+                if (
+                    query_id == previous_query
+                    or query_ids[query_offset + rows_per_query - 1].as_py() != query_id
+                ):
+                    raise ValueError("Full query rows are not fixed-width and clustered")
+                previous_query = query_id
+                candidates = candidate_ids.slice(
+                    query_offset, rows_per_query
+                ).to_pylist()
+                sources = negative_sources.slice(
+                    query_offset, rows_per_query
+                ).to_pylist()
+                replacement_count = sum(
+                    source == "candidate_aware" for source in sources
+                )
+                if replacement_count == 0:
+                    continue
+                rejected = {
+                    str(candidate_id)
+                    for candidate_id, source in zip(candidates, sources, strict=True)
+                    if source != "candidate_aware"
+                }
+                requests.append((query_id, replacement_count, rejected))
+                request_rows.append(query_id)
+                audio_caches[query_id] = {}
+            selected_by_query, part_rejections = sample_random_negatives_many(
+                requests,
+                universe,
+                audio_retriever.same_song,
+                lambda pairs: _derived_positive_pair_flags(
+                    pairs, audio, tag, thresholds, audio_caches
+                ),
+            )
+            states = []
+            for query_id in request_rows:
+                rows = [
+                    {
+                        "query_track_id": query_id,
+                        "candidate_track_id": candidate_id,
+                        "label": 0,
+                        SAMPLE_WEIGHT_COLUMN: 1.0,
+                        "positive_sources": [],
+                        "negative_source": "random",
+                        "recall_sources": [],
+                    }
+                    for candidate_id in selected_by_query[query_id]
+                ]
+                states.append((
+                    query_id,
+                    rows,
+                    (),
+                    {"audio": audio_caches[query_id]},
+                ))
+            replacements = _table_batch(states, computer, ())
+            if (
+                replacements.pairs.num_rows != hard_count
+                or replacements.features.num_rows != hard_count
+            ):
+                raise ValueError("derived replacement count differs from removed hard negatives")
+            pair_writer.write_table(
+                pa.concat_tables((reused_pairs, replacements.pairs))
+            )
+            feature_writer.write_table(
+                pa.concat_tables((reused_features, replacements.features))
+            )
+            totals["positive_count"] += positive_count
+            totals["negative_count"] += random_count + hard_count
+            totals["random_count"] += random_count + hard_count
+            totals["candidate_aware_count"] += 0
         allowed,
         queries,
         scope,
