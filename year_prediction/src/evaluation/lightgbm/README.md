@@ -11,7 +11,7 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
   p1team02/year_prediction/src/evaluation/lightgbm/validate.py \
-  --model-root parquets/year_prediction/models/lightgbm-full
+  --model-root parquets/year_prediction/models/lightgbm-l2-v2
 ```
 
 Evaluate the frozen model once on test artists:
@@ -23,11 +23,11 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
   p1team02/year_prediction/src/evaluation/lightgbm/evaluate.py \
-  --model-root parquets/year_prediction/models/lightgbm-full \
+  --model-root parquets/year_prediction/models/lightgbm-l2-v2 \
   --input parquets/year_prediction/features/full_tabular.parquet \
   --manifest parquets/year_prediction/features/manifest.json \
-  --output parquets/year_prediction/results/experiment_a/lightgbm/lightgbm-full/test \
-  --partitions 32
+  --output parquets/year_prediction/results/experiment_a/lightgbm/lightgbm-l2-v2/test \
+  --partitions 4
 ```
 
 The output contains test predictions, MAE/RMSE and decade metrics, plus Spark run metadata. The evaluator rejects a model whose saved 594-feature order hash does not match the input manifest.
