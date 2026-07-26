@@ -38,12 +38,12 @@ The Ridge trainer consumes only this validated artifact.
 
 ## Train Ridge
 
-`train.py` loads only the train and validation partitions, initializes zero weights and the intercept to the train-label mean, and performs full-batch Spark SGD with the configuration in `config/experiment_a/ridge_t90.json`. The held-out test partition is not read during training or model selection.
+`train.py` loads only the train and validation partitions, initializes zero weights and the intercept to the train-label mean, and performs full-batch Spark SGD with the configuration in `config/ridge_t90.json`. The held-out test partition is not read during training or model selection.
 
 ```bash
 spark-submit --master 'local[4]' --driver-memory 3g \
   year_prediction/src/training/ridge/train.py \
-  --config year_prediction/config/experiment_a/ridge_t90.json
+  --config year_prediction/config/ridge_t90.json
 ```
 
 Use a new `model_id` for every immutable run. The trainer refuses to overwrite an existing model directory unless `--overwrite` is explicitly supplied.

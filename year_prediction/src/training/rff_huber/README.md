@@ -7,6 +7,5 @@ years and converted to normalized target units before gradient calculation.
 ```bash
 spark-submit --master spark://spark-master:7077 \
   year_prediction/src/training/rff_huber/train.py \
-  --config year_prediction/config/experiment_a/rff_huber_t90.json
+  --config year_prediction/config/rff_huber_t90.json
 ```
-

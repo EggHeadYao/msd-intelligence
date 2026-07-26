@@ -17,7 +17,7 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit --master 'local[4]' \
   --metadata-validation parquets/year_prediction/models/lightgbm-metadata-rmse/validation_predictions.parquet \
   --metadata-test parquets/year_prediction/models/lightgbm-metadata-rmse/test_predictions.parquet \
   --audio-validation parquets/year_prediction/models/lightgbm-l2-regularized/validation_predictions.parquet \
-  --audio-test parquets/year_prediction/results/experiment_a/lightgbm/lightgbm-l2-regularized/test/test_predictions.parquet \
+  --audio-test parquets/year_prediction/results/model_comparison/lightgbm/lightgbm-l2-regularized/test/test_predictions.parquet \
   --output parquets/year_prediction/models/lightgbm-linear-ensemble-rmse \
   --overwrite
 ```

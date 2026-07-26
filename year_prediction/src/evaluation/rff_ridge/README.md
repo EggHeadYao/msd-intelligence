@@ -7,9 +7,9 @@ for dimension in 256 512 1024; do
     p1team02/year_prediction/src/evaluation/rff_ridge/evaluate.py \
     --model-root "parquets/year_prediction/models/rff-ridge-t90-d${dimension}" \
     --input parquets/year_prediction/training/t90/vectors.parquet \
-    --output parquets/year_prediction/results/experiment_a/rff_ridge
+    --output parquets/year_prediction/results/model_comparison/rff_ridge
 done
 ```
 
 Each run writes test artifacts under
-`parquets/year_prediction/results/experiment_a/rff_ridge/rff-ridge-t90-d<dimension>/test/`.
+`parquets/year_prediction/results/model_comparison/rff_ridge/rff-ridge-t90-d<dimension>/test/`.

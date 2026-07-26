@@ -26,7 +26,7 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --model-root parquets/year_prediction/models/lightgbm-l2-regularized \
   --input parquets/year_prediction/features/full_tabular.parquet \
   --manifest parquets/year_prediction/features/manifest.json \
-  --output parquets/year_prediction/results/experiment_a/lightgbm/lightgbm-l2-regularized/test \
+  --output parquets/year_prediction/results/model_comparison/lightgbm/lightgbm-l2-regularized/test \
   --partitions 4
 ```
 

@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("parquets/year_prediction/results/experiment_a/constants-v1/metrics.json"),
+        default=Path("parquets/year_prediction/results/model_comparison/constants-v1/metrics.json"),
     )
     parser.add_argument("--shuffle-partitions", type=int, default=32)
     return parser.parse_args()

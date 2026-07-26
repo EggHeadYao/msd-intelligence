@@ -7,6 +7,5 @@ distributed gradient descent.
 ```bash
 spark-submit --master spark://spark-master:7077 \
   year_prediction/src/training/pca_ridge/train.py \
-  --config year_prediction/config/experiment_a/pca_ridge_t90.json
+  --config year_prediction/config/pca_ridge_t90.json
 ```
-

@@ -41,7 +41,7 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
   p1team02/year_prediction/src/training/lightgbm/train.py \
-  --config p1team02/year_prediction/config/experiment_a/lightgbm_l2_regularized.json
+  --config p1team02/year_prediction/config/lightgbm_l2_regularized.json
 ```
 
 The regularized configuration is the RMSE-focused 594-predictor model. Use `lightgbm_metadata_rmse.json` for metadata only and `lightgbm_audio_metadata_tags_rmse.json` for the 762-predictor fused model. Use `lightgbm_full.json` for the Huber/MAE model or `lightgbm_t90_l2.json` for the T90 comparison. The model directory contains `model.txt`, the selected feature view and ordered predictors, resolved arguments, validation predictions and metrics, constant baselines, and Spark run metadata. Command-line arguments override values from the JSON config.
@@ -59,7 +59,7 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
   p1team02/year_prediction/src/training/lightgbm/train.py \
-  --config p1team02/year_prediction/config/experiment_a/lightgbm_full.json \
+  --config p1team02/year_prediction/config/lightgbm_full.json \
   --output /tmp/year-prediction-lightgbm-smoke \
   --max-rows-per-split 1000 \
   --num-iterations 20 \

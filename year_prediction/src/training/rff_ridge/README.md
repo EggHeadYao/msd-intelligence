@@ -10,7 +10,7 @@ for dimension in 256 512 1024; do
   spark-submit --master 'local[2]' --driver-memory 2g \
     --conf spark.hadoop.fs.defaultFS=file:/// \
     p1team02/year_prediction/src/training/rff_ridge/train.py \
-    --config "p1team02/year_prediction/config/experiment_a/rff_ridge_t90_d${dimension}.json"
+    --config "p1team02/year_prediction/config/rff_ridge_t90_d${dimension}.json"
 done
 ```
 

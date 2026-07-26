@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path("parquets/year_prediction/results/experiment_a/ridge"),
+        default=Path("parquets/year_prediction/results/model_comparison/ridge"),
     )
     parser.add_argument("--prediction-partitions", type=int, default=8)
     parser.add_argument("--overwrite", action="store_true")

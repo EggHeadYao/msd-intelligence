@@ -22,7 +22,7 @@ spark-submit --master 'local[4]' --driver-memory 3g \
   --prediction-partitions 8
 ```
 
-The default output is `parquets/year_prediction/results/experiment_a/ridge/<model_id>/test/`.
+The default output is `parquets/year_prediction/results/model_comparison/ridge/<model_id>/test/`.
 
 - `predictions.parquet`: track and artist IDs, target year, normalized prediction, raw and clipped prediction years, and absolute error.
 - `metrics.json`: overall MAE, RMSE, median absolute error, within-five/ten-year rates, signed error, raw metrics, and macro-decade MAE.
