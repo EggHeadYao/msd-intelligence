@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import random
 from statistics import fmean
 from typing import Mapping, Sequence
+
+import numpy as np
 
 
 REG_PARAMS = (0.001, 0.01, 0.1)
