@@ -68,3 +68,73 @@ def random_ranking_expectation(
         survival *= (remaining - recalled_positive_count) / remaining
         if survival == 0.0:
             break
+    result["mrr"] = mrr
+    for cutoff in cutoffs:
+        effective = min(cutoff, candidate_count)
+        expected_hits = effective * recalled_positive_count / candidate_count
+        no_hit = 1.0
+        for offset in range(effective):
+            no_hit *= (
+                candidate_count - recalled_positive_count - offset
+            ) / (candidate_count - offset)
+            if no_hit == 0.0:
+                break
+        expected_dcg = recalled_positive_count / candidate_count * sum(
+            1.0 / math.log2(rank + 1.0) for rank in range(1, effective + 1)
+        )
+        idcg = sum(
+            1.0 / math.log2(rank + 1.0)
+            for rank in range(1, min(eligible_positive_count, cutoff) + 1)
+        )
+        result[f"recall@{cutoff}"] = expected_hits / eligible_positive_count
+        result[f"hit@{cutoff}"] = 1.0 - no_hit
+        result[f"ndcg@{cutoff}"] = expected_dcg / idcg
+    return result
+
+
+def stable_random_scores(query_id: str, size: int, seed: int = EVALUATION_SEED):
+    """Return a reproducible random scorer without Python hash randomization."""
+    import numpy as np
+
+    digest = hashlib.sha256(f"{seed}\0{query_id}".encode("utf-8")).digest()
+    generator = np.random.default_rng(int.from_bytes(digest[:8], "big"))
+    return generator.random(size)
+
+
+def score_query(
+    query_id: str,
+    rows: Sequence[Mapping[str, object]],
+    *,
+    full_ranker: LogisticRanker,
+    no_hard_ranker: LogisticRanker,
+    fill_values: Mapping[str, float],
+) -> tuple[list[dict[str, object]], dict[str, list[str]]]:
+    """Score one canonical candidate list with all frozen baselines."""
+    import numpy as np
+
+    if not rows:
+        raise ValueError("Set-C query candidate list must not be empty")
+    candidate_ids = np.asarray(
+        [str(row["candidate_track_id"]) for row in rows], dtype=object
+    )
+    if len(set(candidate_ids.tolist())) != len(candidate_ids):
+        raise ValueError(f"duplicate canonical candidate for query {query_id}")
+    materialized = [materialize_raw_features(row, fill_values) for row in rows]
+    matrix = np.asarray(
+        [[features[name] for name in FEATURE_ORDER] for features in materialized],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(matrix)):
+        raise ValueError(f"non-finite Set-C feature for query {query_id}")
+
+    audio_index = FEATURE_ORDER.index("cos_audio")
+    full_means = np.asarray(full_ranker.means, dtype=np.float64)
+    full_stds = np.asarray(full_ranker.stds, dtype=np.float64)
+    full_scaled = (matrix - full_means) / full_stds
+    if (
+        no_hard_ranker.means == full_ranker.means
+        and no_hard_ranker.stds == full_ranker.stds
+    ):
+        no_hard_scaled = full_scaled
+    else:
+        no_hard_scaled = (
