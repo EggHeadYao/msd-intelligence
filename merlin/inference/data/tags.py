@@ -167,6 +167,13 @@ class SparseArtistTagIndex:
             similarities = (
                 self.normalized[source_rows] @ self.normalized[target_rows].T
             )
+            for source, row in zip(sources, similarities, strict=True):
+                sparse_scores = dict(zip(row.indices, row.data, strict=True))
+                results[source] = [
+                    float(sparse_scores.get(target_positions.get(target, -1), 0.0))
+                    for target in targets_by_source[source]
+                ]
+        return results
 
 
 def artist_tag_cosine(
