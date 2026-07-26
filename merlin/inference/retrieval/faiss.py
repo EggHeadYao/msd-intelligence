@@ -10,8 +10,17 @@ from typing import Any, ClassVar, Sequence
 
 import numpy as np
 
-from .artifact_lineage import load_faiss_manifest
-from .parquet_io import parquet_rows
+from ..artifacts.integrity import load_faiss_manifest
+from ..artifacts.paths import (
+    AUDIO_ENCODER_METADATA_PATH,
+    AUDIO_INDEX_PATH,
+    AUDIO_MANIFEST_PATH,
+    AUDIO_MAPPING_PATH,
+)
+from ..artifacts.io import parquet_rows
+
+
+AUDIO_CONTRACT_VERSION = "shared_audio_628_v1"
 
 
 @dataclass(slots=True)
