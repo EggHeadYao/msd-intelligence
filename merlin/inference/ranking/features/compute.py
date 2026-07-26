@@ -1,4 +1,4 @@
-"""Ranker-v2 pair feature computation and metadata loading."""
+"""Canonical Ranker feature contract, computation, and metadata loading."""
 
 from __future__ import annotations
 
@@ -8,13 +8,35 @@ import math
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
-from .feature_schema import RANKER_V2_SCHEMA_VERSION
-from .parquet_io import parquet_rows
-from .types import Candidate
+from ...artifacts.io import parquet_rows
+from ...types import Candidate
+
+
+FEATURE_SCHEMA = "ranker-v2"
+FEATURE_ORDER = (
+    "cos_audio",
+    "cos_graph",
+    "has_graph",
+    "bfs_score",
+    "has_bfs",
+    "tag_tfidf_cosine",
+    "has_tags",
+    "same_release",
+    "has_release",
+    "year_gap",
+    "has_year",
+    "audio_tag_interaction",
+    "graph_bfs_interaction",
+)
+RAW_FEATURE_ORDER = FEATURE_ORDER[:11]
 
 
 PairLookup = Callable[[str, str], float | None]
 BatchPairLookup = Callable[[str, Sequence[str]], Sequence[float | None]]
+PairListLookup = Callable[
+    [Sequence[tuple[str, str]]],
+    Sequence[float | None],
+]
 
 
 @dataclass(frozen=True, slots=True)
