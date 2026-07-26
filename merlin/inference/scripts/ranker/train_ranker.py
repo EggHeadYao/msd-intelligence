@@ -228,11 +228,21 @@ def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTa
         feature_matrix = np.vstack(query["feature_array"].to_numpy()).astype(
             np.float64, copy=False
         )
-        margin = functions.aggregate(
-            functions.zip_with(
-                functions.col("feature_array"),
-                coefficients,
-                lambda feature, coefficient: feature * coefficient,
+        lr_score_matrix = (
+            feature_matrix @ np.asarray(coefficient_rows, dtype=np.float64).T
+            + np.asarray(intercepts, dtype=np.float64)
+        )
+        audio_scores = query["cos_audio"].to_numpy(dtype=np.float64)
+        scores = {
+            **{
+                name: lr_score_matrix[:, model_index]
+                for model_index, name in enumerate(model_names)
+            },
+            "c1_only": audio_scores,
+            "c2_only": np.where(
+                query["has_graph"].to_numpy(dtype=np.float64) > 0.0,
+                query["cos_graph"].to_numpy(dtype=np.float64),
+                -np.inf,
             ),
             functions.lit(float(fitted.intercept)),
             lambda total, value: total + value,
