@@ -856,7 +856,7 @@ def _write_streamed_rows(
         rows_per_file=rows_per_file,
         resume=resume,
     ) as feature_writer:
-        for pairs, features, audit in query_rows:
+        expected_pairs = int(initial.get("pair_count", 0))
             if len(pairs) != len(features):
                 raise ValueError("streamed pair and feature query counts differ")
             query_count += 1
