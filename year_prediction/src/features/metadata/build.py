@@ -317,3 +317,55 @@ def scalar_features(spark: SparkSession, path: Path, labels: DataFrame) -> DataF
         ),
     )
 
+
+def build(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
+    prepare_output(args.output, args.overwrite)
+    labels = load_labels(spark, args.labels)
+    artists = labels.select("artist_id", "split").distinct()
+    train_years = labels.where(F.col("split") == "train").groupBy("artist_id").agg(
+        F.avg("year").alias("artist_year")
+    ).persist(StorageLevel.DISK_ONLY)
+    global_year = float(labels.where(F.col("split") == "train").agg(F.avg("year")).first()[0])
+    tags = clean_tags(spark, args.metadata / "artist_tags.parquet")
+    train_artists = artists.where(F.col("split") == "train").select("artist_id")
+    top_terms = choose_top_tags(tags, train_artists, "term", args.top_terms)
+    top_mbtags = choose_top_tags(tags, train_artists, "mbtag", args.top_mbtags)
+    indicators = build_indicators(tags, top_terms, top_mbtags)
+    artist_features = (
+        artists.join(tag_counts(tags), "artist_id", "left")
+        .join(tag_era_features(tags), "artist_id", "left")
+        .join(
+            tag_year_priors(
+                tags, artists, train_years, global_year, args.prior_smoothing, "term"
+            ),
+            "artist_id",
+            "left",
+        )
+        .join(
+            tag_year_priors(
+                tags, artists, train_years, global_year, args.prior_smoothing, "mbtag"
+            ),
+            "artist_id",
+            "left",
+        )
+        .join(
+            similarity_features(
+                spark, args.metadata / "artist_similarity.parquet", train_years
+            ),
+            "artist_id",
+            "left",
+        )
+        .join(indicators, "artist_id", "left")
+    )
+    locations = spark.read.parquet(
+        spark_path(args.metadata / "artist_location.parquet")
+    ).select(
+        "artist_id",
+        F.col("latitude").cast("double").alias(LOCATION_COLUMNS[0]),
+        F.col("longitude").cast("double").alias(LOCATION_COLUMNS[1]),
+    )
+    artist_features = artist_features.join(locations, "artist_id", "left").withColumn(
+        LOCATION_COLUMNS[2],
+        F.when(F.col(LOCATION_COLUMNS[0]).isNull(), 1.0).otherwise(0.0),
+    )
+    raise NotImplementedError("metadata assembly incomplete")
