@@ -276,7 +276,9 @@ class TagRetriever(CandidateRetriever):
     pair_similarity: Callable[[str, str], float | None] = _zero_similarity
     query_available: Callable[[str], bool] | None = None
     per_artist_cap: int = 5
+    artist_neighbor_limit: int = 100
     _name: str = "tag"
+    _sparse_index: object | None = field(default=None, repr=False)
 
     @classmethod
     def from_parquet(
