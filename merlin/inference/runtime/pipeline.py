@@ -110,15 +110,15 @@ class MerlinPipeline:
             raise ValueError("retriever limits exceed candidate union cap")
         if self.feature_computer.schema_version != self.ranker.feature_schema_version:
             raise ValueError("feature computer and ranker schema versions differ")
-        if self.final_limit <= 0:
-            raise ValueError("final_limit must be positive")
+        if self.limit <= 0:
+            raise ValueError("limit must be positive")
         if self.canonical:
             if set(names) != set(self.retriever_limits):
                 raise ValueError("canonical pipeline retrievers and limits must match")
             validate_canonical_policy(
                 self.retriever_limits,
                 self.candidate_limit,
-                self.final_limit,
+                self.limit,
             )
 
     def recommend(self, query_track_id: str, k: int | None = None) -> list[Recommendation]:
