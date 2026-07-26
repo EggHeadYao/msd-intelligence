@@ -1,4 +1,4 @@
-"""Fail-closed validation for C1/C2 FAISS artifact lineages."""
+"""Hash and fail-closed integrity validation for MERLIN artifacts."""
 
 from __future__ import annotations
 
