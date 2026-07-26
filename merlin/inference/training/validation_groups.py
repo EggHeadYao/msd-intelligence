@@ -555,16 +555,22 @@ def load_validation_group_manifest(
     validation_pairs_path: str | Path,
     expected_scope: str,
     expected_parent_hashes: Mapping[str, str] | None = None,
+    expected_apply_split: str = "set_b",
 ) -> dict[str, object]:
     with Path(manifest_path).open("r", encoding="utf-8") as stream:
         manifest = json.load(stream)
-    if manifest.get("artifact_type") != "set_b_validation_groups":
+    if expected_apply_split not in {"set_b", "set_c"}:
+        raise ValueError("validation-group expected split is invalid")
+    if manifest.get("artifact_type") != f"{expected_apply_split}_validation_groups":
         raise ValueError("validation-group artifact type mismatch")
     if manifest.get("artifact_version") != VALIDATION_GROUP_VERSION:
         raise ValueError("validation-group artifact version mismatch")
     if manifest.get("scope") != expected_scope:
         raise ValueError("validation-group scope mismatch")
-    if manifest.get("fit_split") != "set_a" or manifest.get("apply_split") != "set_b":
+    if (
+        manifest.get("fit_split") != "set_a"
+        or manifest.get("apply_split") != expected_apply_split
+    ):
         raise ValueError("validation-group split boundary mismatch")
     if manifest.get("query_groups") != list(VALIDATION_QUERY_GROUPS):
         raise ValueError("validation-group names or order mismatch")
