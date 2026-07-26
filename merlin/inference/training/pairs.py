@@ -811,24 +811,50 @@ def iter_training_query_pairs(
 def _write_streamed_rows(
     query_rows: Iterable[
         tuple[list[dict[str, object]], list[dict[str, object]], Mapping[str, object]]
+        | StreamCheckpoint
+        | StreamTableBatch
     ],
     output: Path,
     feature_output: Path,
     rows_per_file: int,
+    *,
+    candidate_aware_fraction: float,
+    checkpoint_path: Path | None = None,
+    checkpoint_contract: Mapping[str, object] | None = None,
+    initial_checkpoint: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    totals: Counter[str] = Counter()
-    rejection_totals: Counter[str] = Counter()
-    weak_source_totals: Counter[str] = Counter()
-    recall_source_totals: Counter[str] = Counter()
-    query_count = 0
+    initial = initial_checkpoint or {}
+    totals: Counter[str] = Counter(initial.get("totals", {}))
+    loss_weight_totals: Counter[str] = Counter(
+        initial.get("loss_weight_totals", {})
+    )
+    loss_weight_shape_histogram: Counter[str] = Counter(
+        initial.get("loss_weight_shape_histogram", {})
+    )
+    legacy_candidate_weights = Counter(
+        initial.get("legacy_candidate_weight_histogram", {})
+    )
+    legacy_effective_fractions = Counter(
+        initial.get("legacy_effective_fraction_histogram", {})
+    )
+    legacy_queries_without_candidate = int(
+        initial.get("legacy_queries_without_candidate_aware", 0)
+    )
+    rejection_totals: Counter[str] = Counter(initial.get("rejection_totals", {}))
+    weak_source_totals: Counter[str] = Counter(initial.get("weak_source_totals", {}))
+    recall_source_totals: Counter[str] = Counter(initial.get("recall_source_totals", {}))
+    query_count = int(initial.get("query_count", 0))
+    resume = initial_checkpoint is not None
     with PartitionedParquetWriter(
         output,
         training_pair_parquet_schema(),
         rows_per_file=rows_per_file,
+        resume=resume,
     ) as pair_writer, PartitionedParquetWriter(
         feature_output,
         raw_feature_parquet_schema("training"),
         rows_per_file=rows_per_file,
+        resume=resume,
     ) as feature_writer:
         for pairs, features, audit in query_rows:
             if len(pairs) != len(features):
