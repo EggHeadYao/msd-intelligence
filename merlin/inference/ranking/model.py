@@ -155,6 +155,76 @@ def write_ranker_artifacts(
             "artifact_type": "ranker_coefficients",
             "model_type": "logistic_regression",
             "model_version": "full-merlin-lr-v1",
+            "elastic_net_param": 0.0,
+            "reg_param": float(reg_param),
+            "max_iter": 100,
+            "tol": 1e-6,
+            "fit_intercept": True,
+            "standardization": True,
+            "class_weight": "none",
+            "coefficients": [float(value) for value in coefficients],
+            "intercept": float(intercept),
+        },
+        coefficients_path,
+    )
+    manifest = {
+        **common,
+        "artifact_type": "ranker_training",
+        "artifact_version": RANKER_TRAINING_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "scope": scope,
+        "stage": stage,
+        "selected_reg_param": float(reg_param),
+        "class_weight": "none",
+        "converged": converged,
+        "iterations": int(iterations),
+        "selection": dict(selection),
+        "constant_features": list(constant),
+        "artifact_hashes": {
+            path.name: sha256_path(path)
+            for path in (schema_path, scaler_path, coefficients_path)
+        },
+        "parent_hashes": {
+            name: sha256_path(path) for name, path in sorted(parent_paths.items())
+        },
+    }
+    write_json_atomic(manifest, manifest_path)
+    return manifest
+
+
+def load_ranker_bundle(
+    schema_path: str | Path,
+    scaler_path: str | Path,
+    coefficients_path: str | Path,
+    training_manifest_path: str | Path,
+    *,
+    expected_parent_hashes: Mapping[str, str],
+    expected_scope: str = "formal",
+) -> LogisticRanker:
+    """Validate one inseparable Ranker bundle and return its scorer."""
+    paths = tuple(Path(path) for path in (schema_path, scaler_path, coefficients_path))
+    manifest_path = Path(training_manifest_path)
+    for path in (*paths, manifest_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"ranker artifact does not exist: {path}")
+    manifest = _read_json(manifest_path)
+    if manifest.get("artifact_type") != "ranker_training":
+        raise ValueError("Ranker training manifest artifact type mismatch")
+    if manifest.get("artifact_version") != RANKER_TRAINING_VERSION:
+        raise ValueError("Ranker training manifest version mismatch")
+    if manifest.get("scope") != expected_scope:
+        raise ValueError("Ranker training manifest scope mismatch")
+    if manifest.get("converged") is not True:
+        raise ValueError("Ranker training manifest is not converged")
+    if manifest.get("class_weight") != "none":
+        raise ValueError("Ranker training manifest must disable class weights")
+    if manifest.get("feature_schema_version") != FEATURE_SCHEMA:
+        raise ValueError("Ranker training manifest schema version mismatch")
+    if tuple(manifest.get("feature_order", ())) != FEATURE_ORDER:
+        raise ValueError("Ranker training manifest feature order mismatch")
+
+    artifact_hashes = manifest.get("artifact_hashes")
+    if not isinstance(artifact_hashes, dict):
 def _floats(values: Sequence[object]) -> tuple[float, ...]:
     return tuple(float(value) for value in values)
 
