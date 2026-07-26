@@ -239,3 +239,59 @@ def tag_year_priors(
         F.avg("support").alias(prefix + "support_mean"),
     )
 
+
+def similarity_features(
+    spark: SparkSession,
+    path: Path,
+    train_years: DataFrame,
+) -> DataFrame:
+    edges = (
+        spark.read.parquet(spark_path(path))
+        .select("artist_id", "similar_artist_id", "edge_order")
+        .where(F.col("artist_id") != F.col("similar_artist_id"))
+        .groupBy("artist_id", "similar_artist_id")
+        .agg(F.min("edge_order").alias("edge_order"))
+    )
+    known = train_years.select(
+        F.col("artist_id").alias("similar_artist_id"), "artist_year"
+    )
+    order = Window.partitionBy("artist_id").orderBy(
+        F.asc("edge_order"), F.asc("similar_artist_id")
+    )
+    ranked = edges.join(known, "similar_artist_id", "inner").withColumn(
+        "neighbor_rank", F.row_number().over(order)
+    )
+    top_k_expressions = [
+        expression
+        for size in SIMILARITY_TOP_K
+        for expression in (
+            F.count(F.when(F.col("neighbor_rank") <= size, 1)).cast("double").alias(
+                f"similar_top_{size}_count"
+            ),
+            F.avg(
+                F.when(F.col("neighbor_rank") <= size, F.col("artist_year"))
+            ).alias(f"similar_top_{size}_year_mean"),
+            F.stddev_pop(
+                F.when(F.col("neighbor_rank") <= size, F.col("artist_year"))
+            ).alias(f"similar_top_{size}_year_std"),
+        )
+    ]
+    rank_expressions = [
+        F.max(F.when(F.col("neighbor_rank") == rank, F.col("artist_year"))).alias(
+            name
+        )
+        for rank, name in enumerate(GRAPH_RANK_COLUMNS, start=1)
+    ]
+    return ranked.groupBy("artist_id").agg(
+        F.count("*").cast("double").alias(GRAPH_COLUMNS[0]),
+        F.avg("artist_year").alias(GRAPH_COLUMNS[1]),
+        F.stddev_pop("artist_year").alias(GRAPH_COLUMNS[2]),
+        F.min("artist_year").alias(GRAPH_COLUMNS[3]),
+        F.percentile_approx("artist_year", 0.10, 1000).alias(GRAPH_COLUMNS[4]),
+        F.percentile_approx("artist_year", 0.50, 1000).alias(GRAPH_COLUMNS[5]),
+        F.percentile_approx("artist_year", 0.90, 1000).alias(GRAPH_COLUMNS[6]),
+        F.max("artist_year").alias(GRAPH_COLUMNS[7]),
+        *top_k_expressions,
+        *rank_expressions,
+    )
+
