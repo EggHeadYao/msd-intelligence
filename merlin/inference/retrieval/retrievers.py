@@ -413,6 +413,47 @@ class TagRetriever(CandidateRetriever):
         score = self.pair_similarity(left_artist, right_artist)
         return 0.0 if score is None else float(score)
 
+    def similar_artists_many(
+        self,
+        artist_ids: Sequence[str],
+        limit: int,
+    ) -> Mapping[str, Sequence[tuple[str, float]]]:
+        if self._sparse_index is None:
+            return {
+                artist_id: (
+                    self.similar_artists(artist_id)
+                    if callable(self.similar_artists)
+                    else self.similar_artists.get(artist_id, ())
+                )[:limit]
+                for artist_id in artist_ids
+            }
+        return self._sparse_index.similar_many(artist_ids, limit)  # type: ignore[union-attr]
+
+    def artist_similarities(
+        self,
+        source_artist: str,
+        target_artists: Sequence[str],
+    ) -> list[float]:
+        if self._sparse_index is None:
+            return [self.artist_similarity(source_artist, target) for target in target_artists]
+        return self._sparse_index.similarities(  # type: ignore[union-attr]
+            source_artist,
+            target_artists,
+        )
+
+    def artist_similarities_many(
+        self,
+        targets_by_source: Mapping[str, Sequence[str]],
+    ) -> Mapping[str, Sequence[float]]:
+        if self._sparse_index is None:
+            return {
+                source: self.artist_similarities(source, targets)
+                for source, targets in targets_by_source.items()
+            }
+        return self._sparse_index.similarities_many(  # type: ignore[union-attr]
+            targets_by_source
+        )
+
     def is_available(self, query_track_id: str) -> bool:
         if self.query_available is not None:
             return bool(self.query_available(query_track_id))
