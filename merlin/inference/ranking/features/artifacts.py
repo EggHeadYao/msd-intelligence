@@ -279,7 +279,7 @@ def load_raw_feature_manifest(
         raise ValueError("raw-feature artifact type mismatch")
     if manifest.get("artifact_version") != RAW_FEATURE_VERSION:
         raise ValueError("raw-feature artifact version mismatch")
-    if manifest.get("feature_schema_version") != RANKER_V2_SCHEMA_VERSION:
+    if manifest.get("feature_schema_version") != FEATURE_SCHEMA:
         raise ValueError("raw-feature schema version mismatch")
     if manifest.get("raw_feature_order") != list(RAW_BASE_FEATURES):
         raise ValueError("raw-feature order mismatch")
