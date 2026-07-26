@@ -82,6 +82,12 @@ class PairSignalLookups:
     tags: PairLookup
     audio_batch: BatchPairLookup | None = None
     graph_batch: BatchPairLookup | None = None
+    bfs_batch: BatchPairLookup | None = None
+    tags_batch: BatchPairLookup | None = None
+    audio_pairs: PairListLookup | None = None
+    graph_pairs: PairListLookup | None = None
+    bfs_pairs: PairListLookup | None = None
+    tags_pairs: PairListLookup | None = None
 
 
 @dataclass(frozen=True, slots=True)
