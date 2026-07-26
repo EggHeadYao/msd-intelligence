@@ -417,3 +417,73 @@ class StreamingRecallEngine:
         return prepared
 
     def _build_bfs_template(
+        self,
+        reachable: Sequence[tuple[str, int]],
+        tag_scores: Sequence[float],
+    ) -> BfsTemplate:
+        artist_codes: list[np.ndarray] = []
+        offsets = [0]
+        distances: list[int] = []
+        for (artist, distance), _similarity in zip(
+            reachable,
+            tag_scores,
+            strict=True,
+        ):
+            codes = self.bfs_artist_codes.get(
+                artist,
+                np.empty(0, dtype=np.int32),
+            )
+            artist_codes.append(codes)
+            offsets.append(offsets[-1] + len(codes))
+            distances.append(distance)
+        return BfsTemplate(
+            np.concatenate(artist_codes) if artist_codes else np.empty(0, dtype=np.int32),
+            np.asarray(offsets, dtype=np.int32),
+            np.asarray(distances, dtype=np.uint8),
+            np.asarray(tag_scores, dtype=np.float32),
+        )
+
+    def _bfs_group(
+        self,
+        query_code: int,
+        template: BfsTemplate | None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if template is None:
+            return self._empty_group()
+        groups: list[np.ndarray] = []
+        distances: list[np.ndarray] = []
+        similarities: list[np.ndarray] = []
+        query_song = int(self.codec.song_codes[query_code])
+        for index, (distance, similarity) in enumerate(
+            zip(template.distances, template.similarities, strict=True)
+        ):
+            codes = template.codes[template.offsets[index] : template.offsets[index + 1]]
+            selected = (
+                codes
+                if query_song < 0
+                else codes[self.codec.song_codes[codes] != query_song]
+            )[: self.bfs.per_artist_cap]
+            if len(selected):
+                groups.append(selected)
+                distances.append(
+                    np.full(len(selected), int(distance), dtype=np.uint8)
+                )
+                similarities.append(
+                    np.full(len(selected), float(similarity), dtype=np.float32)
+                )
+        if not groups:
+            return self._empty_group()
+        codes = np.concatenate(groups)
+        hops = np.concatenate(distances)
+        tag_scores = np.concatenate(similarities)
+        order = np.lexsort((codes, -tag_scores, hops))[: self.limits["bfs"]]
+        return (
+            codes[order].astype(np.int32, copy=False),
+            (1.0 / (1.0 + hops[order])).astype(np.float32, copy=False),
+        )
+
+    def _prepare_tag_templates(
+        self,
+        queries: Sequence[str],
+    ) -> Mapping[str, TagTemplate]:
+        roots = tuple(dict.fromkeys(
