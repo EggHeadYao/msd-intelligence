@@ -1097,6 +1097,76 @@ def _run_random_only_derived(
             totals["negative_count"] += random_count + hard_count
             totals["random_count"] += random_count + hard_count
             totals["candidate_aware_count"] += 0
+            totals["candidate_shortage"] += 0
+            rejection_totals.update(part_rejections)
+            processed_queries += part_query_count
+            pair_writer.checkpoint()
+            feature_writer.checkpoint()
+            write_json_atomic(
+                {
+                    "artifact_type": "no_hard_neg_derivation_checkpoint",
+                    "artifact_version": 2,
+                    "contract": contract,
+                    "next_input_part": part_index + 1,
+                    "query_count": processed_queries,
+                    "pair_count": pair_writer.count,
+                    "feature_count": feature_writer.count,
+                    "pair_part_count": pair_writer.part_count,
+                    "feature_part_count": feature_writer.part_count,
+                    "totals": dict(totals),
+                    "rejection_totals": dict(rejection_totals),
+                },
+                checkpoint_path,
+            )
+            print(
+                f"no_hard_derivation_progress queries={processed_queries}/{query_count}",
+                flush=True,
+            )
+    if processed_queries != query_count or pair_writer.count != pair_count:
+        raise ValueError("derived no-hard-neg output is incomplete")
+    if (
+        totals["positive_count"] != int(full_counts["positive_count"])
+        or totals["negative_count"] != int(full_counts["negative_count"])
+        or totals["candidate_aware_count"] != 0
+        or totals["random_count"] != int(full_counts["negative_count"])
+    ):
+        raise ValueError("derived no-hard-neg budget differs from Full")
+    stats = {
+        "query_count": processed_queries,
+        "pair_count": pair_writer.count,
+        "feature_count": feature_writer.count,
+        "pair_part_count": pair_writer.part_count,
+        "feature_part_count": feature_writer.part_count,
+        "totals": totals,
+        "loss_weight_totals": Counter({
+            "positive": float(totals["positive_count"]),
+            "candidate_aware": 0.0,
+            "random": float(totals["negative_count"]),
+        }),
+        "loss_weight_shape_histogram": Counter({"0:0:0": processed_queries}),
+        "rejection_totals": rejection_totals,
+        "weak_source_totals": Counter(
+            full_pairs.get("weak_positive_source_counts", {})
+        ),
+        "recall_source_totals": Counter(),
+    }
+    pair_manifest, _feature_manifest = write_training_manifests_from_stats(
+        output,
+        manifest_path,
+        feature_output,
+        feature_manifest,
+        stats=stats,
+        parent_paths={
+            "full_training_pairs": args.full_training_pairs,
+            "full_training_pairs_manifest": args.full_training_pairs_manifest,
+            "full_raw_features": args.full_features,
+            "full_raw_features_manifest": args.full_features_manifest,
+            "split_manifest": args.split_manifest,
+            "split_assignments": args.split_assignments,
+            "weak_label_thresholds": args.thresholds,
+            "audio_index_manifest": paths.audio_manifest,
+            "graph_index_manifest": paths.graph_manifest,
+            "candidate_policy_manifest": paths.candidate_policy,
         allowed,
         queries,
         scope,
