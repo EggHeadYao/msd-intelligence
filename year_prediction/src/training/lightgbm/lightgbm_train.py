@@ -66,6 +66,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda-l2", type=float, default=20.0)
     parser.add_argument("--max-bin", type=int, default=255)
     parser.add_argument("--bin-sample-count", type=int, default=50000)
+    parser.add_argument("--decade-weight-power", type=float, default=0.0)
+    parser.add_argument("--max-decade-weight", type=float, default=3.0)
     parser.add_argument("--huber-alpha", type=float, default=0.80)
     parser.add_argument("--seed", type=int, default=472)
     if preliminary.config is not None:
@@ -81,6 +83,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("num_tasks cannot be negative")
     if args.bin_sample_count <= 0:
         raise ValueError("bin_sample_count must be positive")
+    if args.decade_weight_power < 0.0 or args.max_decade_weight < 1.0:
+        raise ValueError("decade weight parameters are invalid")
     if not 0.0 < args.learning_rate <= 1.0:
         raise ValueError("learning_rate must be in (0, 1]")
     for name in ("feature_fraction", "bagging_fraction", "huber_alpha"):
@@ -89,7 +93,7 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 def build_estimator(args: argparse.Namespace, categorical: list[int]) -> LightGBMRegressor:
-    return LightGBMRegressor(
+    parameters = dict(
         featuresCol="features",
         labelCol="label",
         predictionCol="prediction",
@@ -119,6 +123,52 @@ def build_estimator(args: argparse.Namespace, categorical: list[int]) -> LightGB
         deterministic=True,
         verbosity=1,
     )
+    if getattr(args, "decade_weight_power", 0.0) > 0.0:
+        parameters["weightCol"] = "sample_weight"
+    return LightGBMRegressor(**parameters)
+
+
+def normalized_decade_weights(
+    counts: dict[int, int], power: float, maximum: float
+) -> dict[int, float]:
+    largest = max(counts.values())
+    relative = {
+        decade: min(maximum, (largest / count) ** power)
+        for decade, count in counts.items()
+    }
+    mean = sum(counts[decade] * weight for decade, weight in relative.items()) / sum(
+        counts.values()
+    )
+    return {decade: weight / mean for decade, weight in relative.items()}
+
+
+def fit_frame(
+    train: DataFrame, validation: DataFrame, args: argparse.Namespace
+) -> tuple[DataFrame, dict[int, float]]:
+    if args.decade_weight_power <= 0.0:
+        return train.withColumn("is_validation", F.lit(False)).unionByName(
+            validation.withColumn("is_validation", F.lit(True))
+        ), {}
+    decade = (F.floor(F.col("year") / 10) * 10).cast("int")
+    rows = train.groupBy(decade.alias("decade")).count()
+    counts = {int(row["decade"]): int(row["count"]) for row in rows.collect()}
+    weights = normalized_decade_weights(
+        counts, args.decade_weight_power, args.max_decade_weight
+    )
+    mapping = F.create_map(
+        *(
+            item
+            for decade, weight in sorted(weights.items())
+            for item in (F.lit(decade), F.lit(weight))
+        )
+    )
+    weighted_train = train.withColumn(
+        "sample_weight", F.element_at(mapping, decade)
+    ).withColumn("is_validation", F.lit(False))
+    weighted_validation = validation.withColumn(
+        "sample_weight", F.lit(1.0)
+    ).withColumn("is_validation", F.lit(True))
+    return weighted_train.unionByName(weighted_validation), weights
 
 
 def prediction_artifact(model: Any, frame: DataFrame) -> DataFrame:
@@ -173,12 +223,10 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
     counts = split_counts(frame)
     train = frame.where(F.col("split") == "train")
     validation = frame.where(F.col("split") == "validation")
-    fit_frame = train.withColumn("is_validation", F.lit(False)).unionByName(
-        validation.withColumn("is_validation", F.lit(True))
-    )
+    training_frame, decade_weights = fit_frame(train, validation, args)
     estimator = build_estimator(args, list(contract.categorical_indexes))
     fit_started = time.perf_counter()
-    model = estimator.fit(fit_frame)
+    model = estimator.fit(training_frame)
     fit_seconds = time.perf_counter() - fit_started
     write_native_model(args.output / "model.txt", model.getNativeModel())
     metrics: dict[str, Any] = {
@@ -217,6 +265,8 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         "total_seconds": time.perf_counter() - started,
         "test_read": args.evaluate_test,
     }
+    if decade_weights:
+        metadata["decade_weights"] = decade_weights
     if args.config is not None:
         metadata["configuration_path"] = str(args.config.resolve())
         metadata["configuration_sha256"] = file_sha256(args.config)
