@@ -161,7 +161,7 @@ class BfsRetriever(CandidateRetriever):
         per_artist_cap: int = 10,
     ) -> BfsRetriever:
         """Construct a retriever from the prepared runtime datasets."""
-        from .bfs_data import load_bfs_data
+        from ..data.graph import load_bfs_data
 
         data = load_bfs_data(songs_metadata_path, graph_edges_path)
         return cls(
@@ -270,7 +270,7 @@ class TagRetriever(CandidateRetriever):
         per_artist_cap: int = 5,
     ) -> TagRetriever:
         """Construct lazy TF-IDF shared-tag recall from prepared datasets."""
-        from .tag_data import load_tag_data, load_tag_idf
+        from ..data.tags import load_tag_data, load_tag_idf
 
         data = load_tag_data(songs_metadata_path, graph_edges_path)
         idf_values = (
