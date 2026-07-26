@@ -857,6 +857,76 @@ def _write_streamed_rows(
         resume=resume,
     ) as feature_writer:
         expected_pairs = int(initial.get("pair_count", 0))
+        expected_features = int(initial.get("feature_count", 0))
+        if pair_writer.count != expected_pairs or feature_writer.count != expected_features:
+            raise ValueError("checkpoint row counts do not match recoverable Parquet parts")
+        if checkpoint_path is not None and initial_checkpoint is None:
+            write_json_atomic({
+                "artifact_type": "final_retrain_checkpoint",
+                "artifact_version": 3,
+                "contract": dict(checkpoint_contract or {}),
+                "processed_queries": 0,
+                "total_queries": int((checkpoint_contract or {}).get("query_count", 0)),
+                "query_count": 0,
+                "pair_count": 0,
+                "feature_count": 0,
+                "pair_part_count": 0,
+                "feature_part_count": 0,
+                "totals": {},
+                "loss_weight_totals": {},
+                "loss_weight_shape_histogram": {},
+                "rejection_totals": {},
+                "weak_source_totals": {},
+                "recall_source_totals": {},
+            }, checkpoint_path)
+        for item in query_rows:
+            if isinstance(item, StreamCheckpoint):
+                pair_writer.checkpoint()
+                feature_writer.checkpoint()
+                if checkpoint_path is not None:
+                    write_json_atomic({
+                        "artifact_type": "final_retrain_checkpoint",
+                        "artifact_version": 3,
+                        "contract": dict(checkpoint_contract or {}),
+                        "processed_queries": item.processed_queries,
+                        "total_queries": item.total_queries,
+                        "query_count": query_count,
+                        "pair_count": pair_writer.count,
+                        "feature_count": feature_writer.count,
+                        "pair_part_count": pair_writer.part_count,
+                        "feature_part_count": feature_writer.part_count,
+                        "totals": dict(totals),
+                        "loss_weight_totals": dict(loss_weight_totals),
+                        "loss_weight_shape_histogram": dict(
+                            loss_weight_shape_histogram
+                        ),
+                        **({
+                            "legacy_candidate_weight_histogram": dict(
+                                legacy_candidate_weights
+                            ),
+                            "legacy_effective_fraction_histogram": dict(
+                                legacy_effective_fractions
+                            ),
+                            "legacy_queries_without_candidate_aware": (
+                                legacy_queries_without_candidate
+                            ),
+                        } if legacy_candidate_weights or legacy_effective_fractions else {}),
+                        "rejection_totals": dict(rejection_totals),
+                        "weak_source_totals": dict(weak_source_totals),
+                        "recall_source_totals": dict(recall_source_totals),
+                    }, checkpoint_path)
+                continue
+            if isinstance(item, StreamTableBatch):
+                if item.pairs.num_rows != item.features.num_rows:
+                    raise ValueError("streamed pair and feature table counts differ")
+                for audit in item.audits:
+                    query_count += 1
+                    for key in (
+                        "positive_count",
+                        "negative_count",
+                        "candidate_aware_count",
+                        "random_count",
+                        "candidate_shortage",
             if len(pairs) != len(features):
                 raise ValueError("streamed pair and feature query counts differ")
             query_count += 1
