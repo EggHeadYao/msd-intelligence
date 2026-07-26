@@ -8,10 +8,9 @@ import json
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping, Sequence
 
-from .candidate_policy import validate_canonical_policy
-from .interfaces import CandidateRetriever
-from .retrieval import merge_candidates
-from .types import Candidate, RecallAudit
+from ..retrieval import merge_candidates
+from ..types import Candidate, CandidateRetriever, RecallAudit
+from .policy import validate_canonical_policy
 
 
 def validate_recall_configuration(
