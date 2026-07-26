@@ -477,10 +477,45 @@ def sample_random_negatives_many_by_query(
         },
     )
 
+
+@dataclass(slots=True)
+class PreparedQueryPairs:
+    query_id: str
+    selected_positives: Mapping[str, frozenset[str]]
+    candidates: CandidateCollection
+    candidate_selected: list[tuple[str, object]]
+    negative_target: int
+    candidate_target: int
+    rejection_counts: Counter[str]
+
+
+def _empty_pair_audit() -> dict[str, object]:
+    return {
+        "positive_count": 0,
+        "negative_count": 0,
+        "candidate_aware_count": 0,
+        "random_count": 0,
+        "candidate_shortage": 0,
+        "negative_shortage": 0,
+        "loss_weight_sums": {
+            "positive": 0.0,
+            "candidate_aware": 0.0,
+            "random": 0.0,
+        },
+        "loss_weight_audit": {
+            "candidate_weight": 0.0,
+            "candidate_count": 0,
+            "effective_candidate_aware_fraction": 0.0,
+        },
+        "rejections": {},
+    }
+
+
+def prepare_query_pairs(
+    query_id: str,
     positives: Mapping[str, frozenset[str]],
     candidates: Sequence[CandidateInput],
     allowed_tracks: set[str],
-    random_universe: Sequence[str],
     same_song: SameSong,
     is_positive: IsPositive,
     is_positive_batch: IsPositiveBatch | None = None,
