@@ -7,9 +7,9 @@ from pathlib import Path
 
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
-from ...artifact_paths import RECALL_VALIDATION_PATH
+from ...artifacts.paths import RECALL_VALIDATION_PATH
 from ...recall import validate_recall_pipeline, write_recall_report
-from ...recall_factory import load_recall_pipeline, validate_recall_low_memory
+from ...recall.factory import load_recall_pipeline, validate_recall_low_memory
 
 
 def parse_args() -> argparse.Namespace:
