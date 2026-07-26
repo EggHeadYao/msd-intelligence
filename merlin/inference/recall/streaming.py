@@ -347,3 +347,73 @@ class StreamingRecallEngine:
             exclusive_candidates=exclusive,
             source_available=availability,
         )
+
+    def _ordered(
+        self,
+        codes: np.ndarray,
+        scores: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        valid = codes >= 0
+        codes = codes[valid]
+        scores = scores[valid]
+        order = np.lexsort((codes, -scores))
+        return codes[order], scores[order]
+
+    def _filter_group(
+        self,
+        query_code: int,
+        codes: np.ndarray,
+        scores: np.ndarray,
+        limit: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        valid = (
+            (codes != query_code)
+            & self.codec.allowed[codes]
+            & ~self.codec.same_song_mask(query_code, codes)
+        )
+        codes = codes[valid]
+        scores = scores[valid]
+        if len(codes):
+            _, first = np.unique(codes, return_index=True)
+            keep = np.sort(first)[:limit]
+            codes = codes[keep]
+            scores = scores[keep]
+        return codes.astype(np.int32, copy=False), scores.astype(np.float32, copy=False)
+
+    def _prepare_bfs_templates(
+        self,
+        queries: Sequence[str],
+    ) -> Mapping[str, BfsTemplate]:
+        roots = tuple(dict.fromkeys(
+            root
+            for query_id in queries
+            if (root := self.bfs.track_to_artist.get(query_id)) is not None
+        ))
+        prepared = {
+            root: template
+            for root in roots
+            if (template := self._bfs_templates.get(root)) is not None
+        }
+        missing = [root for root in roots if root not in prepared]
+        reachable_by_root = {
+            root: tuple(
+                (artist, distance)
+                for artist, distance in self.bfs._distances(root).items()
+                if distance != 0
+            )
+            for root in missing
+        }
+        scores_by_root = self.tag.artist_similarities_many({
+            root: [artist for artist, _distance in reachable]
+            for root, reachable in reachable_by_root.items()
+        })
+        for root in missing:
+            template = self._build_bfs_template(
+                reachable_by_root[root],
+                scores_by_root[root],
+            )
+            prepared[root] = template
+            self._remember(self._bfs_templates, root, template, 512)
+        return prepared
+
+    def _build_bfs_template(
