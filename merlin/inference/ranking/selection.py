@@ -80,3 +80,72 @@ def select_reg_param(
         "bootstrap_samples": SELECTION_BOOTSTRAPS,
         "seed": SELECTION_SEED,
     }
+
+
+def _three_strata_mean(
+    grouped_scores: Mapping[str, Mapping[str, float]],
+) -> float:
+    if not grouped_scores or any(not scores for scores in grouped_scores.values()):
+        raise ValueError("three-strata scores must be non-empty")
+    values = tuple(
+        float(value)
+        for scores in grouped_scores.values()
+        for value in scores.values()
+    )
+    if not all(np.isfinite(value) for value in values):
+        raise ValueError("three-strata scores must be finite")
+    return fmean(fmean(scores.values()) for scores in grouped_scores.values())
+
+
+def paired_three_strata_difference_ci(
+    left: Mapping[str, Mapping[str, float]],
+    right: Mapping[str, Mapping[str, float]],
+    *,
+    samples: int = SELECTION_BOOTSTRAPS,
+    seed: int = SELECTION_SEED,
+) -> tuple[float, float]:
+    """Bootstrap query IDs while giving each validation stratum equal weight."""
+    if set(left) != set(right) or not left:
+        raise ValueError("paired three-strata groups must be non-empty and aligned")
+    if samples <= 0:
+        raise ValueError("paired bootstrap sample count must be positive")
+    for group in left:
+        if set(left[group]) != set(right[group]) or not left[group]:
+            raise ValueError("paired query scores must align within each stratum")
+    query_ids = tuple(sorted({query_id for scores in left.values() for query_id in scores}))
+    query_index = {query_id: index for index, query_id in enumerate(query_ids)}
+    differences = np.full((len(left), len(query_ids)), np.nan, dtype=np.float64)
+    for group_index, group in enumerate(sorted(left)):
+        for query_id, left_value in left[group].items():
+            differences[group_index, query_index[query_id]] = (
+                float(left_value) - float(right[group][query_id])
+            )
+    if not np.all(np.isfinite(differences[~np.isnan(differences)])):
+        raise ValueError("paired bootstrap inputs must be finite")
+
+    generator = np.random.default_rng(seed)
+    bootstrap = np.empty(samples, dtype=np.float64)
+    rows_per_chunk = max(1, min(samples, 1_000_000 // len(query_ids)))
+    written = 0
+    while written < samples:
+        batch_size = min(rows_per_chunk, samples - written)
+        indexes = generator.integers(
+            0,
+            len(query_ids),
+            size=(batch_size, len(query_ids)),
+            dtype=np.int32,
+        )
+        group_means = np.empty((batch_size, len(left)), dtype=np.float64)
+        valid = np.ones(batch_size, dtype=bool)
+        for group_index in range(len(left)):
+            sampled = differences[group_index, indexes]
+            counts = np.count_nonzero(~np.isnan(sampled), axis=1)
+            valid &= counts > 0
+            group_means[:, group_index] = np.nansum(sampled, axis=1) / np.maximum(
+                counts, 1
+            )
+        accepted = group_means[valid].mean(axis=1)
+        take = min(len(accepted), samples - written)
+        bootstrap[written : written + take] = accepted[:take]
+        written += take
+    return percentile(bootstrap, 0.025), percentile(bootstrap, 0.975)
