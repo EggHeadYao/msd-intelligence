@@ -269,7 +269,7 @@ class PartitionedParquetWriter:
     def pending_count(self) -> int:
         return self.count + len(self._buffer) + self._table_rows
 
-    def _flush(self) -> None:
+    def _flush_rows(self) -> None:
         if not self._buffer:
             return
         part = self.temporary / f"part-{self.part_count:05d}.parquet"
@@ -277,6 +277,32 @@ class PartitionedParquetWriter:
         self.count += len(self._buffer)
         self.part_count += 1
         self._buffer.clear()
+
+    def _flush_tables(self) -> None:
+        if not self._table_buffer:
+            return
+        part = self.temporary / f"part-{self.part_count:05d}.parquet"
+        table = self._pa.concat_tables(self._table_buffer)
+        self._pq.write_table(
+            table,
+            part,
+            compression="zstd",
+            use_dictionary=True,
+        )
+        self.count += self._table_rows
+        self.part_count += 1
+        self._table_buffer.clear()
+        self._table_rows = 0
+
+    def _flush(self) -> None:
+        self._flush_rows()
+        self._flush_tables()
+
+    def checkpoint(self) -> None:
+        """Flush a recoverable part without publishing the dataset."""
+        if self._closed:
+            raise ValueError("cannot checkpoint a closed Parquet dataset")
+        self._flush()
 
     def close(self) -> int:
         if self._closed:
