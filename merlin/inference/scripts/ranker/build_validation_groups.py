@@ -335,21 +335,11 @@ def main() -> None:
             slots = max(
                 1, math.ceil(2 * args.max_threshold_pairs / set_a_count) + 4
             )
-            .where(
-                F.col("q_norm").isNotNull()
-                & F.col("c_norm").isNotNull()
-                & ~F.isnan("q_norm")
-                & ~F.isnan("c_norm")
-                & (F.col("q_norm") > 0.0)
-                & (F.col("c_norm") > 0.0)
+            indexed_source = set_a.select(
+                TRACK_ID_COLUMN, "song_id", "artist_id", "pre_pca_norm"
             )
-            .dropDuplicates(["q_track_id", "c_track_id"])
-            .select(
-                "q_track_id",
-                "c_track_id",
-                F.xxhash64(
-                    "q_track_id", "c_track_id", F.lit(VALIDATION_GROUP_SEED)
-                ).alias("sample_hash"),
+            indexed_schema = indexed_source.schema.add(
+                "sample_row_id", "long", nullable=False
             )
             .orderBy("sample_hash")
             .limit(args.max_threshold_pairs)
