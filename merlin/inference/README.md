@@ -96,27 +96,6 @@ The exact command order and stage-specific requirements are documented in
 [`scripts/ranker/README.md`](scripts/ranker/README.md). Recall-only commands are
 documented in [`scripts/recall/README.md`](scripts/recall/README.md).
 
-`train_ranker` uses Spark LR-L2 with the frozen `{0.001, 0.01, 0.1}` grid,
-100 iterations, tolerance `1e-6`, intercept, and standardization. Set-A medians
-and scaler statistics are serialized for Python inference. Set-B validation is
-supplied by `build_validation_groups` with the frozen `audio_dominant`,
-`relation_dominant`, and `mixed` query groups. A statistically tied selection
-chooses the larger regularization value using 2,000 paired bootstrap samples.
-Each unique Set-B pair is assembled and scaled once. Candidate ranks are also
-computed once per `(regParam, query)` before the nested group labels are
-expanded for nDCG aggregation. The three frozen `regParam` values are ranked
-sequentially so only one validation shuffle is live at a time.
-
-Retraining requires the selected tuning `regParam`, tuning manifest, and
-Set-A scaler. Fill values, means, standard deviations, and zero-variance feature
-handling remain frozen from Set A; only the LR coefficients are fitted again on
-A+B+Remaining. Availability masks that are constant in Set A stay in the fixed
-feature schema with effective scale one and must have zero model weight.
-
-The pair builder enforces split-before-pair, excludes every Set-C endpoint,
-checks the complete positive predicate before writing a negative, keeps an exact
-1:3 ratio, and records candidate-aware/random composition plus rejection causes.
-
 ## Ranker features
 
 The fixed feature order is exported as `FEATURE_ORDER` from
