@@ -542,32 +542,32 @@ def prepare_query_pairs(
     eligible_candidates: list[tuple[str, object]] = []
     predicate_candidates: list[tuple[str, object]] = []
     seen_candidates: set[str] = set()
-    for candidate in candidates:
-        if isinstance(candidate, Candidate):
-            track_id = candidate.track_id
-            recall_sources = candidate.sources
-            recall_scores = candidate.recall_scores
-        else:
-            track_id = str(candidate["track_id"])
-            recall_sources = frozenset(str(value) for value in candidate["recall_sources"])
-            recall_scores = {
-                str(name): float(value)
-                for name, value in dict(candidate.get("recall_scores", {})).items()
-            }
-        if track_id == query_id:
-            rejection_counts["query_self"] += 1
-        elif track_id not in allowed_tracks:
-            rejection_counts["outside_universe"] += 1
-        elif track_id in seen_candidates:
-            rejection_counts["duplicate_pair"] += 1
-        elif same_song(query_id, track_id):
-            rejection_counts["same_song"] += 1
-        elif track_id in positive_ids:
-            rejection_counts["known_positive"] += 1
-        else:
-            seen_candidates.add(track_id)
-            predicate_candidates.append((track_id, recall_sources, recall_scores))
-    predicate_results = (
+
+    def records() -> Iterator[tuple[str, object]]:
+        if isinstance(candidates, EncodedCandidates):
+            for position in range(len(candidates)):
+                yield candidates.track_id(position), position
+            return
+        for candidate in candidates:
+            if isinstance(candidate, Candidate):
+                evidence = (candidate.sources, candidate.recall_scores)
+                yield candidate.track_id, evidence
+            else:
+                sources = frozenset(str(value) for value in candidate["recall_sources"])
+                scores = {
+                    str(name): float(value)
+                    for name, value in dict(candidate.get("recall_scores", {})).items()
+                }
+                yield str(candidate["track_id"]), (sources, scores)
+
+    if candidate_target == 0:
+        pass
+    elif isinstance(candidates, EncodedCandidates):
+        codes = candidates.codes
+        remaining = np.ones(len(codes), dtype=np.bool_)
+        query_code = candidates.codec.code(query_id)
+        query_self = remaining & (codes == query_code)
+        rejection_counts["query_self"] += int(np.count_nonzero(query_self))
         is_positive_batch(
             query_id,
             [track_id for track_id, _sources, _scores in predicate_candidates],
