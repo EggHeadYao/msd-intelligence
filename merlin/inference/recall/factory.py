@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import gc
-from typing import Any
+from typing import Any, Mapping
 
-from .artifact_paths import InferenceArtifactPaths
-from .bfs_data import load_artist_neighbors
-from .candidate_policy import (
+from ..artifacts.paths import InferenceArtifactPaths
+from ..data.graph import load_artist_neighbors
+from .policy import (
     CANONICAL_BFS_MAX_DEPTH,
     CANONICAL_BFS_PER_ARTIST_CAP,
     CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT,
@@ -16,18 +16,17 @@ from .candidate_policy import (
     CANONICAL_VECTOR_OVERFETCH_FACTOR,
     load_candidate_policy,
 )
-from .catalog_data import load_catalog_context
-from .faiss_index import FaissTrackIndex
-from .loaders import load_audio_index
-from .recall import (
+from ..data.catalog import SameSongFilter, load_catalog_context, load_same_song_filter
+from .streaming import StreamingRecallEngine, TrackCodec
+from ..retrieval.faiss import FaissTrackIndex, load_audio_index
+from .pipeline import (
     RecallPipeline,
     audit_recall_groups,
     candidate_digest,
     recall_query_report,
 )
-from .retrieval import BfsRetriever, TagRetriever, VectorRetriever
-from .track_identity import SameSongFilter, load_same_song_filter
-from .tag_data import load_tag_idf
+from ..retrieval import BfsRetriever, TagRetriever, VectorRetriever
+from ..data.tags import load_tag_idf
 
 
 def build_canonical_retrievers(
