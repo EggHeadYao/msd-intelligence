@@ -207,3 +207,73 @@ class StreamingRecallEngine:
                 positive_neighbor_limit,
             )
             graph_job = executor.submit(
+                self._search_available,
+                self.graph,
+                self.graph_row_codes,
+                query_tuple,
+                graph_limit,
+            )
+            audio = audio_job.result()
+            graph = graph_job.result()
+        bfs_templates = self._prepare_bfs_templates(query_tuple)
+        tag_templates = self._prepare_tag_templates(query_tuple)
+        return StreamingRecallBatch(
+            query_tuple,
+            audio,
+            graph,
+            bfs_templates,
+            tag_templates,
+        )
+
+    def search_candidates_many(
+        self,
+        queries: Sequence[str],
+    ) -> StreamingRecallBatch:
+        """Run the canonical over-fetched searches needed by candidate export."""
+        return self.search_many(queries, self.limits["audio"] * 3 + 1)
+
+    @staticmethod
+    def _search_available(
+        index: FaissTrackIndex,
+        row_codes: np.ndarray,
+        queries: tuple[str, ...],
+        limit: int,
+    ) -> RawVectorBatch:
+        positions = [position for position, query in enumerate(queries) if index.contains(query)]
+        available = [queries[position] for position in positions]
+        scores, rows = index.search_many_raw(available, limit)
+        return RawVectorBatch(
+            scores,
+            rows,
+            {
+                batch_position: search_position
+                for search_position, batch_position in enumerate(positions)
+            },
+            row_codes,
+        )
+
+    def query(
+        self,
+        batch: StreamingRecallBatch,
+        position: int,
+    ) -> tuple[EncodedCandidates, list[tuple[str, float]], list[tuple[str, float]]]:
+        query_id = batch.queries[position]
+        query_code = self.codec.code(query_id)
+        audio_codes, audio_scores = batch.audio.query(position)
+        graph_codes, graph_scores = batch.graph.query(position)
+        audio_codes, audio_scores = self._ordered(audio_codes, audio_scores)
+        graph_codes, graph_scores = self._ordered(graph_codes, graph_scores)
+        audio_group = self._filter_group(
+            query_code, audio_codes, audio_scores, self.limits["audio"]
+        )
+        graph_group = self._filter_group(
+            query_code, graph_codes, graph_scores, self.limits["graph"]
+        )
+        root_artist = self.bfs.track_to_artist.get(query_id)
+        bfs_group = self._bfs_group(
+            query_code,
+            batch.bfs_templates.get(root_artist) if root_artist is not None else None,
+        )
+        root_artist = self.tag.track_to_artist.get(query_id)
+        tag_group, tag_positive = self._tag_group(
+            query_code,
