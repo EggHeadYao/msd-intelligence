@@ -104,7 +104,7 @@ class FeatureFillValues:
     ) -> FeatureFillValues:
         with Path(path).open("r", encoding="utf-8") as stream:
             artifact = json.load(stream)
-        if artifact.get("feature_schema_version") != RANKER_V2_SCHEMA_VERSION:
+        if artifact.get("feature_schema_version") != FEATURE_SCHEMA:
             raise ValueError("fill artifact schema version mismatch")
         if tuple(artifact.get("feature_order", ())) != feature_order:
             raise ValueError("fill artifact feature order mismatch")
