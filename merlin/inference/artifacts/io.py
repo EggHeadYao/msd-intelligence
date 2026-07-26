@@ -267,7 +267,7 @@ class PartitionedParquetWriter:
 
     @property
     def pending_count(self) -> int:
-        return self.count + len(self._buffer)
+        return self.count + len(self._buffer) + self._table_rows
 
     def _flush(self) -> None:
         if not self._buffer:
