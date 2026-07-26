@@ -5,18 +5,23 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+from statistics import fmean
 from typing import Iterable, Iterator, Mapping
 
-from .artifact_lineage import artifact_size_bytes, sha256_path
-from .candidate_policy import CANDIDATE_POLICY_VERSION
-from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
-from .recall import RecallPipeline
-from .types import Candidate
+from ..artifacts.integrity import artifact_size_bytes, sha256_path
+from ..artifacts.io import read_row_artifact, write_json_atomic, write_row_artifact
+from ..training.weak_labels import POSITIVE_SOURCES
+from ..types import Candidate
+from .pipeline import RecallPipeline
+from .policy import CANDIDATE_POLICY_VERSION
+from .streaming import SOURCE_NAMES, StreamingRecallEngine
 
 
 CANDIDATE_POOL_VERSION = "merlin_candidate_pool_v2"
 CANDIDATE_BATCH_SIZE = 256
 CANDIDATE_READ_BATCH_SIZE = 64
+CANDIDATE_AUDIT_VERSION = "merlin_candidate_audit_v1"
+RECALL_SOURCES = ("audio", "graph", "bfs", "tag")
 
 
 def _candidate_payload(candidate: Candidate) -> dict[str, object]:
