@@ -62,6 +62,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, default=defaults.validation_groups_manifest)
     parser.add_argument("--max-threshold-pairs", type=int, default=MAX_THRESHOLD_PAIRS)
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
+    parser.add_argument("--apply-split", choices=("set_b", "set_c"), default="set_b")
+    parser.add_argument("--evaluation-protocol", type=Path)
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     parser.add_argument("--audio-pair-engine", choices=("numpy", "spark"), default="numpy")
     parser.add_argument("--audio-block-size", type=int, default=256)
