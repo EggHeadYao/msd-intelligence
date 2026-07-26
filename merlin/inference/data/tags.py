@@ -279,17 +279,6 @@ def load_artist_term_data(
     return build_tag_data((), rows)
 
 
-def _graph_edge_rows(path: str | Path, edge_type: str) -> Iterable[tuple[str, str]]:
-    yield from parquet_rows(path, ("src_id", "dst_id"), edge_type=edge_type)
-
-
-def _parquet_rows(
-    path: str | Path,
-    columns: tuple[str, str],
-) -> Iterable[tuple[str, str]]:
-    yield from parquet_rows(path, columns)
-
-
 def find_similar_artists(
     data: TagData,
     artist_id: str,
