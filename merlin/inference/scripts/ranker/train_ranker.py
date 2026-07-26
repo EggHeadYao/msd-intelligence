@@ -549,12 +549,13 @@ def main() -> None:
             return result
 
         assembler = VectorAssembler(
-            inputCols=list(RANKER_V2_FEATURES),
+            inputCols=list(FEATURE_ORDER),
             outputCol="unscaled_features",
             handleInvalid="error",
         )
-        assembled_train = assembler.transform(materialize(train))
+        materialized_train = materialize(train)
         if args.stage == "tuning":
+            assembled_train = assembler.transform(materialized_train)
             scaler = StandardScaler(
                 inputCol="unscaled_features",
                 outputCol="features",
@@ -568,26 +569,33 @@ def main() -> None:
                 raise ValueError("Ranker scaler produced an invalid standard deviation")
             constant_features = tuple(
                 name
-                for name, value in zip(RANKER_V2_FEATURES, spark_stds, strict=True)
+                for name, value in zip(FEATURE_ORDER, spark_stds, strict=True)
                 if value == 0.0
             )
             stds = tuple(1.0 if value == 0.0 else value for value in spark_stds)
         else:
-            unscaled = vector_to_array("unscaled_features")
+            feature_indexes = {
+                name: index for index, name in enumerate(FEATURE_ORDER)
+            }
             scaled = F.array(*(
-                (unscaled[index] - F.lit(means[index])) / F.lit(stds[index])
-                for index in range(len(RANKER_V2_FEATURES))
+                (F.col(name) - F.lit(means[feature_indexes[name]]))
+                / F.lit(stds[feature_indexes[name]])
+                for name in solver_features
             ))
-            transformed_train = assembled_train.withColumn(
-                "features",
-                array_to_vector(scaled),
+            transformed_train = materialized_train.select(
+                F.col("label").cast("double").alias("label"),
+                array_to_vector(scaled).alias("features"),
             )
-        release(train)
-        scaled_train = transformed_train.select(
-            F.col("label").cast("double").alias("label"), "features"
-        ).persist(StorageLevel.MEMORY_AND_DISK)
-        cached.append(scaled_train)
-        scaled_train.count()
+        if args.stage == "tuning":
+            scaled_train = transformed_train.select(
+                F.col("label").cast("double").alias("label"),
+                "features",
+            ).persist(StorageLevel.MEMORY_AND_DISK)
+            cached.append(scaled_train)
+            scaled_train.count()
+            release(train)
+        else:
+            scaled_train = transformed_train
 
         def fit(reg_param: float) -> Any:
             model = LogisticRegression(
