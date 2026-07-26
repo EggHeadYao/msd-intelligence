@@ -212,14 +212,9 @@ def main() -> None:
     from pyspark.sql import SparkSession, Window
     from pyspark.sql import functions as F
 
-    audio_module = Path(__file__).resolve().parents[3] / "embedding" / "audio"
-    sys.path.insert(0, str(audio_module))
-    try:
-        from columns import TRACK_ID_COLUMN
-        from preprocess import apply_frozen_preprocess
-        from train_pca import FEATURES_COLUMN, SCALED_FEATURES_COLUMN
-    finally:
-        sys.path.pop(0)
+    from merlin.embedding.audio.columns import TRACK_ID_COLUMN
+    from merlin.embedding.audio.preprocess import apply_frozen_preprocess
+    from merlin.embedding.audio.train_pca import FEATURES_COLUMN, SCALED_FEATURES_COLUMN
 
     def array_dot(left, right):
         products = F.zip_with(left, right, lambda x, y: x.cast("double") * y.cast("double"))
