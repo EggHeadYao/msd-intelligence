@@ -245,6 +245,26 @@ class PartitionedParquetWriter:
             if len(self._buffer) == self.rows_per_file:
                 self._flush()
 
+    def write_table(self, table: Any) -> None:
+        """Write an Arrow table without materializing its rows as Python objects."""
+        if self._closed:
+            raise ValueError("cannot write to a closed Parquet dataset")
+        if table.schema != self.schema:
+            raise ValueError("Parquet table schema does not match the writer schema")
+        if self._buffer:
+            self._flush_rows()
+        offset = 0
+        while offset < table.num_rows:
+            take = min(
+                self.rows_per_file - self._table_rows,
+                table.num_rows - offset,
+            )
+            self._table_buffer.append(table.slice(offset, take))
+            self._table_rows += take
+            offset += take
+            if self._table_rows == self.rows_per_file:
+                self._flush_tables()
+
     @property
     def pending_count(self) -> int:
         return self.count + len(self._buffer)
