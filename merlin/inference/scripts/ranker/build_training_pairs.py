@@ -876,6 +876,16 @@ def _run_random_only_derived(
     rows_per_query = pair_count // query_count
     if (
         int(full_counts.get("positive_count", -1)) * 4 != pair_count
+        or int(full_counts.get("negative_count", -1)) * 4 != 3 * pair_count
+    ):
+        raise ValueError("Full artifact does not preserve the frozen 1:3 budget")
+    pair_parts = _parquet_parts(args.full_training_pairs)
+    feature_parts = _parquet_parts(args.full_features)
+    if len(pair_parts) != len(feature_parts) or [part.name for part in pair_parts] != [
+        part.name for part in feature_parts
+    ]:
+        raise ValueError("Full pair and feature Parquet parts are not aligned")
+
     (
         allowed,
         queries,
