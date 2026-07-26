@@ -487,3 +487,73 @@ class StreamingRecallEngine:
         queries: Sequence[str],
     ) -> Mapping[str, TagTemplate]:
         roots = tuple(dict.fromkeys(
+            root
+            for query_id in queries
+            if (root := self.tag.track_to_artist.get(query_id)) is not None
+        ))
+        prepared = {
+            root: template
+            for root in roots
+            if (template := self._tag_templates.get(root)) is not None
+        }
+        missing = [root for root in roots if root not in prepared]
+        neighbors = self.tag.similar_artists_many(
+            missing,
+            self.tag.artist_neighbor_limit,
+        )
+        for root in missing:
+            template = self._build_tag_template(neighbors.get(root, ()))
+            prepared[root] = template
+            self._remember(self._tag_templates, root, template, 512)
+        return prepared
+
+    def _build_tag_template(
+        self,
+        artist_neighbors: Sequence[tuple[str, float]],
+    ) -> TagTemplate:
+        recall: list[tuple[int, float]] = []
+        positives: list[tuple[int, float]] = []
+        for artist, score in artist_neighbors:
+            tracks = self.tag.artist_tracks.get(artist, ())
+            recall.extend(
+                (self.codec.code(track_id), float(score))
+                for track_id in tracks[: self.tag.per_artist_cap]
+            )
+            positives.extend(
+                (self.codec.code(track_id), float(score))
+                for track_id in sorted(tracks)
+            )
+        recall = [row for row in recall if row[0] >= 0]
+        positives = [row for row in positives if row[0] >= 0]
+        return TagTemplate(
+            np.asarray([row[0] for row in recall], dtype=np.int32),
+            np.asarray([row[1] for row in recall], dtype=np.float32),
+            np.asarray([row[0] for row in positives], dtype=np.int32),
+            np.asarray([row[1] for row in positives], dtype=np.float32),
+        )
+
+    def _tag_group(
+        self,
+        query_code: int,
+        template: TagTemplate | None,
+    ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
+        if template is None:
+            empty = self._empty_group()
+            return empty, empty
+        recall = self._filter_group(
+            query_code,
+            template.recall_codes,
+            template.recall_scores,
+            self.limits["tag"],
+        )
+        return recall, (template.positive_codes, template.positive_scores)
+
+    def _merge(
+        self,
+        groups: Sequence[tuple[np.ndarray, np.ndarray]],
+    ) -> EncodedCandidates:
+        positions: dict[int, int] = {}
+        codes: list[int] = []
+        masks: list[int] = []
+        score_rows: list[list[float]] = []
+        for source_index, (group_codes, group_scores) in enumerate(groups):
