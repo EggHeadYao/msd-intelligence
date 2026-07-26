@@ -278,3 +278,67 @@ def paired_bootstrap_ci(
     for query_id, group, scorer in values:
         if scorer != "full":
             continue
+        other = values.get((query_id, group, baseline))
+        if other is not None:
+            differences[group].append((query_id, values[(query_id, group, scorer)] - other))
+    if any(not differences[group] for group in VALIDATION_QUERY_GROUPS):
+        raise ValueError(f"paired bootstrap is missing rows for {baseline}")
+    if samples <= 0:
+        raise ValueError("paired bootstrap samples must be positive")
+    generator = np.random.default_rng(seed)
+    estimates = np.empty(samples, dtype=np.float64)
+    if clusters is None:
+        arrays = {
+            group: np.asarray([value for _query, value in differences[group]])
+            for group in VALIDATION_QUERY_GROUPS
+        }
+        for start in range(0, samples, 64):
+            stop = min(start + 64, samples)
+            block = np.zeros(stop - start, dtype=np.float64)
+            for group_values in arrays.values():
+                indexes = generator.integers(
+                    0,
+                    len(group_values),
+                    size=(stop - start, len(group_values)),
+                )
+                block += group_values[indexes].mean(axis=1)
+            estimates[start:stop] = block / len(VALIDATION_QUERY_GROUPS)
+    else:
+        cluster_rows: dict[str, dict[str, list[float]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for group, items in differences.items():
+            for query_id, value in items:
+                cluster_rows[clusters.get(query_id, f"missing:{query_id}")][group].append(value)
+        cluster_ids = tuple(sorted(cluster_rows))
+        sums = np.zeros((len(cluster_ids), len(VALIDATION_QUERY_GROUPS)))
+        counts = np.zeros_like(sums)
+        for cluster_index, cluster_id in enumerate(cluster_ids):
+            for group_index, group in enumerate(VALIDATION_QUERY_GROUPS):
+                group_values = cluster_rows[cluster_id].get(group, ())
+                sums[cluster_index, group_index] = sum(group_values)
+                counts[cluster_index, group_index] = len(group_values)
+        for start in range(0, samples, 64):
+            stop = min(start + 64, samples)
+            indexes = generator.integers(
+                0,
+                len(cluster_ids),
+                size=(stop - start, len(cluster_ids)),
+            )
+            sampled_sums = sums[indexes].sum(axis=1)
+            sampled_counts = counts[indexes].sum(axis=1)
+            if np.any(sampled_counts == 0):
+                raise ValueError("artist bootstrap sample omitted a validation group")
+            estimates[start:stop] = (sampled_sums / sampled_counts).mean(axis=1)
+    point = sum(
+        sum(value for _query, value in differences[group]) / len(differences[group])
+        for group in VALIDATION_QUERY_GROUPS
+    ) / len(VALIDATION_QUERY_GROUPS)
+    low, high = np.quantile(estimates, (0.025, 0.975), method="linear")
+    return {
+        "samples": samples,
+        "seed": seed,
+        "point_difference": float(point),
+        "ci95_low": float(low),
+        "ci95_high": float(high),
+    }
