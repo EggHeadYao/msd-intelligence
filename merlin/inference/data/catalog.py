@@ -44,7 +44,7 @@ def load_same_song_filter(path: str | Path) -> SameSongFilter:
 class CatalogContext:
     same_song: SameSongFilter
     tag_data: TagData
-    ranker_tracks: Mapping[str, TrackMetadataV2]
+    ranker_tracks: Mapping[str, TrackMetadata]
 
 
 def load_catalog_context(
