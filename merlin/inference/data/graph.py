@@ -56,8 +56,12 @@ def load_bfs_data(
     graph_edges_path: str | Path,
 ) -> BfsData:
     """Load metadata and directed artist-similarity edges without Spark."""
-    songs = _parquet_rows(songs_metadata_path, ("track_id", "artist_id"))
-    edges = _graph_edge_rows(graph_edges_path, "artist_similarity")
+    songs = parquet_rows(songs_metadata_path, ("track_id", "artist_id"))
+    edges = parquet_rows(
+        graph_edges_path,
+        ("src_id", "dst_id"),
+        edge_type="artist_similarity",
+    )
     return build_bfs_data(songs, edges)
 
 
