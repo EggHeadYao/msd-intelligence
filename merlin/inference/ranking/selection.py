@@ -149,3 +149,46 @@ def paired_three_strata_difference_ci(
         bootstrap[written : written + take] = accepted[:take]
         written += take
     return percentile(bootstrap, 0.025), percentile(bootstrap, 0.975)
+
+
+def select_grouped_reg_param(
+    query_scores: Mapping[float, Mapping[str, Mapping[str, float]]],
+) -> tuple[float, dict[str, object]]:
+    """Select regParam from unequal eligible-query sets across frozen strata."""
+    if set(query_scores) != set(REG_PARAMS):
+        raise ValueError("selection requires exactly the frozen three regParams")
+    group_sets = {tuple(sorted(scores)) for scores in query_scores.values()}
+    if len(group_sets) != 1 or not next(iter(group_sets), ()):
+        raise ValueError("regParam validation strata must be non-empty and aligned")
+    reference_scores = query_scores[REG_PARAMS[0]]
+    if any(
+        set(scores[group]) != set(reference_scores[group])
+        for scores in query_scores.values()
+        for group in reference_scores
+    ):
+        raise ValueError("regParam query IDs must align within each stratum")
+    means = {
+        reg_param: _three_strata_mean(scores)
+        for reg_param, scores in query_scores.items()
+    }
+    reference = max(REG_PARAMS, key=lambda reg: (means[reg], reg))
+    selected = reference
+    comparisons = {}
+    for larger in (reg for reg in REG_PARAMS if reg > reference):
+        ci = paired_three_strata_difference_ci(
+            query_scores[reference], query_scores[larger]
+        )
+        comparisons[f"{reference:g}_minus_{larger:g}"] = list(ci)
+        if ci[0] <= 0.0 <= ci[1]:
+            selected = max(selected, larger)
+    return selected, {
+        "mean_three_strata_ndcg20": {
+            f"{reg:g}": means[reg] for reg in REG_PARAMS
+        },
+        "paired_difference_ci": comparisons,
+        "selected_reg_param": selected,
+        "tie_rule": "choose_larger_reg_param_when_paired_95pct_ci_contains_zero",
+        "bootstrap_samples": SELECTION_BOOTSTRAPS,
+        "bootstrap_unit": "query_id_cluster_with_equal_stratum_means",
+        "seed": SELECTION_SEED,
+    }
