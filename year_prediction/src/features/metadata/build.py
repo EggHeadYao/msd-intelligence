@@ -105,3 +105,67 @@ def load_labels(spark: SparkSession, path: Path) -> DataFrame:
         raise ValueError("an artist appears in multiple splits")
     return labels.persist(StorageLevel.DISK_ONLY)
 
+
+def clean_tags(spark: SparkSession, path: Path) -> DataFrame:
+    return (
+        spark.read.parquet(spark_path(path))
+        .select(
+            F.col("artist_id").cast("string"),
+            F.lower(F.trim(F.col("tag"))).alias("tag"),
+            F.col("source").cast("string"),
+        )
+        .where(
+            F.col("artist_id").isNotNull()
+            & (F.col("artist_id") != "")
+            & F.col("tag").isNotNull()
+            & (F.col("tag") != "")
+            & F.col("source").isin("term", "mbtag")
+        )
+        .distinct()
+        .persist(StorageLevel.DISK_ONLY)
+    )
+
+
+def choose_top_tags(
+    tags: DataFrame,
+    train_artists: DataFrame,
+    source: str,
+    count: int,
+) -> list[str]:
+    rows = (
+        tags.where(F.col("source") == source)
+        .join(F.broadcast(train_artists), "artist_id", "inner")
+        .groupBy("tag")
+        .agg(F.count("*").alias("artists"))
+        .orderBy(F.desc("artists"), F.asc("tag"))
+        .limit(count)
+        .collect()
+    )
+    return [str(row["tag"]) for row in rows]
+
+
+def build_indicators(
+    tags: DataFrame,
+    top_terms: list[str],
+    top_mbtags: list[str],
+) -> DataFrame:
+    names = indicator_columns(len(top_terms), len(top_mbtags))
+    pairs = [
+        *(("term", tag, names[index]) for index, tag in enumerate(top_terms)),
+        *(
+            ("mbtag", tag, names[len(top_terms) + index])
+            for index, tag in enumerate(top_mbtags)
+        ),
+    ]
+    mapping = F.create_map(
+        *(
+            item
+            for source, tag, name in pairs
+            for item in (F.lit(f"{source}\u0000{tag}"), F.lit(name))
+        )
+    )
+    selected = tags.withColumn(
+        "indicator",
+        F.element_at(mapping, F.concat_ws("\u0000", "source", "tag")),
+    ).where(F.col("indicator").isNotNull())
+    return selected.groupBy("artist_id").pivot("indicator", list(names)).agg(F.lit(1))
