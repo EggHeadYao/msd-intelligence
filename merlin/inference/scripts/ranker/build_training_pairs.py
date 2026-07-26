@@ -690,16 +690,6 @@ def _runtime(
     retrievers = build_canonical_retrievers(
         audio, graph, paths, catalog.same_song, tag
     )
-    policy = load_candidate_policy(paths.candidate_policy)
-    pipeline = RecallPipeline(
-        retrievers=retrievers,
-        retriever_limits={
-            str(name): int(limit)
-            for name, limit in policy["retriever_limits"].items()
-        },
-        candidate_limit=int(policy["candidate_limit"]),
-        canonical=True,
-    )
     audio_retriever = next(
         retriever
         for retriever in retrievers
