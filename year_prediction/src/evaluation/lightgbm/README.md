@@ -11,7 +11,7 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
   p1team02/year_prediction/src/evaluation/lightgbm/validate.py \
-  --model-root parquets/year_prediction/models/lightgbm-l2-v2
+  --model-root parquets/year_prediction/models/lightgbm-l2-regularized
 ```
 
 Evaluate the frozen model once on test artists:
@@ -23,10 +23,10 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
   p1team02/year_prediction/src/evaluation/lightgbm/evaluate.py \
-  --model-root parquets/year_prediction/models/lightgbm-l2-v2 \
+  --model-root parquets/year_prediction/models/lightgbm-l2-regularized \
   --input parquets/year_prediction/features/full_tabular.parquet \
   --manifest parquets/year_prediction/features/manifest.json \
-  --output parquets/year_prediction/results/experiment_a/lightgbm/lightgbm-l2-v2/test \
+  --output parquets/year_prediction/results/experiment_a/lightgbm/lightgbm-l2-regularized/test \
   --partitions 4
 ```
 

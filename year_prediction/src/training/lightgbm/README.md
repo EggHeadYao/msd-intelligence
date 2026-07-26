@@ -40,13 +40,15 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --driver-memory 4g \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
-p1team02/year_prediction/src/training/lightgbm/train.py \
-  --config p1team02/year_prediction/config/experiment_a/lightgbm_l2_v2.json
+  p1team02/year_prediction/src/training/lightgbm/train.py \
+  --config p1team02/year_prediction/config/experiment_a/lightgbm_l2_regularized.json
 ```
 
-Use `lightgbm_t90_l2.json` instead to train the T90 model. The model directory contains `model.txt`, the selected feature view and ordered predictors, resolved arguments, validation predictions and metrics, constant baselines, and Spark run metadata. Command-line arguments override values from the JSON config.
+The regularized configuration is the RMSE-focused 594-predictor model. Use `lightgbm_full.json` for the Huber/MAE model or `lightgbm_t90_l2.json` for the T90 comparison. The model directory contains `model.txt`, the selected feature view and ordered predictors, resolved arguments, validation predictions and metrics, constant baselines, and Spark run metadata. Command-line arguments override values from the JSON config.
 
 `bin_sample_count` controls only the rows used to construct histogram bins. Every train row is still used to fit the trees. The assembled feature frame uses disk-only persistence so either feature view fits on memory-constrained development machines.
+
+Optional decade weighting is enabled with a positive `decade_weight_power`. It derives capped inverse-frequency weights from train rows only, normalizes their train-row mean to one, and leaves validation and test metrics unweighted. The default value of zero disables weighting.
 
 ## Smoke test
 
