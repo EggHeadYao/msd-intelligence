@@ -138,3 +138,73 @@ def score_query(
         no_hard_scaled = full_scaled
     else:
         no_hard_scaled = (
+            matrix - np.asarray(no_hard_ranker.means, dtype=np.float64)
+        ) / np.asarray(no_hard_ranker.stds, dtype=np.float64)
+    def ranker_scores(ranker: LogisticRanker, scaled):
+        return (
+            scaled @ np.asarray(ranker.coefficients, dtype=np.float64)
+            + ranker.intercept
+        )
+
+    raw = {name: matrix[:, index] for index, name in enumerate(FEATURE_ORDER)}
+    graph = np.where(raw["has_graph"] > 0.0, raw["cos_graph"], -np.inf)
+    bfs = np.where(raw["has_bfs"] > 0.0, raw["bfs_score"], -np.inf)
+    scores = {
+        "full": ranker_scores(full_ranker, full_scaled),
+        "random": stable_random_scores(query_id, len(rows)),
+        "c1_only": raw["cos_audio"],
+        "c2_only": graph,
+        "handcrafted": np.where(
+            raw["has_graph"] > 0.0,
+            0.5 * raw["cos_audio"] + 0.5 * raw["cos_graph"],
+            raw["cos_audio"],
+        ),
+        "bfs": bfs,
+        "no_hard_neg": ranker_scores(
+            no_hard_ranker,
+            no_hard_scaled,
+        ),
+    }
+    rankings = {
+        name: candidate_ids[np.lexsort((candidate_ids, -values))].tolist()
+        for name, values in scores.items()
+    }
+    cold_positions = np.asarray([
+        index
+        for index, row in enumerate(rows)
+        if any(source != "audio" for source in row.get("recall_sources", ()))
+    ], dtype=np.int64)
+    cold_matrix = matrix[cold_positions].copy()
+    interaction_index = FEATURE_ORDER.index("audio_tag_interaction")
+    tag_index = FEATURE_ORDER.index("tag_tfidf_cosine")
+    cold_matrix[:, audio_index] = float(fill_values["cos_audio"])
+    cold_matrix[:, interaction_index] = (
+        float(fill_values["cos_audio"]) * cold_matrix[:, tag_index]
+    )
+    cold_scaled = (cold_matrix - full_means) / full_stds
+    cold_scores = ranker_scores(full_ranker, cold_scaled)
+    cold_ids = candidate_ids[cold_positions]
+    rankings["precomputed_acoustic_cold"] = cold_ids[
+        np.lexsort((cold_ids, -cold_scores))
+    ].tolist()
+    group_labels: dict[str, dict[str, int]] = defaultdict(dict)
+    group_denominators: dict[str, set[int]] = defaultdict(set)
+    for row in rows:
+        candidate_id = str(row["candidate_track_id"])
+        for membership in row["validation_groups"]:
+            group = str(membership["query_group"])
+            group_labels[group][candidate_id] = int(membership["label"])
+            group_denominators[group].add(
+                int(membership["eligible_positive_count"])
+            )
+    query_metrics: list[dict[str, object]] = []
+    for scorer, ranking in rankings.items():
+        for group in VALIDATION_QUERY_GROUPS:
+            labels_by_id = group_labels.get(group, {})
+            if not labels_by_id:
+                continue
+            missing = set(ranking).difference(labels_by_id)
+            if missing:
+                raise ValueError(
+                    f"validation labels are incomplete for query {query_id}, "
+                    f"group {group}"
