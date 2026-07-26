@@ -1,0 +1,23 @@
+{
+  "input": "parquets/year_prediction/features/full_tabular.parquet",
+  "manifest": "parquets/year_prediction/features/manifest.json",
+  "feature_view": "full_tabular",
+  "output": "parquets/year_prediction/models/lightgbm-l2-v3",
+  "evaluate_test": false,
+  "num_tasks": 0,
+  "num_iterations": 3000,
+  "early_stopping_rounds": 200,
+  "objective": "regression",
+  "metric": "rmse",
+  "learning_rate": 0.06,
+  "num_leaves": 127,
+  "max_depth": 12,
+  "min_data_in_leaf": 50,
+  "feature_fraction": 1.0,
+  "bagging_fraction": 1.0,
+  "lambda_l2": 2.0,
+  "max_bin": 255,
+  "bin_sample_count": 200000,
+  "huber_alpha": 0.8,
+  "seed": 472
+}
