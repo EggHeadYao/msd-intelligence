@@ -557,3 +557,31 @@ class StreamingRecallEngine:
         masks: list[int] = []
         score_rows: list[list[float]] = []
         for source_index, (group_codes, group_scores) in enumerate(groups):
+            for code, score in zip(group_codes, group_scores, strict=True):
+                value = int(code)
+                position = positions.get(value)
+                if position is None:
+                    position = len(codes)
+                    positions[value] = position
+                    codes.append(value)
+                    masks.append(0)
+                    score_rows.append([float("nan")] * len(SOURCE_NAMES))
+                masks[position] |= 1 << source_index
+                score_rows[position][source_index] = float(score)
+        return EncodedCandidates(
+            self.codec,
+            np.asarray(codes, dtype=np.int32),
+            np.asarray(masks, dtype=np.uint8),
+            np.asarray(score_rows, dtype=np.float32).reshape((-1, len(SOURCE_NAMES))),
+        )
+
+    @staticmethod
+    def _remember(cache: OrderedDict, key: str, value: object, limit: int) -> None:
+        cache[key] = value
+        cache.move_to_end(key)
+        if len(cache) > limit:
+            cache.popitem(last=False)
+
+    @staticmethod
+    def _empty_group() -> tuple[np.ndarray, np.ndarray]:
+        return np.empty(0, dtype=np.int32), np.empty(0, dtype=np.float32)
