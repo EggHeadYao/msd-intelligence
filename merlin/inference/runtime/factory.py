@@ -108,8 +108,20 @@ def build_inference_pipeline(artifacts: InferenceArtifacts) -> MerlinPipeline:
         graph=artifacts.graph_index.similarity,
         bfs=bfs.pair_score,
         tags=tag.pair_score,
+        audio_batch=artifacts.audio_index.similarities,
+        graph_batch=artifacts.graph_index.similarities,
+        bfs_batch=lambda query_id, candidate_ids: bfs.pair_scores(
+            [(query_id, candidate_id) for candidate_id in candidate_ids]
+        ),
+        tags_batch=lambda query_id, candidate_ids: tag.pair_scores(
+            [(query_id, candidate_id) for candidate_id in candidate_ids]
+        ),
+        audio_pairs=artifacts.audio_index.pair_similarities,
+        graph_pairs=artifacts.graph_index.pair_similarities,
+        bfs_pairs=bfs.pair_scores,
+        tags_pairs=tag.pair_scores,
     )
-    features = RankerV2FeatureComputer(
+    features = RankerFeatureComputer(
         tracks=artifacts.tracks,
         signals=signals,
         fills=artifacts.fills,
