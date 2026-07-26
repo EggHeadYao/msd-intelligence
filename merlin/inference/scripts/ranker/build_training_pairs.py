@@ -806,6 +806,76 @@ def _derived_positive_pair_flags(
         scores = audio.similarities(query_id, candidate_ids)
         for position, score in zip(positions, scores, strict=True):
             audio_scores[position] = score
+    tag_indexes = []
+    tag_pairs = []
+    audio_threshold = float(thresholds["audio_cosine_p90"])
+    for index, pair, score in zip(
+        unresolved_indexes, unresolved_pairs, audio_scores, strict=True
+    ):
+        value = _finite(score)
+        audio_caches[pair[0]][pair[1]] = value
+        if value is not None and value >= audio_threshold:
+            results[index] = True
+        else:
+            tag_indexes.append(index)
+            tag_pairs.append(pair)
+    tag_threshold = float(thresholds["tag_tfidf_cosine_p90"])
+    tag_pair_lookup = getattr(tag, "pair_scores", None)
+    tag_scores = (
+        tag_pair_lookup(tag_pairs)
+        if tag_pair_lookup is not None
+        else [tag.pair_score(*pair) for pair in tag_pairs]
+    )
+    for index, pair, score in zip(
+        tag_indexes,
+        tag_pairs,
+        tag_scores,
+        strict=True,
+    ):
+        value = _finite(score)
+        if tag_caches is not None:
+            tag_caches[pair[0]][pair[1]] = value
+        results[index] = value is not None and value >= tag_threshold
+    return results
+
+
+def _run_random_only_derived(
+    args: argparse.Namespace,
+    paths: InferenceArtifactPaths,
+) -> None:
+    """Replace only Full hard negatives while reusing every other row."""
+    if args.limit_queries:
+        raise ValueError("derived formal no-hard-neg does not support query limits")
+    full_pairs = load_training_pair_manifest(
+        args.full_training_pairs_manifest,
+        args.full_training_pairs,
+        expected_scope=args.scope,
+        expected_stage="final_retrain",
+    )
+    full_features = load_raw_feature_manifest(
+        args.full_features_manifest,
+        args.full_features,
+        expected_scope=args.scope,
+        expected_pair_kind="training",
+        expected_stage="final_retrain",
+    )
+    if full_features.get("parent_hashes", {}).get(
+        "training_pairs_manifest"
+    ) != sha256_path(args.full_training_pairs_manifest):
+        raise ValueError("Full features are not bound to the Full pair manifest")
+    full_counts = full_pairs.get("counts", {})
+    query_count = int(full_pairs.get("query_count", 0))
+    pair_count = int(full_pairs.get("pair_count", 0))
+    if (
+        query_count <= 0
+        or pair_count <= 0
+        or pair_count != int(full_features.get("row_count", 0))
+        or pair_count % query_count
+    ):
+        raise ValueError("Full pair/feature row layout cannot be derived safely")
+    rows_per_query = pair_count // query_count
+    if (
+        int(full_counts.get("positive_count", -1)) * 4 != pair_count
     (
         allowed,
         queries,
