@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ...artifact_paths import (
+from ...artifacts.paths import (
     CANDIDATE_AUDIT_PATH,
     CANDIDATE_POOL_MANIFEST_PATH,
     CANDIDATE_POOL_PATH,
@@ -13,8 +13,11 @@ from ...artifact_paths import (
     WEAK_POSITIVES_MANIFEST_PATH,
     WEAK_POSITIVES_PATH,
 )
-from ...candidate_pool import load_candidate_pool_manifest
-from ...candidate_audit import audit_candidate_pool, write_candidate_audit
+from ...recall.pool import (
+    audit_candidate_pool,
+    load_candidate_pool_manifest,
+    write_candidate_audit,
+)
 from ...training.weak_labels import load_weak_positive_manifest, load_weak_positives
 
 
