@@ -44,8 +44,11 @@ def main() -> None:
     args = parse_args()
     if args.limit_queries < 0:
         raise ValueError("limit-queries must be non-negative")
+    if args.query_split == "set_c" and args.limit_queries:
+        raise ValueError("formal Set-C evaluation cannot use a partial query limit")
     paths = InferenceArtifactPaths()
     split_scope = None
+    assignments = None
     parent_paths = {
         "audio_index_manifest": paths.audio_manifest,
         "graph_index_manifest": paths.graph_manifest,
@@ -55,7 +58,11 @@ def main() -> None:
         "graph_edges": paths.graph_edges,
     }
     if args.queries is not None:
-        if args.query_split is not None or args.split_manifest is not None:
+        if (
+            args.query_split is not None
+            or args.split_manifest is not None
+            or args.evaluation_protocol is not None
+        ):
             raise ValueError("query-split/split-manifest require split-assignments")
         queries = read_queries(args.queries)
         parent_paths["query_source"] = args.queries
@@ -76,13 +83,47 @@ def main() -> None:
     if args.limit_queries:
         queries = tuple(islice(queries, args.limit_queries))
     is_set_b = args.query_split == "set_b"
+    is_set_c = args.query_split == "set_c"
     output = args.output or (
-        paths.set_b_candidate_pool if is_set_b else CANDIDATE_POOL_PATH
+        paths.set_c_candidate_pool
+        if is_set_c
+        else paths.set_b_candidate_pool if is_set_b else CANDIDATE_POOL_PATH
     )
     manifest_path = args.manifest or (
-        paths.set_b_candidate_pool_manifest if is_set_b else CANDIDATE_POOL_MANIFEST_PATH
+        paths.set_c_candidate_pool_manifest
+        if is_set_c
+        else paths.set_b_candidate_pool_manifest
+        if is_set_b
+        else CANDIDATE_POOL_MANIFEST_PATH
     )
     scope = "smoke" if args.limit_queries or split_scope == "smoke" else "formal"
+    if is_set_c:
+        if args.evaluation_protocol is None:
+            raise ValueError("Set-C candidate export requires a frozen evaluation protocol")
+        load_set_c_protocol(
+            args.evaluation_protocol,
+            expected_scope=scope,
+            expected_parent_hashes={
+                "split_manifest": sha256_path(args.split_manifest),
+                "split_assignments": sha256_path(args.split_assignments),
+                "candidate_policy_manifest": sha256_path(paths.candidate_policy),
+                "validation_group_thresholds": sha256_path(
+                    paths.validation_group_thresholds
+                ),
+                "ranker_training_manifest": sha256_path(
+                    paths.ranker_training_manifest
+                ),
+                "no_hard_neg_training_manifest": sha256_path(
+                    paths.no_hard_neg_training_manifest
+                ),
+                "audio_index_manifest": sha256_path(paths.audio_manifest),
+                "graph_index_manifest": sha256_path(paths.graph_manifest),
+                "tag_idf": sha256_path(paths.tag_idf),
+                "songs_metadata": sha256_path(paths.songs_metadata),
+                "graph_edges": sha256_path(paths.graph_edges),
+            },
+        )
+        parent_paths["evaluation_protocol"] = args.evaluation_protocol
     projected_gb = (
         len(queries) * CANONICAL_CANDIDATE_LIMIT * 64 / (1024 ** 3)
     )
@@ -92,10 +133,20 @@ def main() -> None:
         min_free_gb=args.min_free_gb,
         projected_gb=projected_gb,
     )
-    pipeline = load_recall_pipeline(
-        paths,
-        graph_contract_key=args.graph_contract_key,
-        graph_contract_version=args.graph_contract_version,
+    pipeline = (
+        load_streaming_recall_engine(
+            assignments,
+            frozenset(assignments.values()),
+            paths,
+            graph_contract_key=args.graph_contract_key,
+            graph_contract_version=args.graph_contract_version,
+        )
+        if assignments is not None
+        else load_recall_pipeline(
+            paths,
+            graph_contract_key=args.graph_contract_key,
+            graph_contract_version=args.graph_contract_version,
+        )
     )
     manifest = export_candidate_pool(
         pipeline,
