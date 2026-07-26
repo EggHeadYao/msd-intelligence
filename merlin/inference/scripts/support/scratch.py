@@ -1,4 +1,4 @@
-"""Scratch-space guards shared by high-volume C3 Spark stages."""
+"""Scratch-space guards shared by high-volume C3 commands."""
 
 import math
 from pathlib import Path
