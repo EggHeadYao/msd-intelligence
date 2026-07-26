@@ -73,22 +73,6 @@ def _load_thresholds(path: Path) -> dict[str, object]:
     return thresholds
 
 
-def _tag_neighbors(tag: TagRetriever, query_id: str) -> list[tuple[str, float]]:
-    artist = tag.track_to_artist.get(query_id)
-    if artist is None:
-        return []
-    artists = (
-        tag.similar_artists(artist)
-        if callable(tag.similar_artists)
-        else tag.similar_artists.get(artist, ())
-    )
-    return [
-        (track_id, float(score))
-        for target_artist, score in artists
-        for track_id in sorted(tag.artist_tracks.get(target_artist, ()))
-    ]
-
-
 def _finite(value: float | None) -> float | None:
     if value is None:
         return None
