@@ -202,8 +202,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
-    output = args.output or paths.training_pairs
-    manifest_path = args.manifest or paths.training_pairs_manifest
+    output = args.output or paths.tuning_training_pairs
+    manifest_path = args.manifest or paths.tuning_training_pairs_manifest
     if args.features_output is not None or args.features_manifest is not None:
         raise ValueError("tuning features are exported by export_ranker_features")
     load_candidate_pool_manifest(
