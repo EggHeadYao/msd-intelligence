@@ -1,4 +1,4 @@
-"""CLI to export pre-fill Ranker-v2 features for labeled pairs."""
+"""CLI to export pre-fill Ranker features for labeled pairs."""
 
 from __future__ import annotations
 
@@ -7,19 +7,23 @@ from pathlib import Path
 
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
-from ...artifact_lineage import artifact_size_bytes
-from ...artifact_paths import InferenceArtifactPaths
-from ...catalog_data import load_catalog_context
-from ...faiss_index import FaissTrackIndex
-from ...features_v2 import PairSignalLookups, RankerV2FeatureComputer
-from ...loaders import load_audio_index
-from ...ranking.features import export_raw_pair_features
+from ...artifacts.integrity import artifact_size_bytes, sha256_path
+from ...artifacts.paths import InferenceArtifactPaths
+from ...data.catalog import load_catalog_context
+from ...retrieval.faiss import FaissTrackIndex
+from ...evaluation.protocol import load_set_c_protocol
+from ...retrieval.faiss import load_audio_index
+from ...ranking.features import (
+    PairSignalLookups,
+    RankerFeatureComputer,
+    export_raw_pair_features,
+)
 from ...training.pairs import load_training_pair_manifest
 from ...training.validation_groups import load_validation_group_manifest
-from ...recall_factory import build_canonical_retrievers
+from ...recall.factory import build_canonical_retrievers
 from ...retrieval import TagRetriever
-from ...scratch import prepare_scratch_root
-from ...tag_data import load_tag_idf
+from ..support.scratch import prepare_scratch_root
+from ...data.tags import load_tag_idf
 
 
 def parse_args() -> argparse.Namespace:
