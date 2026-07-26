@@ -97,12 +97,14 @@ def load_frozen_preprocessing(
         scaler = json.load(stream)
     with tuning_manifest_path.open("r", encoding="utf-8") as stream:
         tuning = json.load(stream)
-    if scaler.get("feature_schema_version") != RANKER_V2_SCHEMA_VERSION:
+    if scaler.get("feature_schema_version") != FEATURE_SCHEMA:
         raise ValueError("frozen scaler schema version mismatch")
-    if tuple(scaler.get("feature_order", ())) != RANKER_V2_FEATURES:
+    if tuple(scaler.get("feature_order", ())) != FEATURE_ORDER:
         raise ValueError("frozen scaler feature order mismatch")
     if tuning.get("artifact_type") != "ranker_training" or tuning.get("stage") != "tuning":
         raise ValueError("frozen tuning manifest is invalid")
+    if tuning.get("class_weight") != "none":
+        raise ValueError("frozen tuning model must not use class weights")
     if float(tuning.get("selected_reg_param", -1.0)) != fixed_reg_param:
         raise ValueError("fixed regParam does not match the tuning manifest")
     fill_values = {
@@ -112,7 +114,7 @@ def load_frozen_preprocessing(
         raise ValueError("frozen scaler fill-value set mismatch")
     means = tuple(float(value) for value in scaler.get("means", ()))
     stds = tuple(float(value) for value in scaler.get("stds", ()))
-    if len(means) != len(RANKER_V2_FEATURES) or len(stds) != len(means):
+    if len(means) != len(FEATURE_ORDER) or len(stds) != len(means):
         raise ValueError("frozen scaler vector length mismatch")
     if any(not math.isfinite(value) for value in (*fill_values.values(), *means, *stds)):
         raise ValueError("frozen scaler contains a non-finite value")
