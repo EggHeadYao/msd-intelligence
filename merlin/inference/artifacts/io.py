@@ -192,7 +192,14 @@ def _write_parquet_part(pa: Any, pq: Any, rows: list[Mapping[str, object]], sche
 class PartitionedParquetWriter:
     """Incrementally write an atomically published directory of Parquet parts."""
 
-    def __init__(self, path: str | Path, schema: Any, *, rows_per_file: int = 250_000) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        schema: Any,
+        *,
+        rows_per_file: int = 250_000,
+        resume: bool = False,
+    ) -> None:
         if rows_per_file <= 0:
             raise ValueError("Parquet rows per file must be positive")
         try:
@@ -206,15 +213,26 @@ class PartitionedParquetWriter:
         if self.output.suffix != ".parquet":
             raise ValueError("partitioned Parquet output must end in .parquet")
         self.temporary = self.output.with_suffix(self.output.suffix + ".tmp")
-        if self.output.exists() or self.temporary.exists():
+        if self.output.exists() or (self.temporary.exists() and not resume):
             raise FileExistsError(f"Parquet output or temporary path already exists: {self.output}")
         self.output.parent.mkdir(parents=True, exist_ok=True)
-        self.temporary.mkdir()
+        if resume:
+            if not self.temporary.is_dir():
+                raise FileNotFoundError(f"Parquet resume path does not exist: {self.temporary}")
+        else:
+            self.temporary.mkdir()
         self.schema = schema
         self.rows_per_file = rows_per_file
-        self.count = 0
-        self.part_count = 0
+        parts = tuple(sorted(self.temporary.glob("part-*.parquet"))) if resume else ()
+        if parts and [part.name for part in parts] != [
+            f"part-{index:05d}.parquet" for index in range(len(parts))
+        ]:
+            raise ValueError("Parquet resume parts must be contiguous")
+        self.count = sum(self._pq.ParquetFile(part).metadata.num_rows for part in parts)
+        self.part_count = len(parts)
         self._buffer: list[Mapping[str, object]] = []
+        self._table_buffer: list[Any] = []
+        self._table_rows = 0
         self._closed = False
 
     def write_rows(self, rows: Iterable[Mapping[str, object]]) -> None:
