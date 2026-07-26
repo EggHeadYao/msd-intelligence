@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
 
-from .artifact_lineage import sha256_path
-from .jsonl_artifact import read_row_artifact, write_json_atomic, write_row_artifact
+from ..artifacts.integrity import sha256_path
+from ..artifacts.io import read_row_artifact, write_json_atomic, write_row_artifact
 
 
 SPLIT_VERSION = "merlin_group_split_v1"
