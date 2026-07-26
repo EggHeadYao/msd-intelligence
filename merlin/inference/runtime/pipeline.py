@@ -122,22 +122,33 @@ class MerlinPipeline:
             )
 
     def recommend(self, query_track_id: str, k: int | None = None) -> list[Recommendation]:
-        """Recall candidates and rank the final tracks by LR raw margin."""
+        """Recall candidates and rank tracks with the frozen query-local scorer."""
         if not query_track_id:
             raise ValueError("query_track_id must not be empty")
-        final_limit = self.final_limit if k is None else k
-        if final_limit <= 0 or final_limit > self.final_limit:
-            raise ValueError("k must be between 1 and final_limit")
+        limit = self.limit if k is None else k
+        if limit <= 0 or limit > self.limit:
+            raise ValueError("k must be between 1 and limit")
 
         candidates, _audit = self.recall(query_track_id)
-        scored = []
-        for candidate in candidates:
-            features = dict(self.feature_computer.compute(query_track_id, candidate))
-            scored.append((candidate, self.ranker.score(features), features))
+        candidate_features = [
+            dict(self.feature_computer.compute(query_track_id, candidate))
+            for candidate in candidates
+        ]
+        relevance_scores = tuple(
+            self.ranker.score(features) for features in candidate_features
+        )
+        if len(relevance_scores) != len(candidates):
+            raise ValueError("ranker returned the wrong number of query scores")
+        scored = list(zip(
+            candidates,
+            relevance_scores,
+            candidate_features,
+            strict=True,
+        ))
         ranked = sorted(
             scored,
             key=lambda item: (-item[1], item[0].track_id),
-        )[:final_limit]
+        )[:limit]
         return [
             Recommendation(
                 track_id=candidate.track_id,
