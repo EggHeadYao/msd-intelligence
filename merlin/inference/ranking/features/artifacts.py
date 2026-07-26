@@ -149,14 +149,17 @@ def export_raw_pair_features(
             }
 
     def compute(query_id: str, pairs: list[Mapping[str, object]]):
-        candidates = [Candidate(str(pair["candidate_track_id"])) for pair in pairs]
-        compute_many = getattr(computer, "compute_raw_many", None)
+        candidate_ids = [str(pair["candidate_track_id"]) for pair in pairs]
+        compute_ids = getattr(computer, "compute_raw_ids", None)
         raw_rows = (
-            compute_many(query_id, candidates)
-            if compute_many is not None
-            else [computer.compute_raw(query_id, candidate) for candidate in candidates]
+            compute_ids(query_id, candidate_ids)
+            if compute_ids is not None
+            else [
+                computer.compute_raw(query_id, Candidate(candidate_id))
+                for candidate_id in candidate_ids
+            ]
         )
-        return zip(pairs, candidates, raw_rows, strict=True)
+        return zip(pairs, candidate_ids, raw_rows, strict=True)
 
     def training_rows() -> Iterator[dict[str, object]]:
         grouped_rows = groupby(pair_rows(), key=lambda pair: str(pair["query_track_id"]))
