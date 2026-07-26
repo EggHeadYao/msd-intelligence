@@ -25,7 +25,7 @@ class Candidate:
 
 @dataclass(frozen=True, slots=True)
 class Recommendation:
-    """A final ranked recommendation returned by ``recommend``."""
+    """A ranked recommendation returned by ``recommend``."""
 
     track_id: str
     relevance_score: float
