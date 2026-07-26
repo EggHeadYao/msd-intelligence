@@ -398,16 +398,20 @@ def _select_reg_configuration(
 
 def main() -> None:
     args = parse_args()
+    if not math.isfinite(args.max_block_size_mb) or args.max_block_size_mb <= 0.0:
+        raise ValueError("max-block-size-mb must be a positive finite value")
     if args.stage == "tuning" and args.validation_features is None:
         raise ValueError("tuning requires validation features")
     if args.stage == "tuning" and args.validation_features_manifest is None:
         raise ValueError("tuning requires a validation feature manifest")
+    if args.stage == "tuning" and args.training_variant != "full":
+        raise ValueError("no-hard-neg is defined for retrain only")
     if args.stage == "final_retrain" and args.fixed_reg_param not in REG_PARAMS:
-        raise ValueError("final retrain requires one frozen regParam")
+        raise ValueError("retrain requires one frozen regParam")
     if args.stage == "final_retrain" and (
         args.frozen_scaler is None or args.frozen_tuning_manifest is None
     ):
-        raise ValueError("final retrain requires the frozen Set-A scaler and tuning manifest")
+        raise ValueError("retrain requires the frozen Set-A scaler and tuning manifest")
     train_feature_manifest = load_raw_feature_manifest(
         args.train_features_manifest,
         args.train_features,
@@ -415,8 +419,24 @@ def main() -> None:
         expected_pair_kind="training",
         expected_stage=args.stage,
     )
+    if args.training_variant == "no_hard_neg":
+        paths = InferenceArtifactPaths()
+        pair_manifest_path = (
+            args.training_pairs_manifest or paths.no_hard_neg_pairs_manifest
+        )
+        parents = train_feature_manifest.get("parent_hashes")
+        if not isinstance(parents, dict) or parents.get(
+            "training_pairs_manifest"
+        ) != sha256_path(pair_manifest_path):
+            raise ValueError("no-hard-neg features are not bound to its pair manifest")
+        with pair_manifest_path.open("r", encoding="utf-8") as stream:
+            no_hard_pairs = json.load(stream)
+        if float(no_hard_pairs.get("candidate_aware_target_fraction", -1.0)) != 0.0:
+            raise ValueError("no-hard-neg pair manifest contains hard negatives")
     validation_feature_manifest = None
     frozen_preprocessing = None
+    frozen_initial = None
+    frozen_coefficients_path = None
     if args.stage == "tuning":
         validation_feature_manifest = load_raw_feature_manifest(
             args.validation_features_manifest,
@@ -431,13 +451,24 @@ def main() -> None:
             args.frozen_tuning_manifest,
             float(args.fixed_reg_param),
         )
+        frozen_coefficients_path, frozen_coefficients, frozen_intercept = (
+            load_frozen_initial_parameters(
+                args.frozen_tuning_manifest,
+                float(args.fixed_reg_param),
+            )
+        )
+        frozen_initial = (frozen_coefficients, frozen_intercept)
     from pyspark.ml.classification import LogisticRegression
     from pyspark.ml.feature import StandardScaler, VectorAssembler
     from pyspark.ml.functions import array_to_vector, vector_to_array
     from pyspark import StorageLevel
-    from pyspark.sql import SparkSession, Window
+    from pyspark.sql import SparkSession
     from pyspark.sql import functions as F
 
+    constant_features = (
+        frozen_preprocessing[3] if frozen_preprocessing is not None else ()
+    )
+    solver_features = solver_feature_order(constant_features)
     projected_gb = estimate_ranker_scratch_gb(
         training_rows=int(train_feature_manifest["row_count"]),
         validation_rows=(
@@ -445,8 +476,9 @@ def main() -> None:
             if validation_feature_manifest is not None
             else 0
         ),
-        feature_count=len(RANKER_V2_FEATURES),
-        model_count=1,
+        feature_count=len(solver_features),
+        model_count=len(REG_PARAMS) if args.stage == "tuning" else 1,
+        training_storage_ratio=RDD_STORAGE_RATIO,
     )
     prepare_scratch_root(
         args.output.parent,
@@ -464,6 +496,8 @@ def main() -> None:
     spark = (
         SparkSession.builder.appName("MerlinRankerTraining")
         .config("spark.local.dir", spark_local_temporary.name)
+        .config("spark.rdd.compress", "true")
+        .config("spark.io.compression.codec", RDD_COMPRESSION_CODEC)
         .getOrCreate()
     )
     cached = []
