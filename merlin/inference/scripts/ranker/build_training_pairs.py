@@ -736,6 +736,76 @@ def _runtime(
 
 
 def _parquet_parts(path: Path) -> tuple[Path, ...]:
+    parts = (path,) if path.is_file() else tuple(sorted(path.glob("part-*.parquet")))
+    if not parts:
+        raise ValueError(f"Parquet artifact contains no data files: {path}")
+    return parts
+
+
+def _trim_derived_parts(path: Path, keep: int) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    if not temporary.is_dir():
+        raise FileNotFoundError(f"derived checkpoint dataset is missing: {temporary}")
+    for part in temporary.glob("part-*.parquet"):
+        if int(part.stem.split("-")[-1]) >= keep:
+            part.unlink()
+    (temporary / "_SUCCESS").unlink(missing_ok=True)
+
+
+def _load_derivation_checkpoint(
+    path: Path,
+    contract: Mapping[str, object],
+    pair_output: Path,
+    feature_output: Path,
+) -> dict[str, object] | None:
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as stream:
+        checkpoint = json.load(stream)
+    if (
+        checkpoint.get("artifact_type") != "no_hard_neg_derivation_checkpoint"
+        or checkpoint.get("artifact_version") != 2
+        or checkpoint.get("contract") != dict(contract)
+    ):
+        raise ValueError("no-hard-neg derivation checkpoint contract mismatch")
+    pair_parts = int(checkpoint.get("pair_part_count", -1))
+    feature_parts = int(checkpoint.get("feature_part_count", -1))
+    if pair_parts < 0 or feature_parts < 0:
+        raise ValueError("no-hard-neg checkpoint part counts are invalid")
+    _trim_derived_parts(pair_output, pair_parts)
+    _trim_derived_parts(feature_output, feature_parts)
+    return checkpoint
+
+
+def _derived_positive_pair_flags(
+    pairs: Sequence[tuple[str, str]],
+    audio,
+    tag: TagRetriever,
+    thresholds: Mapping[str, object],
+    audio_caches: Mapping[str, dict[str, float | None]],
+    tag_caches: Mapping[str, dict[str, float | None]] | None = None,
+) -> list[bool]:
+    """Batch weak-positive exclusion checks across independent queries."""
+    results = [False] * len(pairs)
+    unresolved_indexes = []
+    unresolved_pairs = []
+    for index, (query_id, candidate_id) in enumerate(pairs):
+        query_artist = tag.track_to_artist.get(query_id)
+        candidate_artist = tag.track_to_artist.get(candidate_id)
+        if query_artist is not None and query_artist == candidate_artist:
+            results[index] = True
+        elif query_artist is not None and candidate_artist is not None:
+            unresolved_indexes.append(index)
+            unresolved_pairs.append((query_id, candidate_id))
+    audio_scores: list[float | None] = [None] * len(unresolved_pairs)
+    positions_by_query: dict[str, list[int]] = {}
+    for position, (query_id, _candidate_id) in enumerate(unresolved_pairs):
+        positions_by_query.setdefault(query_id, []).append(position)
+    for query_id, positions in positions_by_query.items():
+        candidate_ids = [unresolved_pairs[position][1] for position in positions]
+        scores = audio.similarities(query_id, candidate_ids)
+        for position, score in zip(positions, scores, strict=True):
+            audio_scores[position] = score
     (
         allowed,
         queries,
