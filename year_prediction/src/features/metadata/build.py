@@ -403,4 +403,73 @@ def build(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
     fused.write.mode("error").parquet(
         spark_path(args.output / "audio_metadata.parquet")
     )
-    raise NotImplementedError("metadata manifest incomplete")
+    split_rows = {
+        str(row["split"]): int(row["count"])
+        for row in metadata.groupBy("split").count().collect()
+    }
+    manifest = {
+        "contract_version": "year_prediction_features_v1",
+        "format_version": 1,
+        "counts": {
+            "splits": {
+                name: {"tracks": split_rows[name]}
+                for name in ("train", "validation", "test")
+            }
+        },
+        "sources": {
+            "metadata": str(args.metadata),
+            "scalar": str(args.scalar),
+            "labels": str(args.labels),
+            "audio": str(args.audio),
+        },
+        "state": {
+            "global_train_year": global_year,
+            "prior_smoothing": args.prior_smoothing,
+            "top_terms": top_terms,
+            "top_mbtags": top_mbtags,
+            "fused_top_terms": args.fused_top_terms,
+            "fused_top_mbtags": args.fused_top_mbtags,
+            "target_statistics": "train artists only; current train artist excluded",
+        },
+        "views": {
+            "metadata_only": {
+                "path": "metadata_only.parquet",
+                "predictor_count": len(metadata_predictors),
+                "predictor_columns": list(metadata_predictors),
+                "predictor_order_sha256": order_sha256(metadata_predictors),
+            },
+            "audio_metadata": {
+                "path": "audio_metadata.parquet",
+                "predictor_count": len(audio_predictors) + len(fused_metadata_predictors),
+                "predictor_columns": [*audio_predictors, *fused_metadata_predictors],
+                "predictor_order_sha256": order_sha256(
+                    (*audio_predictors, *fused_metadata_predictors)
+                ),
+            },
+        },
+    }
+    write_json(args.output / "manifest.json", manifest)
+    metadata.unpersist()
+    tags.unpersist()
+    train_years.unpersist()
+    labels.unpersist()
+    return manifest
+
+
+def main() -> None:
+    args = parse_args()
+    spark = (
+        SparkSession.builder.appName("YearPredictionMetadataFeatures")
+        .config("spark.sql.shuffle.partitions", str(args.shuffle_partitions))
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        result = build(args, spark)
+        print(json.dumps(result["counts"], sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
