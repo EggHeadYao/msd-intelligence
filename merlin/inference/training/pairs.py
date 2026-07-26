@@ -1283,7 +1283,55 @@ def write_training_and_feature_artifacts(
     )
     write_json_atomic(manifest, manifest_path)
     feature_manifest = _streamed_feature_manifest(
-        feature_output, stats, parent_hashes, output, manifest_path, scope
+        feature_output,
+        stats,
+        parent_hashes,
+        output,
+        manifest_path,
+        scope,
+        candidate_aware_fraction,
+    )
+    write_json_atomic(feature_manifest, feature_manifest_path)
+    if checkpoint_path is not None:
+        Path(checkpoint_path).unlink(missing_ok=True)
+    return manifest, feature_manifest
+
+
+def write_training_manifests_from_stats(
+    output_path: str | Path,
+    manifest_path: str | Path,
+    feature_output_path: str | Path,
+    feature_manifest_path: str | Path,
+    *,
+    stats: Mapping[str, object],
+    parent_paths: Mapping[str, str | Path],
+    scope: str,
+    candidate_aware_fraction: float,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Publish manifests after an Arrow-native aligned dataset derivation."""
+    output = Path(output_path)
+    feature_output = Path(feature_output_path)
+    if int(stats["pair_count"]) != int(stats["feature_count"]):
+        raise ValueError("derived pair and feature counts differ")
+    parent_hashes = {
+        name: sha256_path(path) for name, path in sorted(parent_paths.items())
+    }
+    manifest = _streamed_pair_manifest(
+        output,
+        stats,
+        parent_hashes,
+        scope,
+        candidate_aware_fraction,
+    )
+    write_json_atomic(manifest, manifest_path)
+    feature_manifest = _streamed_feature_manifest(
+        feature_output,
+        stats,
+        parent_hashes,
+        output,
+        manifest_path,
+        scope,
+        candidate_aware_fraction,
     )
     write_json_atomic(feature_manifest, feature_manifest_path)
     return manifest, feature_manifest
