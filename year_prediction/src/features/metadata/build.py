@@ -169,3 +169,73 @@ def build_indicators(
         F.element_at(mapping, F.concat_ws("\u0000", "source", "tag")),
     ).where(F.col("indicator").isNotNull())
     return selected.groupBy("artist_id").pivot("indicator", list(names)).agg(F.lit(1))
+
+
+def tag_counts(tags: DataFrame) -> DataFrame:
+    return tags.groupBy("artist_id").agg(
+        F.sum(F.when(F.col("source") == "term", 1).otherwise(0)).cast("double").alias("term_count"),
+        F.sum(F.when(F.col("source") == "mbtag", 1).otherwise(0))
+        .cast("double")
+        .alias("mbtag_count"),
+        F.count("*").cast("double").alias("tag_count"),
+    )
+
+
+def tag_era_features(tags: DataFrame) -> DataFrame:
+    long_year = F.regexp_extract(
+        F.col("tag"), r"(?:^|[^0-9])((?:19[2-9]|20[01])0)s?(?:[^0-9]|$)", 1
+    )
+    short_year = F.regexp_extract(
+        F.col("tag"), r"(?:^|[^0-9])((?:[2-9]0|00))s(?:[^0-9]|$)", 1
+    )
+    era = (
+        F.when(long_year != "", long_year.cast("double"))
+        .when(short_year == "00", F.lit(2000.0))
+        .when(short_year != "", short_year.cast("double") + F.lit(1900.0))
+    )
+    return tags.withColumn("era", era).where(F.col("era").isNotNull()).groupBy(
+        "artist_id"
+    ).agg(
+        F.count("*").cast("double").alias(ERA_COLUMNS[0]),
+        F.avg("era").alias(ERA_COLUMNS[1]),
+        F.stddev_pop("era").alias(ERA_COLUMNS[2]),
+        F.min("era").alias(ERA_COLUMNS[3]),
+        F.max("era").alias(ERA_COLUMNS[4]),
+    )
+
+
+def tag_year_priors(
+    tags: DataFrame,
+    artists: DataFrame,
+    train_years: DataFrame,
+    global_year: float,
+    smoothing: float,
+    source: str,
+) -> DataFrame:
+    source_tags = tags.where(F.col("source") == source)
+    totals = source_tags.join(train_years, "artist_id", "inner").groupBy("tag").agg(
+        F.sum("artist_year").alias("year_sum"),
+        F.count("*").alias("artist_count"),
+    )
+    own = train_years.select("artist_id", F.col("artist_year").alias("own_year"))
+    rows = (
+        source_tags.join(artists, "artist_id", "inner")
+        .join(totals, "tag", "left")
+        .join(own, "artist_id", "left")
+    )
+    remove_own = (F.col("split") == "train") & F.col("own_year").isNotNull()
+    support = F.col("artist_count") - F.when(remove_own, 1).otherwise(0)
+    total = F.col("year_sum") - F.when(remove_own, F.col("own_year")).otherwise(0.0)
+    prior = (total + F.lit(smoothing * global_year)) / (support + F.lit(smoothing))
+    prefix = f"{source}_year_prior_"
+    return rows.withColumn("support", support).withColumn("prior", prior).groupBy(
+        "artist_id"
+    ).agg(
+        F.count("prior").cast("double").alias(prefix + "count"),
+        F.avg("prior").alias(prefix + "mean"),
+        F.stddev_pop("prior").alias(prefix + "std"),
+        F.min("prior").alias(prefix + "min"),
+        F.max("prior").alias(prefix + "max"),
+        F.avg("support").alias(prefix + "support_mean"),
+    )
+
