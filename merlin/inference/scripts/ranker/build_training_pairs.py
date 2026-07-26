@@ -605,25 +605,38 @@ def _query_rows(
             recalled_job = following_job
 
 
-def _final_run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
+def _run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
     sizes = (args.batch_size, args.rows_per_file, args.positive_neighbor_limit)
     if any(value <= 0 for value in sizes):
-        raise ValueError("final-retrain batch, part, and neighbor sizes must be positive")
+        raise ValueError("retrain batch, part, and neighbor sizes must be positive")
     if args.limit_queries < 0:
         raise ValueError("limit-queries must be non-negative")
     load_split_manifest(args.split_manifest, args.split_assignments)
     assignments = load_split_assignments(args.split_assignments)
     allowed = {
-        track_id for track_id, split in assignments.items() if split in FINAL_SPLITS
+        track_id for track_id, split in assignments.items() if split in SPLITS
     }
     queries = tuple(sorted(allowed))
     if args.limit_queries:
         queries = tuple(islice(queries, args.limit_queries))
     scope = "smoke" if args.limit_queries else args.scope
-    output = args.output or paths.final_training_pairs
-    manifest_path = args.manifest or paths.final_training_pairs_manifest
-    feature_output = args.features_output or paths.final_raw_features
-    feature_manifest = args.features_manifest or paths.final_raw_features_manifest
+    random_only = args.negative_mode == "random_only"
+    output = args.output or (
+        paths.no_hard_neg_pairs if random_only else paths.training_pairs
+    )
+    manifest_path = args.manifest or (
+        paths.no_hard_neg_pairs_manifest
+        if random_only
+        else paths.training_pairs_manifest
+    )
+    feature_output = args.features_output or (
+        paths.no_hard_neg_raw_features if random_only else paths.raw_pair_features
+    )
+    feature_manifest = args.features_manifest or (
+        paths.no_hard_neg_raw_features_manifest
+        if random_only
+        else paths.raw_pair_features_manifest
+    )
     projected_gb = len(queries) * MAX_POSITIVES_PER_QUERY * 4 * 48 / (1024**3)
     prepare_scratch_root(
         output.parent,
@@ -632,6 +645,7 @@ def _final_run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
         projected_gb=projected_gb,
     )
     return (
+        assignments,
         allowed,
         queries,
         scope,
