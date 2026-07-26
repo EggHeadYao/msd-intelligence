@@ -59,7 +59,7 @@ def load_catalog_context(
         columns.extend(("release_7digitalid", "year", "has_year"))
     track_to_song: dict[str, str] = {}
     track_to_artist: dict[str, str] = {}
-    ranker_tracks: dict[str, TrackMetadataV2] = {}
+    ranker_tracks: dict[str, TrackMetadata] = {}
     for values in parquet_rows(songs_metadata_path, columns):
         track_id = str(values[0]) if values[0] else ""
         if not track_id:
@@ -76,7 +76,7 @@ def load_catalog_context(
                 raise ValueError(f"track {track_id!r} has multiple artists")
         if include_ranker_metadata:
             release_id, year, has_year = values[3:]
-            metadata = TrackMetadataV2(
+            metadata = TrackMetadata(
                 release_id=(
                     str(release_id)
                     if release_id not in (None, "", 0, "0")
@@ -86,7 +86,7 @@ def load_catalog_context(
             )
             previous_metadata = ranker_tracks.setdefault(track_id, metadata)
             if previous_metadata != metadata:
-                raise ValueError(f"track {track_id!r} has conflicting v2 metadata")
+                raise ValueError(f"track {track_id!r} has conflicting ranker metadata")
 
     terms = parquet_rows(
         graph_edges_path,
