@@ -33,12 +33,25 @@ def paired_difference_ci(
 ) -> tuple[float, float]:
     if len(left) != len(right) or not left:
         raise ValueError("paired bootstrap inputs must be non-empty and aligned")
-    differences = [a - b for a, b in zip(left, right, strict=True)]
-    generator = random.Random(seed)
-    bootstrap = [
-        fmean(differences[generator.randrange(len(differences))] for _ in differences)
-        for _sample in range(samples)
-    ]
+    if samples <= 0:
+        raise ValueError("paired bootstrap sample count must be positive")
+    differences = np.asarray(left, dtype=np.float64) - np.asarray(
+        right, dtype=np.float64
+    )
+    if not np.all(np.isfinite(differences)):
+        raise ValueError("paired bootstrap inputs must be finite")
+    generator = np.random.default_rng(seed)
+    bootstrap = np.empty(samples, dtype=np.float64)
+    rows_per_chunk = max(1, min(samples, 1_000_000 // len(differences)))
+    for start in range(0, samples, rows_per_chunk):
+        end = min(start + rows_per_chunk, samples)
+        indexes = generator.integers(
+            0,
+            len(differences),
+            size=(end - start, len(differences)),
+            dtype=np.int32,
+        )
+        bootstrap[start:end] = differences[indexes].mean(axis=1)
     return percentile(bootstrap, 0.025), percentile(bootstrap, 0.975)
 
 
