@@ -63,6 +63,7 @@ def evaluate(args: argparse.Namespace, spark: SparkSession) -> dict:
         raise ValueError("test split is empty")
     model_text = (args.model_root / "model.txt").read_text(encoding="ascii")
     model = LightGBMRegressionModel.loadNativeModelFromString(model_text)
+    training_metadata = read_json(args.model_root / "run_metadata.json")
     predictions = add_prediction_columns(model.transform(frame)).select(
         "track_id",
         "artist_id",
@@ -83,7 +84,9 @@ def evaluate(args: argparse.Namespace, spark: SparkSession) -> dict:
     write_json(
         args.output / "run_metadata.json",
         {
-            "model_type": "synapseml_lightgbm_huber",
+            "model_type": training_metadata["model_type"],
+            "objective": training_metadata.get("objective", "huber"),
+            "metric": training_metadata.get("metric", "l1"),
             "split": "test",
             "rows": written,
             "spark_version": spark.version,

@@ -47,7 +47,10 @@ def validate(model_root: Path, spark: SparkSession) -> dict:
     if not finite_metrics(metrics):
         raise ValueError("LightGBM metrics contain non-finite values")
     metadata = read_json(model_root / "run_metadata.json")
-    if metadata.get("model_type") != "synapseml_lightgbm_huber":
+    if metadata.get("model_type") not in {
+        "synapseml_lightgbm_huber",
+        "synapseml_lightgbm",
+    }:
         raise ValueError("unexpected LightGBM model type")
     model_text = (model_root / "model.txt").read_text(encoding="ascii")
     model = LightGBMRegressionModel.loadNativeModelFromString(model_text)
