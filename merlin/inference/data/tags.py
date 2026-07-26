@@ -255,8 +255,12 @@ def load_tag_data(
     graph_edges_path: str | Path,
 ) -> TagData:
     """Load metadata and canonical artist-term graph edges."""
-    songs = _parquet_rows(songs_metadata_path, ("track_id", "artist_id"))
-    terms = _graph_edge_rows(graph_edges_path, "artist_term")
+    songs = parquet_rows(songs_metadata_path, ("track_id", "artist_id"))
+    terms = parquet_rows(
+        graph_edges_path,
+        ("src_id", "dst_id"),
+        edge_type="artist_term",
+    )
     return build_tag_data(songs, terms)
 
 
