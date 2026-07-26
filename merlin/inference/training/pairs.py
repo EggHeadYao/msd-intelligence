@@ -337,6 +337,76 @@ def _random_negatives(
 
 def sample_random_negatives(
     query_id: str,
+    universe: Sequence[str],
+    count: int,
+    rejected: set[str],
+    same_song: SameSong,
+    is_positive: IsPositive,
+    is_positive_batch: IsPositiveBatch | None,
+) -> tuple[list[str], dict[str, int]]:
+    """Sample a deterministic random-only replacement set with an audit."""
+    rejection_counts: Counter[str] = Counter()
+    selected = _random_negatives(
+        query_id,
+        universe,
+        count,
+        rejected,
+        same_song,
+        is_positive,
+        is_positive_batch,
+        rejection_counts,
+    )
+    if len(selected) != count:
+        raise ValueError(f"random-negative shortage for query {query_id}")
+    return selected, dict(sorted(rejection_counts.items()))
+
+
+def sample_random_negatives_many(
+    requests: Sequence[tuple[str, int, set[str]]],
+    universe: Sequence[str],
+    same_song: SameSong,
+    is_positive_pairs: IsPositivePairs,
+) -> tuple[dict[str, list[str]], dict[str, int]]:
+    """Sample many queries while batching their positive-label checks."""
+    selected, by_query = sample_random_negatives_many_by_query(
+        requests,
+        universe,
+        same_song,
+        is_positive_pairs,
+    )
+    totals: Counter[str] = Counter()
+    for counts in by_query.values():
+        totals.update(counts)
+    return selected, dict(sorted(totals.items()))
+
+
+def sample_random_negatives_many_by_query(
+    requests: Sequence[tuple[str, int, set[str]]],
+    universe: Sequence[str],
+    same_song: SameSong,
+    is_positive_pairs: IsPositivePairs,
+) -> tuple[dict[str, list[str]], dict[str, dict[str, int]]]:
+    """Sample many queries and retain each query's rejection audit."""
+    if not universe:
+        raise ValueError("random-negative universe is empty")
+    states: dict[str, dict[str, object]] = {}
+    for query_id, count, rejected in requests:
+        if query_id in states:
+            raise ValueError(f"duplicate random-negative request: {query_id}")
+        if count < 0:
+            raise ValueError("random-negative request count must be non-negative")
+        states[query_id] = {
+            "target": count,
+            "rejected": rejected,
+            "selected": [],
+            "selected_set": set(),
+            "attempts": 0,
+            "maximum_attempts": max(len(universe) * 4, count * 100),
+        }
+    rejection_counts: dict[str, Counter[str]] = {
+        query_id: Counter() for query_id in states
+    }
+    unfinished = [query_id for query_id, state in states.items() if state["target"]]
     positives: Mapping[str, frozenset[str]],
     candidates: Sequence[CandidateInput],
     allowed_tracks: set[str],
