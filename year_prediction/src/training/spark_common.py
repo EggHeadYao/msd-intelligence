@@ -31,6 +31,7 @@ MAX_YEAR = 2011
 
 @dataclass(frozen=True)
 class FeatureContract:
+    view_name: str
     predictors: tuple[str, ...]
     order_sha256: str
     expected_splits: dict[str, int]
@@ -41,7 +42,11 @@ class FeatureContract:
 
     @property
     def categorical_indexes(self) -> tuple[int, ...]:
-        return tuple(self.predictors.index(name) for name in CATEGORICAL_COLUMNS)
+        return tuple(
+            self.predictors.index(name)
+            for name in CATEGORICAL_COLUMNS
+            if name in self.predictors
+        )
 
 
 @dataclass(frozen=True)
@@ -84,26 +89,37 @@ def _order_sha256(columns: Iterable[str]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def load_feature_contract(path: Path) -> FeatureContract:
+def load_feature_contract(
+    path: Path, view_name: str = "full_tabular"
+) -> FeatureContract:
     with path.open("r", encoding="ascii") as handle:
         manifest = json.load(handle)
     if manifest.get("contract_version") != CONTRACT_VERSION:
         raise ValueError("unexpected feature contract version")
-    view = manifest.get("views", {}).get("full_tabular", {})
+    view = manifest.get("views", {}).get(view_name)
+    if not isinstance(view, dict):
+        raise ValueError(f"unknown feature view: {view_name}")
     predictors = tuple(view.get("predictor_columns", ()))
+    predictor_count = view.get("predictor_count")
     expected_hash = str(view.get("predictor_order_sha256", ""))
-    if len(predictors) != 594 or len(set(predictors)) != len(predictors):
-        raise ValueError("full-tabular predictor contract is invalid")
+    if (
+        not predictors
+        or predictor_count != len(predictors)
+        or len(set(predictors)) != len(predictors)
+    ):
+        raise ValueError(f"{view_name} predictor contract is invalid")
     if _order_sha256(predictors) != expected_hash:
-        raise ValueError("full-tabular predictor order hash is invalid")
-    if not set(CATEGORICAL_COLUMNS).issubset(predictors):
+        raise ValueError(f"{view_name} predictor order hash is invalid")
+    if view_name == "full_tabular" and not set(CATEGORICAL_COLUMNS).issubset(
+        predictors
+    ):
         raise ValueError("categorical predictors are missing")
     split_payload = manifest.get("counts", {}).get("splits", {})
     split_counts = {
         name: int(split_payload[name]["tracks"])
         for name in ("train", "validation", "test")
     }
-    return FeatureContract(predictors, expected_hash, split_counts)
+    return FeatureContract(view_name, predictors, expected_hash, split_counts)
 
 
 def _clean_predictor(name: str):

@@ -51,10 +51,13 @@ def evaluate(args: argparse.Namespace, spark: SparkSession) -> dict:
         raise ValueError("partitions must be positive")
     prepare_output(args.output, args.overwrite)
     started = time.perf_counter()
-    contract = load_feature_contract(args.manifest)
     saved_contract = read_json(args.model_root / "feature_contract.json")
+    feature_view = saved_contract.get("feature_view", "full_tabular")
+    contract = load_feature_contract(args.manifest, feature_view)
     if saved_contract["predictor_order_sha256"] != contract.order_sha256:
         raise ValueError("model and input feature order differ")
+    if saved_contract.get("predictor_columns") != list(contract.predictors):
+        raise ValueError("model and input predictor columns differ")
     frame = load_feature_frame(
         spark, args.input, contract, args.max_rows, ("test",)
     ).repartition(args.partitions).cache()
@@ -87,6 +90,7 @@ def evaluate(args: argparse.Namespace, spark: SparkSession) -> dict:
             "model_type": training_metadata["model_type"],
             "objective": training_metadata.get("objective", "huber"),
             "metric": training_metadata.get("metric", "l1"),
+            "feature_view": feature_view,
             "split": "test",
             "rows": written,
             "spark_version": spark.version,

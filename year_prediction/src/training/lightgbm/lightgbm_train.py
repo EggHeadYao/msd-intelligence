@@ -47,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path)
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument("--feature-view", default="full_tabular")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--evaluate-test", action="store_true")
@@ -158,7 +159,7 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
     validate_args(args)
     prepare_output(args.output, args.overwrite)
     started = time.perf_counter()
-    contract = load_feature_contract(args.manifest)
+    contract = load_feature_contract(args.manifest, args.feature_view)
     frame = load_feature_frame(
         spark,
         args.input,
@@ -191,6 +192,7 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         args.output / "feature_contract.json",
         {
             "contract_version": "year_prediction_features_v1",
+            "feature_view": contract.view_name,
             "predictor_count": contract.dimension,
             "predictor_order_sha256": contract.order_sha256,
             "predictor_columns": list(contract.predictors),
@@ -206,6 +208,7 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         "model_type": "synapseml_lightgbm",
         "objective": args.objective,
         "metric": args.metric,
+        "feature_view": contract.view_name,
         "spark_version": spark.version,
         "spark_master": spark.sparkContext.master,
         "application_id": spark.sparkContext.applicationId,

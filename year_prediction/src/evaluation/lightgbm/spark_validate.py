@@ -39,9 +39,11 @@ def validate(model_root: Path, spark: SparkSession) -> dict:
     if missing:
         raise ValueError(f"missing LightGBM artifacts: {missing}")
     contract = read_json(model_root / "feature_contract.json")
-    if contract.get("predictor_count") != 594:
+    predictor_count = contract.get("predictor_count")
+    predictors = contract.get("predictor_columns", [])
+    if not isinstance(predictor_count, int) or predictor_count <= 0:
         raise ValueError("unexpected LightGBM feature dimension")
-    if len(contract.get("predictor_columns", [])) != 594:
+    if len(predictors) != predictor_count or len(set(predictors)) != predictor_count:
         raise ValueError("LightGBM predictor list is invalid")
     metrics = read_json(model_root / "metrics.json")
     if not finite_metrics(metrics):
