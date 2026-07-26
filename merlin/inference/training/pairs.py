@@ -731,6 +731,48 @@ def finish_query_pairs(
     }
 
 
+def construct_query_pairs(
+    query_id: str,
+    positives: Mapping[str, frozenset[str]],
+    candidates: CandidateCollection,
+    allowed_tracks: set[str],
+    random_universe: Sequence[str],
+    same_song: SameSong,
+    is_positive: IsPositive,
+    is_positive_batch: IsPositiveBatch | None = None,
+    candidate_aware_fraction: float = CANDIDATE_AWARE_FRACTION,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Construct one query's exact 1:3 curriculum and rejection audit."""
+    prepared = prepare_query_pairs(
+        query_id,
+        positives,
+        candidates,
+        allowed_tracks,
+        same_song,
+        is_positive,
+        is_positive_batch,
+        candidate_aware_fraction,
+    )
+    if prepared is None:
+        return [], _empty_pair_audit()
+    random_target = prepared.negative_target - len(prepared.candidate_selected)
+    rejected = set(prepared.selected_positives) | {
+        track_id for track_id, _evidence in prepared.candidate_selected
+    }
+    rejection_counts: Counter[str] = Counter()
+    random_selected = _random_negatives(
+        query_id,
+        random_universe,
+        random_target,
+        rejected,
+        same_song,
+        is_positive,
+        is_positive_batch,
+        rejection_counts,
+    )
+    return finish_query_pairs(prepared, random_selected, rejection_counts)
+
+
 def iter_training_query_pairs(
     candidate_positive_records: Iterable[
         tuple[str, Sequence[CandidateInput], Mapping[str, frozenset[str]] | None]
