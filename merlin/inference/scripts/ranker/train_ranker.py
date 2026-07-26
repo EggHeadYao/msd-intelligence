@@ -244,8 +244,63 @@ def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTa
                 query["cos_graph"].to_numpy(dtype=np.float64),
                 -np.inf,
             ),
-            functions.lit(float(fitted.intercept)),
-            lambda total, value: total + value,
+            "bfs": np.where(
+                query["has_bfs"].to_numpy(dtype=np.float64) > 0.0,
+                query["bfs_score"].to_numpy(dtype=np.float64),
+                -np.inf,
+            ),
+        }
+        labels = {
+            group: np.zeros(len(query), dtype=np.int8) for group in QUERY_GROUPS
+        }
+        positive_counts: dict[str, int] = {}
+        for row_index, groups in enumerate(query["validation_groups"]):
+            for group in groups:
+                values = group.asDict() if hasattr(group, "asDict") else group
+                name = str(values["query_group"])
+                labels[name][row_index] = int(values["label"])
+                positive_counts[name] = max(
+                    positive_counts.get(name, 0),
+                    int(values["eligible_positive_count"]),
+                )
+
+        def top_indices(values, limit=20):
+            size = len(values)
+            if size <= limit:
+                return np.lexsort((candidate_ids, -values))
+            cutoff = np.partition(values, size - limit)[size - limit]
+            better = np.flatnonzero(values > cutoff)
+            tied = np.flatnonzero(values == cutoff)
+            needed = limit - len(better)
+            selected_ties = tied[
+                np.argsort(candidate_ids[tied], kind="stable")[:needed]
+            ]
+            selected = np.concatenate((better, selected_ties))
+            return selected[np.lexsort((candidate_ids[selected], -values[selected]))]
+
+        metrics = {name: {} for name in scorer_names}
+        discounts = 1.0 / np.log2(np.arange(2, 22, dtype=np.float64))
+        for scorer, margins in scores.items():
+            top = top_indices(margins)
+            for group, positive_count in positive_counts.items():
+                dcg = float(np.sum(discounts[: len(top)] * labels[group][top]))
+                ndcg20 = dcg / _idcg20(positive_count)
+                metrics[scorer][group] = ndcg20
+        rows = [
+            {
+                "query_track_id": query_id,
+                "query_group": group,
+                "score_values": [metrics[name][group] for name in scorer_names],
+            }
+            for group in positive_counts
+        ]
+        return pd.DataFrame.from_records(rows)
+
+    rows = (
+        frame.groupBy("query_track_id")
+        .applyInPandas(
+            score_query,
+            "query_track_id string, query_group string, score_values array<double>",
         )
         ranking = window.partitionBy("query_track_id").orderBy(
             functions.desc("margin"), functions.asc("candidate_track_id")
