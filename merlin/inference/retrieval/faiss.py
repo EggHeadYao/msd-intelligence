@@ -360,3 +360,21 @@ def _load_track_mapping(mapping_path: str | Path) -> tuple[str, ...]:
             raise ValueError("FAISS mapping row_id must be contiguous from zero")
         tracks.append(str(track_id))
     return tuple(tracks)
+
+
+def load_audio_index(
+    index_path: str | Path = AUDIO_INDEX_PATH,
+    mapping_path: str | Path = AUDIO_MAPPING_PATH,
+    manifest_path: str | Path = AUDIO_MANIFEST_PATH,
+    encoder_metadata_path: str | Path = AUDIO_ENCODER_METADATA_PATH,
+) -> FaissTrackIndex:
+    """Load the canonical C1 index and reject noncanonical lineage."""
+    return FaissTrackIndex.from_files(
+        index_path,
+        mapping_path,
+        manifest_path,
+        encoder_metadata_path,
+        expected_space="audio",
+        expected_contract_key="shared_audio_contract_version",
+        expected_contract=AUDIO_CONTRACT_VERSION,
+    )
