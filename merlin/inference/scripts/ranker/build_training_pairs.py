@@ -656,7 +656,13 @@ def _run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
     )
 
 
-def _final_runtime(args: argparse.Namespace, paths: InferenceArtifactPaths):
+def _runtime(
+    args: argparse.Namespace,
+    paths: InferenceArtifactPaths,
+    assignments: Mapping[str, str],
+    *,
+    include_recall: bool = True,
+):
     thresholds = _load_thresholds(args.thresholds)
     audio = load_audio_index()
     graph = FaissTrackIndex.from_files(
@@ -700,7 +706,22 @@ def _final_runtime(args: argparse.Namespace, paths: InferenceArtifactPaths):
         if isinstance(retriever, VectorRetriever) and retriever.name == "audio"
     )
     _audio, _graph, bfs, tag = retrievers
-    computer = RankerV2FeatureComputer(
+    recall_engine = None
+    if include_recall:
+        policy = load_candidate_policy(paths.candidate_policy)
+        limits = {
+            str(name): int(limit)
+            for name, limit in policy["retriever_limits"].items()
+        }
+        recall_engine = StreamingRecallEngine(
+            audio,
+            graph,
+            bfs,
+            tag,
+            TrackCodec.build(assignments, SPLITS, catalog.same_song),
+            limits,
+        )
+    computer = RankerFeatureComputer(
         tracks=catalog.ranker_tracks,
         signals=PairSignalLookups(
             audio=audio.similarity,
@@ -709,9 +730,19 @@ def _final_runtime(args: argparse.Namespace, paths: InferenceArtifactPaths):
             tags=tag.pair_score,
             audio_batch=audio.similarities,
             graph_batch=graph.similarities,
+            bfs_batch=lambda query_id, candidate_ids: bfs.pair_scores(
+                [(query_id, candidate_id) for candidate_id in candidate_ids]
+            ),
+            tags_batch=lambda query_id, candidate_ids: tag.pair_scores(
+                [(query_id, candidate_id) for candidate_id in candidate_ids]
+            ),
+            audio_pairs=audio.pair_similarities,
+            graph_pairs=graph.pair_similarities,
+            bfs_pairs=bfs.pair_scores,
+            tags_pairs=tag.pair_scores,
         ),
     )
-    return thresholds, audio, audio_retriever, tag, computer, pipeline
+    return thresholds, audio, audio_retriever, tag, computer, recall_engine
 
 
 def _run_final(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
