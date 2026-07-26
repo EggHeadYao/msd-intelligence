@@ -83,3 +83,59 @@ def validate_view(
         )
     return {"rows": expected_rows, "splits": split_rows}
 
+
+def coverage(frame: DataFrame) -> list[dict[str, Any]]:
+    rows = frame.groupBy("split").agg(
+        F.avg(F.when(F.col("term_count") > 0, 1.0).otherwise(0.0)).alias("terms"),
+        F.avg(F.when(F.col("mbtag_count") > 0, 1.0).otherwise(0.0)).alias("mbtags"),
+        F.avg(F.when(F.col("tag_era_count") > 0, 1.0).otherwise(0.0)).alias("era_tags"),
+        F.avg(
+            F.when(F.col("similar_train_artist_count") > 0, 1.0).otherwise(0.0)
+        ).alias("train_neighbors"),
+        F.avg(F.when(F.col("artist_location_missing") == 0, 1.0).otherwise(0.0)).alias(
+            "location"
+        ),
+    ).orderBy("split").collect()
+    return [
+        {
+            key: str(row[key]) if key == "split" else float(row[key])
+            for key in row.asDict()
+        }
+        for row in rows
+    ]
+
+
+def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
+    with (args.input / "manifest.json").open(encoding="ascii") as handle:
+        manifest = json.load(handle)
+    require(
+        manifest.get("contract_version") == "year_prediction_features_v1",
+        "contract version differs",
+    )
+    reports: dict[str, Any] = {}
+    frames: dict[str, DataFrame] = {}
+    for name in ("metadata_only", "audio_metadata"):
+        view = manifest["views"][name]
+        frame = spark.read.parquet(spark_path(args.input / view["path"]))
+        frames[name] = frame
+        reports[name] = validate_view(
+            frame,
+            list(view["predictor_columns"]),
+            str(view["predictor_order_sha256"]),
+        )
+    reports["coverage"] = coverage(frames["metadata_only"])
+    return reports
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.builder.appName("ValidateYearMetadataFeatures").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        print(json.dumps(run(args, spark), indent=2, sort_keys=True))
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
