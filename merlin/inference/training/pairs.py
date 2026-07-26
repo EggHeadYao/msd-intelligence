@@ -335,7 +335,7 @@ def _random_negatives(
     return selected
 
 
-def construct_query_pairs(
+def sample_random_negatives(
     query_id: str,
     positives: Mapping[str, frozenset[str]],
     candidates: Sequence[CandidateInput],
