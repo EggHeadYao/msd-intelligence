@@ -1,6 +1,6 @@
 # Spark LightGBM year prediction
 
-This trainer uses SynapseML LightGBM with the 594-predictor `full_tabular.parquet` contract. It keeps the fixed artist-disjoint splits, supports Huber/L1 and L2/RMSE training, and never includes test rows in gradient updates.
+This trainer uses SynapseML LightGBM with manifest-defined feature views. The supported experiment configurations use either the 90-predictor `t90.parquet` view or the 594-predictor `full_tabular.parquet` view. Training keeps the fixed artist-disjoint splits, supports Huber/L1 and L2/RMSE objectives, and never includes test rows in gradient updates.
 
 ## Runtime
 
@@ -40,13 +40,13 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --driver-memory 4g \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
-  p1team02/year_prediction/src/training/lightgbm/train.py \
+p1team02/year_prediction/src/training/lightgbm/train.py \
   --config p1team02/year_prediction/config/experiment_a/lightgbm_l2_v2.json
 ```
 
-The model directory contains `model.txt`, the feature contract, resolved arguments, validation predictions and metrics, constant baselines, and Spark run metadata. Command-line arguments override values from the JSON config.
+Use `lightgbm_t90_l2.json` instead to train the T90 model. The model directory contains `model.txt`, the selected feature view and ordered predictors, resolved arguments, validation predictions and metrics, constant baselines, and Spark run metadata. Command-line arguments override values from the JSON config.
 
-`bin_sample_count` controls only the rows used to construct histogram bins. Every train row is still used to fit the trees. The assembled feature frame uses disk-only persistence so the full 594-column table fits on memory-constrained development machines.
+`bin_sample_count` controls only the rows used to construct histogram bins. Every train row is still used to fit the trees. The assembled feature frame uses disk-only persistence so either feature view fits on memory-constrained development machines.
 
 ## Smoke test
 

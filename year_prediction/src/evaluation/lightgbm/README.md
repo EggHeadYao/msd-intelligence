@@ -30,4 +30,6 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
   --partitions 4
 ```
 
-The output contains test predictions, MAE/RMSE and decade metrics, plus Spark run metadata. The evaluator rejects a model whose saved 594-feature order hash does not match the input manifest.
+For the T90 model, replace the model root and output name with `lightgbm-t90-l2`, and use `t90.parquet` as the input. The evaluator reads the feature view from the saved model contract. It rejects an input whose ordered predictor list or hash differs from that contract.
+
+The output contains test predictions, MAE/RMSE and decade metrics, plus Spark run metadata.
