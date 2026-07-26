@@ -418,3 +418,73 @@ def main() -> None:
     top_counts = {cutoff: Counter() for cutoff in EVALUATION_CUTOFFS}
     query_ids = set()
     eligible_candidate_shortages = 0
+    for index, (query_id, rows) in enumerate(_query_groups(args.features), 1):
+        query_ids.add(query_id)
+        if len(rows) < 1000:
+            eligible_candidate_shortages += 1
+        query_metrics, rankings = score_query(
+            query_id,
+            rows,
+            full_ranker=full,
+            no_hard_ranker=no_hard,
+            fill_values=fills,
+        )
+        ranking_rows.extend(query_metrics)
+        candidate_rows.extend(_candidate_metrics(rows))
+        for cutoff in EVALUATION_CUTOFFS:
+            top_counts[cutoff].update(rankings["full"][:cutoff])
+        if index % 256 == 0:
+            print(f"set_c_evaluation_progress queries={index}", flush=True)
+    if len(query_ids) > int(candidate_manifest["query_count"]):
+        raise ValueError("Set-C evaluated queries exceed the candidate pool")
+    expected_scorers = set(SCORERS) | set(ROBUSTNESS_CONFIGS)
+    if {str(row["scorer"]) for row in ranking_rows} != expected_scorers:
+        raise ValueError("Set-C evaluation did not run every frozen scorer")
+
+    artists, years = _query_metadata(paths.songs_metadata, query_ids)
+    ranking_report = {
+        scorer: macro_metrics(
+            row for row in ranking_rows if row["scorer"] == scorer
+        )
+        for scorer in sorted(expected_scorers)
+    }
+    ranking_report["random_expectation"] = _aggregate_random_expectation(
+        candidate_rows
+    )
+    inference = {}
+    for baseline in SCORERS:
+        if baseline == "full":
+            continue
+        inference[baseline] = {
+            "query_bootstrap": paired_bootstrap_ci(
+                ranking_rows,
+                baseline=baseline,
+                metric=f"ndcg@{PRIMARY_CUTOFF}",
+                samples=QUERY_BOOTSTRAP_SAMPLES,
+            ),
+            "artist_cluster_bootstrap": paired_bootstrap_ci(
+                ranking_rows,
+                baseline=baseline,
+                metric=f"ndcg@{PRIMARY_CUTOFF}",
+                samples=ARTIST_BOOTSTRAP_SAMPLES,
+                clusters=artists,
+            ),
+        }
+    split_count = int(json.loads(paths.split_manifest.read_text())["track_counts"]["set_c"])
+    report = {
+        "artifact_type": "set_c_final_evaluation",
+        "artifact_version": protocol["artifact_version"],
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "scope": args.scope,
+        "claims": protocol["claims"],
+        "primary_metric": f"three_strata_macro_ndcg@{PRIMARY_CUTOFF}",
+        "cutoffs": list(EVALUATION_CUTOFFS),
+        "evaluated_query_count": len(query_ids),
+        "set_c_track_count": split_count,
+        "queries_without_any_eligible_group": split_count - len(query_ids),
+        "group_eligibility": group_manifest["group_stats"],
+        "candidate_layer": _aggregate_candidate(candidate_rows),
+        "ranking": ranking_report,
+        "paired_inference_full_minus_baseline": inference,
+        "robustness": {
+            "coverage_popularity_tail": _coverage_report(
