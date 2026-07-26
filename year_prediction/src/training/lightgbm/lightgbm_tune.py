@@ -27,6 +27,8 @@ from spark_common import (  # noqa: E402
 
 STAGES = ("capacity", "regularization", "learning_rate", "huber")
 DEFAULTS: dict[str, Any] = {
+    "objective": "huber",
+    "metric": "l1",
     "huber_alpha": 0.9,
     "learning_rate": 0.04,
     "num_leaves": 12,
@@ -36,6 +38,7 @@ DEFAULTS: dict[str, Any] = {
     "bagging_fraction": 0.85,
     "lambda_l2": 5.0,
     "max_bin": 255,
+    "bin_sample_count": 50000,
     "num_iterations": 5000,
     "early_stopping_rounds": 200,
     "seed": 472,

@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from pyspark import StorageLevel
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from synapse.ml.lightgbm import LightGBMRegressor
@@ -53,6 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-tasks", type=int, default=0)
     parser.add_argument("--num-iterations", type=int, default=5000)
     parser.add_argument("--early-stopping-rounds", type=int, default=200)
+    parser.add_argument("--objective", choices=("huber", "regression"), default="huber")
+    parser.add_argument("--metric", choices=("l1", "rmse"), default="l1")
     parser.add_argument("--learning-rate", type=float, default=0.04)
     parser.add_argument("--num-leaves", type=int, default=31)
     parser.add_argument("--max-depth", type=int, default=8)
@@ -61,6 +64,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bagging-fraction", type=float, default=0.85)
     parser.add_argument("--lambda-l2", type=float, default=20.0)
     parser.add_argument("--max-bin", type=int, default=255)
+    parser.add_argument("--bin-sample-count", type=int, default=50000)
     parser.add_argument("--huber-alpha", type=float, default=0.80)
     parser.add_argument("--seed", type=int, default=472)
     if preliminary.config is not None:
@@ -74,6 +78,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("iteration counts are invalid")
     if args.num_tasks < 0:
         raise ValueError("num_tasks cannot be negative")
+    if args.bin_sample_count <= 0:
+        raise ValueError("bin_sample_count must be positive")
     if not 0.0 < args.learning_rate <= 1.0:
         raise ValueError("learning_rate must be in (0, 1]")
     for name in ("feature_fraction", "bagging_fraction", "huber_alpha"):
@@ -87,8 +93,8 @@ def build_estimator(args: argparse.Namespace, categorical: list[int]) -> LightGB
         labelCol="label",
         predictionCol="prediction",
         validationIndicatorCol="is_validation",
-        objective="huber",
-        metric="l1",
+        objective=args.objective,
+        metric=args.metric,
         alpha=args.huber_alpha,
         learningRate=args.learning_rate,
         numIterations=args.num_iterations,
@@ -101,6 +107,7 @@ def build_estimator(args: argparse.Namespace, categorical: list[int]) -> LightGB
         baggingFreq=1,
         lambdaL2=args.lambda_l2,
         maxBin=args.max_bin,
+        binSampleCount=args.bin_sample_count,
         categoricalSlotIndexes=categorical,
         useMissing=True,
         zeroAsMissing=False,
@@ -158,7 +165,9 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
         contract,
         args.max_rows_per_split,
         ("train", "validation", "test") if args.evaluate_test else ("train", "validation"),
-    ).repartition(max(1, args.num_tasks or spark.sparkContext.defaultParallelism)).cache()
+    ).repartition(
+        max(1, args.num_tasks or spark.sparkContext.defaultParallelism)
+    ).persist(StorageLevel.DISK_ONLY)
     assert_artist_isolation(frame)
     counts = split_counts(frame)
     train = frame.where(F.col("split") == "train")
@@ -194,7 +203,9 @@ def run(args: argparse.Namespace, spark: SparkSession) -> dict[str, Any]:
     }
     write_json(args.output / "arguments.json", parameters)
     metadata = {
-        "model_type": "synapseml_lightgbm_huber",
+        "model_type": "synapseml_lightgbm",
+        "objective": args.objective,
+        "metric": args.metric,
         "spark_version": spark.version,
         "spark_master": spark.sparkContext.master,
         "application_id": spark.sparkContext.applicationId,
