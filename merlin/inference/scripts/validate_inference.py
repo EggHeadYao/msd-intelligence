@@ -11,7 +11,7 @@ from ..runtime.validation import validate_pipeline, write_validation_report
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate the final MERLIN C3 pipeline.")
+    parser = argparse.ArgumentParser(description="Validate the MERLIN C3 pipeline.")
     parser.add_argument("--queries", type=Path, required=True, help="One track_id per line.")
     parser.add_argument("--graph-contract-key", required=True)
     parser.add_argument("--graph-contract-version", required=True)
