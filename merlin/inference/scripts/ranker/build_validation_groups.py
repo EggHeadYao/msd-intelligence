@@ -1,4 +1,4 @@
-"""Build frozen Set-B Audio/Relation/Mixed validation groups with Spark."""
+"""Build frozen Audio/Relation/Mixed groups for Set B or Set C."""
 
 from __future__ import annotations
 
@@ -13,12 +13,14 @@ from tempfile import TemporaryDirectory
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
-from merlin.inference.artifact_paths import InferenceArtifactPaths
-from merlin.inference.candidate_pool import load_candidate_pool_manifest
-from merlin.inference.jsonl_artifact import write_json_atomic
-from merlin.inference.scratch import prepare_scratch_root
-from merlin.inference.split import load_split_manifest
-from merlin.inference.tag_data import load_tag_idf
+from merlin.inference.artifacts.paths import InferenceArtifactPaths
+from merlin.inference.artifacts.integrity import sha256_path
+from merlin.inference.recall.pool import load_candidate_pool_manifest
+from merlin.inference.evaluation.protocol import load_set_c_protocol
+from merlin.inference.artifacts.io import write_json_atomic
+from merlin.inference.scripts.support.scratch import prepare_scratch_root
+from merlin.inference.training.split import load_split_manifest
+from merlin.inference.data.tags import load_tag_idf
 from merlin.inference.training.validation_groups import (
     VALIDATION_GROUP_SEED,
     VALIDATION_QUERY_GROUPS,
