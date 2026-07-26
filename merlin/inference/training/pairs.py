@@ -3,32 +3,64 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+from heapq import nsmallest
 import json
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
-from ..artifact_lineage import artifact_size_bytes, sha256_path
-from ..candidate_pool import iter_candidate_pool
-from ..feature_schema import RANKER_V2_SCHEMA_VERSION
-from ..jsonl_artifact import PartitionedParquetWriter, write_json_atomic, write_row_artifact
-from ..ranking.features import RAW_BASE_FEATURES, RAW_FEATURE_VERSION
-from ..ranking.features import raw_feature_parquet_schema
+import numpy as np
+
+from ..artifacts.integrity import artifact_size_bytes, sha256_path
+from ..recall.pool import iter_candidate_pool
+from ..recall.streaming import EncodedCandidates
+from ..artifacts.io import PartitionedParquetWriter, write_json_atomic, write_row_artifact
+from ..ranking.features import (
+    FEATURE_SCHEMA,
+    RAW_BASE_FEATURES,
+    RAW_FEATURE_VERSION,
+    SAMPLE_WEIGHT_COLUMN,
+    raw_feature_parquet_schema,
+)
 from ..types import Candidate
 from .weak_labels import iter_weak_positives
 
 
-TRAINING_PAIR_VERSION = "merlin_training_pairs_v1"
+TRAINING_PAIR_VERSION = "merlin_training_pairs_v2"
 PAIR_SEED = 42
 NEGATIVE_RATIO = 3
 CANDIDATE_AWARE_FRACTION = 0.75
+LOSS_WEIGHT_STRATEGY = "per_query_candidate_curriculum"
+MAX_CANDIDATE_SAMPLE_WEIGHT = 20.0
 IsPositive = Callable[[str, str], bool]
 IsPositiveBatch = Callable[[str, Sequence[str]], Sequence[bool]]
+IsPositivePairs = Callable[[Sequence[tuple[str, str]]], Sequence[bool]]
 SameSong = Callable[[str, str], bool]
 WeakPositiveMap = Mapping[str, Mapping[str, frozenset[str]]]
 WeakPositiveSource = str | Path | WeakPositiveMap
 CandidateInput = Mapping[str, object] | Candidate
+CandidateCollection = Sequence[CandidateInput] | EncodedCandidates
+
+
+@dataclass(frozen=True, slots=True)
+class StreamCheckpoint:
+    """A batch boundary at which both output datasets are recoverable."""
+
+    processed_queries: int
+    total_queries: int
+
+
+@dataclass(frozen=True, slots=True)
+class StreamTableBatch:
+    """Aligned Arrow tables and per-query audit totals for one recall batch."""
+
+    pairs: Any
+    features: Any
+    audits: Sequence[Mapping[str, object]]
+    weak_source_totals: Mapping[str, int]
+    recall_source_totals: Mapping[str, int]
 
 
 def training_pair_parquet_schema():
