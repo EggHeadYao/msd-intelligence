@@ -302,41 +302,41 @@ def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTa
             score_query,
             "query_track_id string, query_group string, score_values array<double>",
         )
-        ranking = window.partitionBy("query_track_id").orderBy(
-            functions.desc("margin"), functions.asc("candidate_track_id")
-        )
-        per_query = (
-            frame.withColumn("margin", margin)
-            .withColumn("rank", functions.row_number().over(ranking))
-            .withColumn("validation_group", functions.explode("validation_groups"))
-            .withColumn(
-                "gain",
-                functions.when(
-                    (functions.col("rank") <= 20)
-                    & (functions.col("validation_group.label") == 1),
-                    1.0 / functions.log2(functions.col("rank") + 1.0),
-                ).otherwise(0.0),
-            )
-            .groupBy(
-                "query_track_id",
-                functions.col("validation_group.query_group").alias("query_group"),
-            )
-            .agg(
-                functions.sum("gain").alias("dcg"),
-                functions.max("validation_group.eligible_positive_count").alias(
-                    "positive_count"
-                ),
-            )
-            .withColumn(
-                "idcg20",
-                functions.aggregate(
-                    functions.sequence(
-                        functions.lit(1),
-                        functions.least(
-                            functions.col("positive_count").cast("int"),
-                            functions.lit(20),
-                        ),
-                    ),
+        .collect()
+    )
+    keys = tuple(reg_by_scorer.get(name, name) for name in scorer_names)
+    collected = {key: [] for key in keys}
+    query_ids = []
+    query_groups = []
+    for row in rows:
+        values = row["score_values"]
+        if len(values) != len(keys):
+            raise ValueError("Set-B wide score vector length mismatch")
+        query_ids.append(str(row["query_track_id"]))
+        query_groups.append(str(row["query_group"]))
+        for key, value in zip(keys, values, strict=True):
+            collected[key].append(float(value))
+    return ValidationScoreTable(
+        query_ids=tuple(query_ids),
+        query_groups=tuple(query_groups),
+        columns={key: tuple(values) for key, values in collected.items()},
+    )
+
+
+def _validation_summary(
+    table: ValidationScoreTable,
+    key: object,
+) -> dict[str, object]:
+    values = table.column(key)
+    grouped = {
+        group: [
+            value
+            for value, query_group in zip(values, table.query_groups, strict=True)
+            if query_group == group
+        ]
+        for group in QUERY_GROUPS
+    }
+    if any(not values for values in grouped.values()):
                     functions.lit(0.0),
                     lambda total, rank: total
                     + 1.0 / functions.log2(rank.cast("double") + 1.0),
