@@ -325,9 +325,22 @@ class TagRetriever(CandidateRetriever):
         per_artist_cap: int = 5,
     ) -> TagRetriever:
         """Construct a retriever from catalog data already loaded by a batch stage."""
-        from .tag_data import artist_tag_cosine, compute_artist_tag_norms, find_similar_artists
+        from ..data.tags import (
+            SparseArtistTagIndex,
+            artist_tag_cosine,
+            compute_artist_tag_norms,
+            compute_tag_idf,
+            find_similar_artists,
+        )
 
         norms = compute_artist_tag_norms(data, idf_values)
+        effective_idf = idf_values if idf_values is not None else compute_tag_idf(data)
+        sparse_index = SparseArtistTagIndex.build(
+            data,
+            effective_idf,
+            norms,
+            max_term_artists=max_term_artists,
+        )
 
         @lru_cache(maxsize=4_096)
         def neighbors(artist_id: str) -> Sequence[tuple[str, float]]:
