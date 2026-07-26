@@ -1187,6 +1187,8 @@ def write_training_pair_artifacts(
                 "candidate_shortage",
             ):
                 totals[key] += int(audit[key])
+            loss_weight_totals.update(audit["loss_weight_sums"])
+            loss_weight_shape_histogram[_loss_weight_shape_key(audit)] += 1
             rejection_totals.update(audit["rejections"])
             yield from rows
 
@@ -1213,6 +1215,13 @@ def write_training_pair_artifacts(
         "counts": dict(sorted(totals.items())),
         "actual_candidate_aware_fraction": (
             totals["candidate_aware_count"] / totals["negative_count"]
+        ),
+        "loss_weighting": _loss_weight_manifest(
+            loss_weight_totals,
+            CANDIDATE_AWARE_FRACTION,
+            {
+                "loss_weight_shape_histogram": loss_weight_shape_histogram,
+            },
         ),
         "rejection_counts": dict(sorted(rejection_totals.items())),
         "pairs_file": output.name,
