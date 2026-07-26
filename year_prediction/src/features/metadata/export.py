@@ -88,3 +88,60 @@ def export_locations(source: Path, output: Path) -> int:
     pq.write_table(pa.Table.from_pylist(records, schema), output)
     return len(rows)
 
+
+def run(args: argparse.Namespace) -> dict[str, Any]:
+    if args.output.exists():
+        if not args.overwrite:
+            raise FileExistsError(f"output already exists: {args.output}")
+        shutil.rmtree(args.output)
+    args.output.mkdir(parents=True)
+    term_db = args.input / "artist_term.db"
+    similarity_db = args.input / "artist_similarity.db"
+    tag_schema = pa.schema(
+        [("artist_id", pa.string()), ("tag", pa.string()), ("source", pa.string())]
+    )
+    similarity_schema = pa.schema(
+        [
+            ("artist_id", pa.string()),
+            ("similar_artist_id", pa.string()),
+            ("edge_order", pa.int64()),
+        ]
+    )
+    counts = {
+        "artist_tags": export_query(
+            term_db,
+            "SELECT artist_id, term, 'term' FROM artist_term "
+            "UNION ALL SELECT artist_id, mbtag, 'mbtag' FROM artist_mbtag",
+            args.output / "artist_tags.parquet",
+            tag_schema,
+        ),
+        "artist_similarity": export_query(
+            similarity_db,
+            "SELECT target, similar, rowid FROM similarity ORDER BY rowid",
+            args.output / "artist_similarity.parquet",
+            similarity_schema,
+        ),
+        "artist_location": export_locations(
+            args.input / "artist_location.txt",
+            args.output / "artist_location.parquet",
+        ),
+    }
+    manifest = {
+        "contract_version": "year_prediction_raw_metadata_v1",
+        "counts": counts,
+        "sources": {
+            "artist_term.db": file_sha256(term_db),
+            "artist_similarity.db": file_sha256(similarity_db),
+            "artist_location.txt": file_sha256(args.input / "artist_location.txt"),
+        },
+    }
+    write_json(args.output / "manifest.json", manifest)
+    return manifest
+
+
+def main() -> None:
+    print(json.dumps(run(parse_args()), sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
