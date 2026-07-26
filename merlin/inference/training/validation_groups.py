@@ -315,7 +315,16 @@ def write_audio_threshold_pairs_numpy(
             raise ValueError("audio threshold vector norms are invalid")
         return matrix / norms[:, None]
 
+    query_matrix = normalized_matrix(queries, "q_vector", "q_norm")
     candidate_matrix = normalized_matrix(candidates, "c_vector", "c_norm")
+    query_tracks = np.asarray(
+        [str(row["query_track_id"]) for row in queries], dtype=object
+    )
+    query_songs = np.asarray([row.get("q_song_id") for row in queries], dtype=object)
+    query_artists = np.asarray(
+        [str(row["q_artist_id"]) for row in queries], dtype=object
+    )
+    query_releases = np.asarray([row["q_release_id"] for row in queries], dtype=object)
     candidate_tracks = np.asarray(
         [str(row["candidate_track_id"]) for row in candidates], dtype=object
     )
@@ -324,6 +333,13 @@ def write_audio_threshold_pairs_numpy(
         [str(row["c_artist_id"]) for row in candidates], dtype=object
     )
     candidate_releases = np.asarray([row["c_release_id"] for row in candidates], dtype=object)
+    symmetric = (
+        np.array_equal(query_tracks, candidate_tracks)
+        and np.array_equal(query_songs, candidate_songs)
+        and np.array_equal(query_artists, candidate_artists)
+        and np.array_equal(query_releases, candidate_releases)
+        and np.array_equal(query_matrix, candidate_matrix)
+    )
 
     schema = pa.schema((
         pa.field("query_track_id", pa.string(), nullable=False),
@@ -338,29 +354,43 @@ def write_audio_threshold_pairs_numpy(
     count = 0
     try:
         for start in range(0, len(queries), block_size):
-            block = queries[start : start + block_size]
-            query_matrix = normalized_matrix(block, "q_vector", "q_norm")
-            mask = query_matrix @ candidate_matrix.T >= threshold
-            query_tracks = np.asarray(
-                [str(row["query_track_id"]) for row in block], dtype=object
+            stop = min(start + block_size, len(queries))
+            candidate_start = start if symmetric else 0
+            block_tracks = query_tracks[start:stop]
+            block_songs = query_songs[start:stop]
+            block_artists = query_artists[start:stop]
+            block_releases = query_releases[start:stop]
+            compared_tracks = candidate_tracks[candidate_start:]
+            compared_songs = candidate_songs[candidate_start:]
+            compared_artists = candidate_artists[candidate_start:]
+            compared_releases = candidate_releases[candidate_start:]
+            mask = (
+                query_matrix[start:stop] @ candidate_matrix[candidate_start:].T
+                >= threshold
             )
-            query_songs = np.asarray([row.get("q_song_id") for row in block], dtype=object)
-            query_artists = np.asarray(
-                [str(row["q_artist_id"]) for row in block], dtype=object
-            )
-            query_releases = np.asarray([row["q_release_id"] for row in block], dtype=object)
-            mask &= query_tracks[:, None] != candidate_tracks[None, :]
-            mask &= query_artists[:, None] != candidate_artists[None, :]
-            mask &= query_releases[:, None] != candidate_releases[None, :]
+            mask &= block_tracks[:, None] != compared_tracks[None, :]
+            mask &= block_artists[:, None] != compared_artists[None, :]
+            mask &= block_releases[:, None] != compared_releases[None, :]
             same_song = (
-                (query_songs[:, None] != None)  # noqa: E711
-                & (candidate_songs[None, :] != None)  # noqa: E711
-                & (query_songs[:, None] == candidate_songs[None, :])
+                (block_songs[:, None] != None)  # noqa: E711
+                & (compared_songs[None, :] != None)  # noqa: E711
+                & (block_songs[:, None] == compared_songs[None, :])
             )
             mask &= ~same_song
             query_positions, candidate_positions = np.nonzero(mask)
+            query_positions += start
+            candidate_positions += candidate_start
+            if symmetric:
+                upper = candidate_positions > query_positions
+                query_positions = query_positions[upper]
+                candidate_positions = candidate_positions[upper]
             if not len(query_positions):
                 continue
+            if symmetric:
+                query_positions, candidate_positions = (
+                    np.concatenate((query_positions, candidate_positions)),
+                    np.concatenate((candidate_positions, query_positions)),
+                )
             writer.write_table(pa.Table.from_arrays(
                 (
                     pa.array(query_tracks[query_positions].tolist(), type=pa.string()),
