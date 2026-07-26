@@ -32,7 +32,7 @@ def _candidate_payload(candidate: Candidate) -> dict[str, object]:
 
 
 def export_candidate_pool(
-    pipeline: RecallPipeline,
+    pipeline: RecallPipeline | StreamingRecallEngine,
     query_track_ids: Iterable[str],
     output_path: str | Path,
     manifest_path: str | Path,
@@ -50,7 +50,12 @@ def export_candidate_pool(
         raise ValueError("candidate pool queries must be unique")
 
     totals = {"raw_candidates": 0, "unique_candidates": 0}
-    source_totals = {name: 0 for name in pipeline.retriever_limits}
+    limits = (
+        pipeline.limits
+        if isinstance(pipeline, StreamingRecallEngine)
+        else pipeline.retriever_limits
+    )
+    source_totals = {name: 0 for name in limits}
 
     def rows() -> Iterator[dict[str, object]]:
         for start in range(0, len(queries), CANDIDATE_BATCH_SIZE):
