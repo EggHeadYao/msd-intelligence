@@ -503,10 +503,61 @@ def _query_rows(
                 if following is not None
                 else None
             )
-            audio_cache = {
-                track_id: _finite(score)
-                for track_id, score in neighbors
-                if track_id in allowed
+            prepared_states = []
+            for position, query_id in enumerate(batch):
+                candidates, neighbors, tag_neighbors = recall_engine.query(
+                    recalled,
+                    position,
+                )
+                artist, positives = _select_positives(
+                    query_id,
+                    allowed,
+                    neighbors,
+                    tag_neighbors,
+                    audio_retriever,
+                    tag,
+                    thresholds,
+                )
+                audio_cache = {
+                    track_id: _finite(score)
+                    for track_id, score in neighbors
+                    if track_id in allowed
+                }
+                is_positive, is_positive_batch, signal_caches = _positive_checks(
+                    query_id,
+                    artist,
+                    audio_cache,
+                    audio,
+                    tag,
+                    computer,
+                    thresholds,
+                )
+                prepared = prepare_query_pairs(
+                    query_id,
+                    positives,
+                    candidates,
+                    allowed,
+                    audio_retriever.same_song,
+                    is_positive,
+                    is_positive_batch,
+                )
+                if prepared is not None:
+                    prepared_states.append((prepared, candidates, signal_caches))
+            requests = [
+                (
+                    prepared.query_id,
+                    prepared.negative_target - len(prepared.candidate_selected),
+                    set(prepared.selected_positives)
+                    | {
+                        track_id
+                        for track_id, _evidence in prepared.candidate_selected
+                    },
+                )
+                for prepared, _candidates, _signal_caches in prepared_states
+            ]
+            audio_caches = {
+                prepared.query_id: signal_caches["audio"]
+                for prepared, _candidates, signal_caches in prepared_states
             }
             checks = _final_positive_checks(
                 query_id, artist, audio_cache, audio, tag, computer, thresholds
