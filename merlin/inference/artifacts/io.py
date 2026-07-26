@@ -1,13 +1,19 @@
-"""Deterministic gzip-JSONL helpers for scalable C3 row artifacts."""
+"""Deterministic JSON, JSONL, and Parquet IO for C3 artifacts."""
 
 from __future__ import annotations
 
 import gzip
+import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import re
 import shutil
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping, Sequence
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def write_jsonl_gzip(
