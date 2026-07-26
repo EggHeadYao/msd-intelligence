@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
-from ..artifact_paths import InferenceArtifactPaths
-from ..candidate_policy import CANONICAL_RETRIEVER_LIMITS
-from ..features_v2 import PairSignalLookups, RankerV2FeatureComputer
-from ..recall_factory import build_canonical_retrievers
-from .artifacts import InferenceArtifacts, load_inference_artifacts
+from dataclasses import dataclass
+
+from ..artifacts.integrity import sha256_path
+from ..artifacts.paths import InferenceArtifactPaths
+from ..recall.policy import CANONICAL_RETRIEVER_LIMITS, load_candidate_policy
+from ..data.catalog import SameSongFilter, load_same_song_filter
+from ..retrieval.faiss import FaissTrackIndex, load_audio_index
+from ..ranking.features import (
+    FeatureFillValues,
+    PairSignalLookups,
+    RankerFeatureComputer,
+    TrackMetadata,
+    load_track_metadata,
+)
+from ..ranking.model import LogisticRanker, load_ranker_bundle
+from ..recall.factory import build_canonical_retrievers
 from .pipeline import MerlinPipeline
 
 
