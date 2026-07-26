@@ -147,6 +147,69 @@ def _loss_weight_histograms(
     )
     queries_without_candidate = int(
         stats.get("legacy_queries_without_candidate_aware", 0)
+    )
+    for key, frequency_value in dict(shapes).items():
+        negative_count, candidate_count, candidate_target = (
+            int(value) for value in str(key).split(":")
+        )
+        frequency = int(frequency_value)
+        if candidate_count == 0:
+            queries_without_candidate += frequency
+            fractions["0"] += frequency
+            continue
+        candidate_weight, _ = _negative_loss_weights(
+            negative_count,
+            candidate_count,
+            negative_count - candidate_count,
+            candidate_target,
+        )
+        weights[format(candidate_weight, ".12g")] += candidate_count * frequency
+        fractions[
+            format(candidate_weight * candidate_count / negative_count, ".12g")
+        ] += frequency
+    return weights, fractions, queries_without_candidate
+
+
+def _loss_weight_audit_manifest(stats: Mapping[str, object]) -> dict[str, object]:
+    weight_histogram, fraction_histogram, queries_without_candidate = (
+        _loss_weight_histograms(stats)
+    )
+    return {
+        "candidate_weight_cap": MAX_CANDIDATE_SAMPLE_WEIGHT,
+        "queries_without_candidate_aware": queries_without_candidate,
+        "candidate_weight": _histogram_percentiles(
+            weight_histogram,
+            {"median": 0.50, "p95": 0.95, "p99": 0.99, "max": 1.0},
+        ),
+        "per_query_effective_candidate_aware_fraction": _histogram_percentiles(
+            fraction_histogram,
+            {"median": 0.50, "p95": 0.95, "p99": 0.99},
+        ),
+    }
+
+
+def _loss_weight_manifest(
+    totals: Mapping[str, float],
+    candidate_target_fraction: float,
+    stats: Mapping[str, object],
+) -> dict[str, object]:
+    negative = float(totals.get("candidate_aware", 0.0)) + float(
+        totals.get("random", 0.0)
+    )
+    candidate = float(totals.get("candidate_aware", 0.0))
+    return {
+        "column": SAMPLE_WEIGHT_COLUMN,
+        "strategy": LOSS_WEIGHT_STRATEGY,
+        "candidate_aware_target_fraction": float(candidate_target_fraction),
+        "positive_weight_sum": float(totals.get("positive", 0.0)),
+        "candidate_aware_weight_sum": candidate,
+        "random_weight_sum": float(totals.get("random", 0.0)),
+        "negative_weight_sum": negative,
+        "effective_candidate_aware_fraction": candidate / negative if negative else 0.0,
+        "audit": _loss_weight_audit_manifest(stats),
+    }
+
+
 def _streamed_feature_manifest(
     feature_output: Path,
     stats: Mapping[str, object],
