@@ -598,7 +598,7 @@ def main() -> None:
             scaled_train = transformed_train
 
         def fit(reg_param: float) -> Any:
-            model = LogisticRegression(
+            estimator = LogisticRegression(
                 featuresCol="features",
                 labelCol="label",
                 elasticNetParam=0.0,
@@ -607,7 +607,23 @@ def main() -> None:
                 tol=1e-6,
                 fitIntercept=True,
                 standardization=True,
-            ).fit(scaled_train)
+                family="binomial",
+                maxBlockSizeInMB=args.max_block_size_mb,
+            )
+            if args.stage == "final_retrain":
+                assert frozen_initial is not None
+                initial_coefficients, initial_intercept = frozen_initial
+                active_initial = tuple(
+                    initial_coefficients[FEATURE_ORDER.index(name)]
+                    for name in solver_features
+                )
+                set_initial_lr_model(
+                    estimator,
+                    spark,
+                    active_initial,
+                    initial_intercept,
+                )
+            model = estimator.fit(scaled_train)
             if int(model.summary.totalIterations) >= 100:
                 raise ValueError(f"LR did not converge for regParam={reg_param}")
             return model
@@ -625,7 +641,21 @@ def main() -> None:
                     *RAW_BASE_FEATURES,
                 )
             )
-            invalid_groups = validation.where(
+            scaled_validation = scaler.transform(
+                assembler.transform(materialize(validation))
+            ).select(
+                "query_track_id",
+                "candidate_track_id",
+                "validation_groups",
+                "cos_audio",
+                "cos_graph",
+                "has_graph",
+                "bfs_score",
+                "has_bfs",
+                vector_to_array("features").alias("feature_array"),
+            ).persist(StorageLevel.MEMORY_AND_DISK)
+            cached.append(scaled_validation)
+            invalid_groups = scaled_validation.where(
                 F.col("validation_groups").isNull()
                 | (F.size("validation_groups") == 0)
                 | F.exists(
@@ -642,18 +672,14 @@ def main() -> None:
             ).limit(1).count()
             if invalid_groups:
                 raise ValueError("Set-B validation contains an invalid group or denominator")
-            scaled_validation = scaler.transform(
-                assembler.transform(materialize(validation))
-            ).select(
-                "query_track_id",
-                "candidate_track_id",
-                "validation_groups",
-                vector_to_array("features").alias("feature_array"),
-            ).persist(StorageLevel.MEMORY_AND_DISK)
-            cached.append(scaled_validation)
-            scaled_validation.count()
-            collected_by_reg = _collect_validation_scores(
-                scaled_validation, models, F, Window
+            validation_scores = _collect_validation_scores(scaled_validation, models)
+            selected_reg, selection = _select_reg_configuration(validation_scores)
+            model = models[selected_reg]
+            release(scaled_validation)
+            print(
+                "set_b_ranker_diagnostics "
+                + json.dumps(selection["set_b_diagnostics"], sort_keys=True),
+                flush=True,
             )
             release(scaled_validation)
             query_scores = {}
