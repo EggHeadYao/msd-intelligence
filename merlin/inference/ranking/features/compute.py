@@ -181,21 +181,36 @@ class RankerFeatureComputer:
     ) -> list[Mapping[str, float | None]]:
         """Compute one query's features with optional batched vector lookups."""
         candidate_ids = [candidate.track_id for candidate in candidates]
-        audio_values = self._vector_values(
+        audio_values = self._signal_values(
             query_track_id,
             candidates,
             "audio",
             self.signals.audio,
             self.signals.audio_batch,
         )
-        graph_values = self._vector_values(
+        graph_values = self._signal_values(
             query_track_id,
             candidates,
             "graph",
             self.signals.graph,
             self.signals.graph_batch,
         )
-        if len(audio_values) != len(candidates) or len(graph_values) != len(candidates):
+        bfs_values = self._signal_values(
+            query_track_id,
+            candidates,
+            "bfs",
+            self.signals.bfs,
+            self.signals.bfs_batch,
+        )
+        tag_values = self._signal_values(
+            query_track_id,
+            candidates,
+            "tag",
+            self.signals.tags,
+            self.signals.tags_batch,
+        )
+        sizes = {len(audio_values), len(graph_values), len(bfs_values), len(tag_values)}
+        if sizes != {len(candidates)}:
             raise ValueError("batch pair lookup returned the wrong number of scores")
         return [
             self._raw_values(
@@ -203,13 +218,15 @@ class RankerFeatureComputer:
                 candidate_id,
                 _finite(audio),
                 _finite(graph),
-                _finite(self.signals.bfs(query_track_id, candidate_id)),
-                _finite(self.signals.tags(query_track_id, candidate_id)),
+                _finite(bfs),
+                _finite(tags),
             )
-            for candidate_id, audio, graph in zip(
+            for candidate_id, audio, graph, bfs, tags in zip(
                 candidate_ids,
                 audio_values,
                 graph_values,
+                bfs_values,
+                tag_values,
                 strict=True,
             )
         ]
