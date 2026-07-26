@@ -1089,6 +1089,7 @@ def _streamed_pair_manifest(
     stats: Mapping[str, object],
     parent_hashes: Mapping[str, str],
     scope: str,
+    candidate_aware_fraction: float,
 ) -> dict[str, object]:
     totals = stats["totals"]
     assert isinstance(totals, Counter)
@@ -1105,17 +1106,25 @@ def _streamed_pair_manifest(
         "stage": "final_retrain",
         "seed": PAIR_SEED,
         "negative_ratio": NEGATIVE_RATIO,
-        "candidate_aware_target_fraction": CANDIDATE_AWARE_FRACTION,
+        "candidate_aware_target_fraction": candidate_aware_fraction,
         "query_count": stats["query_count"],
         "pair_count": stats["pair_count"],
         "counts": dict(sorted(totals.items())),
         "actual_candidate_aware_fraction": (
             totals["candidate_aware_count"] / totals["negative_count"]
         ),
+        "loss_weighting": _loss_weight_manifest(
+            stats["loss_weight_totals"], candidate_aware_fraction, stats
+        ),
         "rejection_counts": dict(sorted(rejection_totals.items())),
         "weak_positive_source_counts": dict(sorted(weak_source_totals.items())),
         "recall_source_totals": dict(sorted(recall_source_totals.items())),
         "candidate_pool_layout": "streamed_not_materialized",
+        "negative_sampling_strategy": (
+            "random_only_derived_from_full"
+            if candidate_aware_fraction == 0.0
+            else "candidate_aware_with_random_backfill"
+        ),
         "pairs_file": output.name,
         "storage_format": "partitioned_parquet",
         "part_count": stats["pair_part_count"],
