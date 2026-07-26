@@ -504,6 +504,7 @@ def write_validation_group_manifest(
     pair_count: int,
     group_row_count: int,
     group_stats: Mapping[str, Mapping[str, int | float]],
+    apply_split: str = "set_b",
 ) -> dict[str, object]:
     if scope not in {"formal", "smoke"}:
         raise ValueError("validation-group scope must be formal or smoke")
@@ -513,13 +514,15 @@ def write_validation_group_manifest(
         raise ValueError("validation-group threshold sample must not be empty")
     if pair_count <= 0 or group_row_count < pair_count:
         raise ValueError("validation-pair layout counts are invalid")
+    if apply_split not in {"set_b", "set_c"}:
+        raise ValueError("validation groups may only be applied to Set B or Set C")
     manifest = {
-        "artifact_type": "set_b_validation_groups",
+        "artifact_type": f"{apply_split}_validation_groups",
         "artifact_version": VALIDATION_GROUP_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "scope": scope,
         "fit_split": "set_a",
-        "apply_split": "set_b",
+        "apply_split": apply_split,
         "seed": VALIDATION_GROUP_SEED,
         "threshold_sample_count": int(threshold_sample_count),
         "validation_pair_layout": VALIDATION_PAIR_LAYOUT,
