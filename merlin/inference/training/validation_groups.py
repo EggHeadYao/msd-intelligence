@@ -70,7 +70,7 @@ def load_selected_artist_terms(
     idf_values: Mapping[str, float],
 ) -> dict[str, set[str]]:
     """Load normalized tag sets only for selected artists."""
-    from ..parquet_io import parquet_rows
+    from ..artifacts.io import parquet_rows
 
     selected = {str(artist_id) for artist_id in artist_ids}
     artist_terms: dict[str, set[str]] = {artist_id: set() for artist_id in selected}
