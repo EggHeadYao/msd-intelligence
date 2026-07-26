@@ -137,7 +137,9 @@ class RecallPipeline:
             raise ValueError("batch query track IDs must not be empty")
         if len(set(queries)) != len(queries):
             raise ValueError("batch query track IDs must be unique")
-        groups = {query_id: {} for query_id in queries}
+        groups: dict[str, dict[str, Sequence[Candidate]]] = {
+            query_id: {} for query_id in queries
+        }
         availability = {query_id: {} for query_id in queries}
         overrides = source_overrides or {}
         unknown_sources = set(overrides) - set(self.retriever_limits)
@@ -162,7 +164,7 @@ class RecallPipeline:
                 )
             for query_id in queries:
                 availability[query_id][retriever.name] = states[query_id]
-                groups[query_id][retriever.name] = list(retrieved.get(query_id, ()))
+                groups[query_id][retriever.name] = retrieved.get(query_id, ())
         return {
             query_id: audit_recall_groups(
                 groups[query_id],
