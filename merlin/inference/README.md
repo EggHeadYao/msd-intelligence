@@ -96,41 +96,6 @@ The exact command order and stage-specific requirements are documented in
 [`scripts/ranker/README.md`](scripts/ranker/README.md). Recall-only commands are
 documented in [`scripts/recall/README.md`](scripts/recall/README.md).
 
-High-volume row artifacts use Parquet with Zstandard compression by default,
-including split assignments, candidate pools, weak positives, training pairs,
-and raw feature rows. Explicit legacy `.jsonl.gz` paths remain readable and
-writable for compatibility with earlier smoke artifacts.
-
-Candidate-pool rows retain the required ordered track IDs and
-`recall_sources`; source scores and source ranks remain transient recall data.
-Training feature rows do not duplicate pair-audit columns. Validation pairs and
-features both store one row per `(query, candidate)` with compact nested group
-labels; they never materialize one copy of the feature vector per validation
-group. Numeric feature columns are persisted as float32 and converted by Spark
-ML during assembly.
-
-The materialized candidate pools belong to Set-A tuning, Set-B validation, and
-the one-time Set-C evaluation. Retraining does not persist a 980K-query
-candidate pool. The `build_training_pairs --stage final_retrain` branch applies
-the frozen Set-A
-weak-label thresholds, recalls one bounded query batch, samples its negatives,
-reuses exact recall scores, computes raw features, and writes only partitioned
-pair and feature datasets. Audio and Graph FAISS searches run concurrently;
-candidate unions stay integer-coded, while exact Tag/BFS artist similarities are
-computed in sparse batches. Spark reads the output parts as one Parquet dataset.
-
-The retrain writer records a recoverable checkpoint approximately every
-1,024 queries and removes it after successful publication. Re-running the same
-command resumes from the last committed query; a changed input/output contract is
-rejected. The interval keeps parts near `--rows-per-file` instead of flushing one
-small Parquet file per recall batch.
-
-High-volume formal stages reserve 16 GiB by default and fail before writing
-when the target filesystem is below that threshold. Spark stages place shuffle
-and NumPy pair scratch under the output filesystem instead of `/tmp`; use
-`--scratch-root` for a larger dedicated volume or `--min-free-gb` to raise the
-site-specific reserve.
-
 `build_validation_groups` is a Spark stage. It reconstructs cleaned and scaled
 pre-PCA C1 vectors from the frozen C1 preprocessing and scaler; it does not use
 PCA-128/FAISS cosine. It fits acoustic p50/p90 on at most one million
