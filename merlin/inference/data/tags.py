@@ -10,8 +10,8 @@ import math
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-from .artifact_lineage import sha256_path
-from .parquet_io import parquet_rows
+from ..artifacts.integrity import sha256_path
+from ..artifacts.io import parquet_rows
 
 
 TAG_IDF_ARTIFACT_TYPE = "artist_term_idf"
