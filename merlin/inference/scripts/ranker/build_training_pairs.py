@@ -368,33 +368,33 @@ def _positive_checks(
     }
 
 
-def _final_feature_rows(
-    query_id: str,
-    rows: Sequence[Mapping[str, object]],
-    candidates: Sequence[Candidate],
-    audio_cache: Mapping[str, float | None],
-    computer: RankerV2FeatureComputer,
-) -> list[dict[str, object]]:
-    recalled_by_id = {candidate.track_id: candidate for candidate in candidates}
-    feature_candidates = []
-    for row in rows:
-        candidate_id = str(row["candidate_track_id"])
-        recalled_candidate = recalled_by_id.get(candidate_id)
-        scores = dict(recalled_candidate.recall_scores) if recalled_candidate else {}
-        audio_score = audio_cache.get(candidate_id)
-        if audio_score is not None:
-            scores["audio"] = audio_score
-        feature_candidates.append(Candidate(candidate_id, recall_scores=scores))
-    raw_rows = computer.compute_raw_many(query_id, feature_candidates)
-    return [
-        {
-            "query_track_id": query_id,
-            "candidate_track_id": candidate.track_id,
-            "label": int(row["label"]),
-            **raw,
-        }
-        for row, candidate, raw in zip(rows, feature_candidates, raw_rows, strict=True)
-    ]
+def _table_batch(
+    states: Sequence[
+        tuple[
+            str,
+            Sequence[Mapping[str, object]],
+            Sequence[Candidate] | EncodedCandidates,
+            Mapping[str, Mapping[str, float | None]],
+        ]
+    ],
+    computer: RankerFeatureComputer,
+    audits: Sequence[Mapping[str, object]],
+) -> StreamTableBatch:
+    """Materialize one aligned pair/feature batch directly as Arrow columns."""
+    import pyarrow as pa
+
+    pair_inputs: list[tuple[str, str, Mapping[str, float]]] = []
+    pair_rows: list[Mapping[str, object]] = []
+    weak_sources: Counter[str] = Counter()
+    recall_sources: Counter[str] = Counter()
+    for query_id, rows, candidates, signal_caches in states:
+        recalled_by_id = (
+            {candidate.track_id: candidate for candidate in candidates}
+            if not isinstance(candidates, EncodedCandidates)
+            else None
+        )
+        for row in rows:
+            pair_rows.append(row)
 
 
 def _final_query_rows(
