@@ -1196,22 +1196,56 @@ def _run(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
         manifest_path,
         feature_output,
         feature_manifest,
-    ) = _final_run_config(args, paths)
-    thresholds, audio, audio_retriever, tag, computer, pipeline = _final_runtime(
-        args, paths
+    ) = _run_config(args, paths)
+    checkpoint_path = output.with_suffix(output.suffix + ".checkpoint.json")
+    checkpoint_contract = {
+        "stage": "final_retrain",
+        "negative_mode": args.negative_mode,
+        "scope": scope,
+        "query_count": len(queries),
+        "rows_per_file": args.rows_per_file,
+        "positive_neighbor_limit": args.positive_neighbor_limit,
+        "split_assignments": str(args.split_assignments.resolve()),
+        "split_manifest": str(args.split_manifest.resolve()),
+        "thresholds": str(args.thresholds.resolve()),
+        "output": str(output.resolve()),
+        "features_output": str(feature_output.resolve()),
+    }
+    initial_checkpoint = load_stream_checkpoint(
+        checkpoint_path,
+        checkpoint_contract,
+        output,
+        feature_output,
+    )
+    processed_queries = (
+        int(initial_checkpoint.get("processed_queries", 0))
+        if initial_checkpoint is not None
+        else 0
+    )
+    if not 0 <= processed_queries <= len(queries):
+        raise ValueError("retrain checkpoint query position is invalid")
+    if processed_queries:
+        print(
+            f"retrain_resume queries={processed_queries}/{len(queries)}",
+            flush=True,
+        )
+    thresholds, audio, audio_retriever, tag, computer, recall_engine = _runtime(
+        args, paths, assignments
     )
     pair_manifest, _feature_manifest = write_training_and_feature_artifacts(
-        _final_query_rows(
-            queries,
+        _query_rows(
+            queries[processed_queries:],
             allowed,
             thresholds,
-            pipeline,
+            recall_engine,
             audio,
             audio_retriever,
             tag,
             computer,
             args.batch_size,
             args.positive_neighbor_limit,
+            query_offset=processed_queries,
+            total_query_count=len(queries),
         ),
         output,
         manifest_path,
@@ -1230,9 +1264,13 @@ def _run(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
         },
         scope=scope,
         rows_per_file=args.rows_per_file,
+        checkpoint_path=checkpoint_path,
+        checkpoint_contract=checkpoint_contract,
+        initial_checkpoint=initial_checkpoint,
+        candidate_aware_fraction=CANDIDATE_AWARE_FRACTION,
     )
     print(
-        f"training_pairs_ready scope={scope} stage=final_retrain "
+        f"training_pairs_ready scope={scope} stage=retrain "
         f"pairs={pair_manifest['pair_count']} output={output} "
         f"features={feature_output}"
     )
