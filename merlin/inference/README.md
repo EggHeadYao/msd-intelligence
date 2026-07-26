@@ -96,36 +96,24 @@ The exact command order and stage-specific requirements are documented in
 [`scripts/ranker/README.md`](scripts/ranker/README.md). Recall-only commands are
 documented in [`scripts/recall/README.md`](scripts/recall/README.md).
 
-## Ranker features
+## Frozen contracts
 
-The fixed feature order is exported as `FEATURE_ORDER` from
-`merlin.inference.ranking.features`:
+- Production C1/C2 indexes are normalized 128D `IndexFlatIP` artifacts with a
+  contiguous row-to-track Parquet mapping and matching manifest.
+- Training and inference share the same feature order, fill values,
+  interactions, means, standard deviations, and zero-variance handling.
+- Recall-source flags and popularity are audit fields, not ranker features.
+- Splits are song-safe; Set C cannot be consumed by tuning, retraining, or
+  ablation construction.
+- Set-B validation uses frozen Audio-dominant, Relation-dominant, and Mixed
+  query groups built from cleaned pre-PCA C1 signals.
+- Every formal consumer validates artifact version, hashes, and parent lineage
+  before loading data.
+- A schema, hash, lineage, or policy mismatch fails closed.
 
-```text
-cos_audio, cos_graph, has_graph, bfs_score, has_bfs,
-tag_tfidf_cosine, has_tags, same_release, has_release,
-year_gap, has_year, audio_tag_interaction, graph_bfs_interaction
-```
-
-Pair signals are computed independently of recall provenance. Missing continuous
-signals use Set-A fill statistics and retain availability masks. Interactions are
-computed after filling and before scaling. Popularity and recall-source flags are
-audit fields, not ranker features.
-
-## Ranker handoff
-
-Person A must hand off the frozen Set-A preprocessing and trained model together:
-
-```text
-ranker_feature_schema.json  # contract and ordered feature names
-ranker_scaler.json          # fill values, means, and standard deviations
-ranker_coefficients.json    # coefficients and intercept
-```
-
-Training and inference must use the same fill, interaction, and scaling order.
-The pipeline rejects a ranker whose schema version differs from its feature
-computer. Fixed Spark/Python pairs must match on features and raw margin within
-`1e-6` before the artifact is accepted.
+The canonical feature list and persistence rules are in
+[`ranking/features/README.md`](ranking/features/README.md). Set-C protocol and
+metric rules are in [`evaluation/README.md`](evaluation/README.md).
 
 ## FAISS artifacts
 
