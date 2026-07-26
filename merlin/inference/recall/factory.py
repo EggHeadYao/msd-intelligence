@@ -126,6 +126,63 @@ def load_recall_pipeline(
     )
 
 
+def load_streaming_recall_engine(
+    assignments: Mapping[str, str],
+    allowed_splits: frozenset[str],
+    paths: InferenceArtifactPaths = InferenceArtifactPaths(),
+    *,
+    graph_contract_key: str,
+    graph_contract_version: str,
+) -> StreamingRecallEngine:
+    """Load the streaming batch engine used by high-volume recall stages."""
+    policy: dict[str, Any] = load_candidate_policy(paths.candidate_policy)
+    audio = load_audio_index(
+        paths.audio_index,
+        paths.audio_mapping,
+        paths.audio_manifest,
+        paths.audio_encoder_metadata,
+    )
+    graph = FaissTrackIndex.from_files(
+        paths.graph_index,
+        paths.graph_mapping,
+        paths.graph_manifest,
+        paths.graph_encoder_metadata,
+        expected_space="graph",
+        expected_contract_key=graph_contract_key,
+        expected_contract=graph_contract_version,
+    )
+    catalog = load_catalog_context(paths.songs_metadata, paths.graph_edges)
+    tag = TagRetriever.from_data(
+        catalog.tag_data,
+        idf_values=load_tag_idf(
+            paths.tag_idf,
+            expected_graph_edges_path=paths.graph_edges,
+        ),
+        same_song=catalog.same_song,
+        artist_neighbor_limit=CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT,
+        max_term_artists=CANONICAL_TAG_MAX_TERM_ARTISTS,
+        per_artist_cap=CANONICAL_TAG_PER_ARTIST_CAP,
+    )
+    _audio, _graph, bfs, tag = build_canonical_retrievers(
+        audio,
+        graph,
+        paths,
+        catalog.same_song,
+        tag,
+    )
+    return StreamingRecallEngine(
+        audio,
+        graph,
+        bfs,
+        tag,
+        TrackCodec.build(assignments, allowed_splits, catalog.same_song),
+        {
+            str(name): int(limit)
+            for name, limit in policy["retriever_limits"].items()
+        },
+    )
+
+
 def validate_recall_low_memory(
     query_track_ids: tuple[str, ...],
     paths: InferenceArtifactPaths = InferenceArtifactPaths(),
