@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-from .parquet_io import parquet_rows
+from ..artifacts.io import parquet_rows
 
 
 @dataclass(frozen=True, slots=True)
