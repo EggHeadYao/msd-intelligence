@@ -459,33 +459,49 @@ def _table_batch(
     )
 
 
-def _final_query_rows(
+def _query_rows(
     queries: Sequence[str],
     allowed: set[str],
     thresholds: Mapping[str, object],
-    pipeline: RecallPipeline,
+    recall_engine: StreamingRecallEngine,
     audio,
     audio_retriever: VectorRetriever,
     tag: TagRetriever,
-    computer: RankerV2FeatureComputer,
+    computer: RankerFeatureComputer,
     batch_size: int,
     positive_neighbor_limit: int,
-) -> Iterator[tuple[list[dict[str, object]], list[dict[str, object]], Mapping[str, object]]]:
+    *,
+    query_offset: int = 0,
+    total_query_count: int | None = None,
+) -> Iterator[StreamTableBatch | StreamCheckpoint]:
+    total = len(queries) if total_query_count is None else total_query_count
     universe = tuple(sorted(allowed))
-    for start in range(0, len(queries), batch_size):
-        batch = queries[start : start + batch_size]
-        audio_neighbors = audio.search_many(batch, positive_neighbor_limit)
-        audio_override = {
-            query_id: audio_retriever.filter_neighbors(
-                query_id, neighbors, pipeline.retriever_limits["audio"]
+    last_checkpoint = query_offset
+    indexed_batches = iter(
+        (start, queries[start : start + batch_size])
+        for start in range(0, len(queries), batch_size)
+    )
+    current = next(indexed_batches, None)
+    with ThreadPoolExecutor(max_workers=1) as prefetch:
+        recalled_job = (
+            prefetch.submit(
+                recall_engine.search_many, current[1], positive_neighbor_limit
             )
-            for query_id, neighbors in zip(batch, audio_neighbors, strict=True)
-        }
-        recalled = pipeline.recall_many(batch, source_overrides={"audio": audio_override})
-        for query_id, neighbors in zip(batch, audio_neighbors, strict=True):
-            candidates, _audit = recalled[query_id]
-            artist, positives = _select_final_positives(
-                query_id, allowed, neighbors, audio_retriever, tag, thresholds
+            if current is not None
+            else None
+        )
+        while current is not None and recalled_job is not None:
+            start, batch = current
+            recalled = recalled_job.result()
+            following = next(indexed_batches, None)
+            following_job = (
+                prefetch.submit(
+                    recall_engine.search_many,
+                    following[1],
+                    positive_neighbor_limit,
+                )
+                if following is not None
+                else None
             )
             audio_cache = {
                 track_id: _finite(score)
