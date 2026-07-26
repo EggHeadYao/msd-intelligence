@@ -301,6 +301,32 @@ class RankerFeatureComputer:
 
     def _raw_tuple(
         self,
+        query_track_id: str,
+        candidate_id: str,
+        audio_raw: float | None,
+        graph_raw: float | None,
+        bfs_raw: float | None,
+        tags_raw: float | None,
+    ) -> tuple[float | None, ...]:
+        query = self.tracks.get(query_track_id, TrackMetadata())
+        other = self.tracks.get(candidate_id, TrackMetadata())
+        has_release = query.release_id is not None and other.release_id is not None
+        has_year = query.year is not None and other.year is not None
+        year_gap_raw = float(abs(query.year - other.year)) if has_year else None
+        return (
+            audio_raw,
+            graph_raw,
+            float(graph_raw is not None),
+            bfs_raw,
+            float(bfs_raw is not None),
+            tags_raw,
+            float(tags_raw is not None),
+            float(has_release and query.release_id == other.release_id),
+            float(has_release),
+            year_gap_raw,
+            float(has_year),
+        )
+
     @staticmethod
     def _vector_values(
         query_track_id: str,
