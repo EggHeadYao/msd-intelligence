@@ -192,7 +192,7 @@ def export_raw_pair_features(
                 raise ValueError("validation pairs are not clustered by query")
             seen_queries.add(query_id)
             pairs = list(grouped)
-            for pair, candidate, raw in compute(query_id, pairs):
+            for pair, candidate_id, raw in compute(query_id, pairs):
                 groups = []
                 for group in pair["validation_groups"]:
                     label = int(group["label"])
@@ -208,7 +208,7 @@ def export_raw_pair_features(
                 counts["rows"] += 1
                 yield {
                     "query_track_id": query_id,
-                    "candidate_track_id": candidate.track_id,
+                    "candidate_track_id": candidate_id,
                     "recall_sources": list(pair.get("recall_sources", [])),
                     "validation_groups": groups,
                     **raw,
