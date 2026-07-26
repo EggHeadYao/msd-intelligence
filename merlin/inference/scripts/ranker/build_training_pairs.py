@@ -164,7 +164,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--features-output", type=Path)
     parser.add_argument("--features-manifest", type=Path)
+    parser.add_argument(
+        "--full-training-pairs",
+        type=Path,
+        default=defaults.training_pairs,
+    )
+    parser.add_argument(
+        "--full-training-pairs-manifest",
+        type=Path,
+        default=defaults.training_pairs_manifest,
+    )
+    parser.add_argument(
+        "--full-features",
+        type=Path,
+        default=defaults.raw_pair_features,
+    )
+    parser.add_argument(
+        "--full-features-manifest",
+        type=Path,
+        default=defaults.raw_pair_features_manifest,
+    )
     parser.add_argument("--stage", choices=("tuning", "final_retrain"), default="tuning")
+    parser.add_argument(
+        "--negative-mode",
+        choices=("candidate_aware", "random_only"),
+        default="candidate_aware",
+    )
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--rows-per-file", type=int, default=250_000)
