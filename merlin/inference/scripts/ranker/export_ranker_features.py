@@ -107,14 +107,39 @@ def main() -> None:
             expected_stage=args.stage,
         )
     else:
-        if args.stage != "tuning":
-            raise ValueError("validation features are only defined for tuning")
+        if args.stage not in {"tuning", "final_evaluation"}:
+            raise ValueError("validation features require tuning or final_evaluation")
+        if is_set_c:
+            load_set_c_protocol(
+                args.evaluation_protocol,
+                expected_scope=args.scope,
+                expected_parent_hashes={
+                    "split_manifest": sha256_path(paths.split_manifest),
+                    "split_assignments": sha256_path(paths.split_assignments),
+                    "candidate_policy_manifest": sha256_path(paths.candidate_policy),
+                    "validation_group_thresholds": sha256_path(
+                        paths.validation_group_thresholds
+                    ),
+                    "ranker_training_manifest": sha256_path(
+                        paths.ranker_training_manifest
+                    ),
+                    "no_hard_neg_training_manifest": sha256_path(
+                        paths.no_hard_neg_training_manifest
+                    ),
+                    "audio_index_manifest": sha256_path(paths.audio_manifest),
+                    "graph_index_manifest": sha256_path(paths.graph_manifest),
+                    "tag_idf": sha256_path(paths.tag_idf),
+                    "songs_metadata": sha256_path(paths.songs_metadata),
+                    "graph_edges": sha256_path(paths.graph_edges),
+                },
+            )
         load_validation_group_manifest(
             pairs_manifest,
             thresholds_path=args.validation_thresholds,
             positives_path=args.validation_positives,
             validation_pairs_path=pairs,
             expected_scope=args.scope,
+            expected_apply_split="set_c" if is_set_c else "set_b",
         )
     audio = load_audio_index()
     graph = FaissTrackIndex.from_files(
@@ -143,7 +168,7 @@ def main() -> None:
     _audio, _graph, bfs, tag = build_canonical_retrievers(
         audio, graph, paths, same_song, tag
     )
-    computer = RankerV2FeatureComputer(
+    computer = RankerFeatureComputer(
         tracks=catalog.ranker_tracks,
         signals=PairSignalLookups(
             audio=audio.similarity,
@@ -152,6 +177,16 @@ def main() -> None:
             tags=tag.pair_score,
             audio_batch=audio.similarities,
             graph_batch=graph.similarities,
+            bfs_batch=lambda query_id, candidate_ids: bfs.pair_scores(
+                [(query_id, candidate_id) for candidate_id in candidate_ids]
+            ),
+            tags_batch=lambda query_id, candidate_ids: tag.pair_scores(
+                [(query_id, candidate_id) for candidate_id in candidate_ids]
+            ),
+            audio_pairs=audio.pair_similarities,
+            graph_pairs=graph.pair_similarities,
+            bfs_pairs=bfs.pair_scores,
+            tags_pairs=tag.pair_scores,
         ),
     )
     manifest = export_raw_pair_features(
@@ -167,6 +202,11 @@ def main() -> None:
             "tag_idf": paths.tag_idf,
             "songs_metadata": paths.songs_metadata,
             "graph_edges": paths.graph_edges,
+            **(
+                {"evaluation_protocol": args.evaluation_protocol}
+                if is_set_c
+                else {}
+            ),
         },
         scope=args.scope,
         pair_kind=args.pair_kind,
