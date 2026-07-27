@@ -1,0 +1,104 @@
+{
+  "final_gradient_norm": 0.000966084635677014,
+  "final_training_data_loss": 0.0033359308060204058,
+  "final_training_objective": 0.0033523527377549668,
+  "iterations_completed": 100,
+  "stop_reason": "max_iterations",
+  "train": {
+    "count": 420013,
+    "mae_years": 7.390905900822198,
+    "raw_mae_years": 7.390905900822198,
+    "raw_out_of_range_rate": 0.0,
+    "raw_rmse_years": 11.01792385326924,
+    "rmse_years": 11.01792385326924,
+    "signed_error_years": 2.8779931382743897
+  },
+  "validation": {
+    "by_decade": [
+      {
+        "count": 4,
+        "decade": 1920,
+        "mae_years": 72.4007235036429,
+        "rmse_years": 72.44155174879724,
+        "signed_error_years": 72.4007235036429
+      },
+      {
+        "count": 9,
+        "decade": 1930,
+        "mae_years": 66.66985695839129,
+        "rmse_years": 66.73737665973948,
+        "signed_error_years": 66.66985695839129
+      },
+      {
+        "count": 10,
+        "decade": 1940,
+        "mae_years": 57.49157356995018,
+        "rmse_years": 57.588933369142254,
+        "signed_error_years": 57.49157356995018
+      },
+      {
+        "count": 182,
+        "decade": 1950,
+        "mae_years": 43.936896005506156,
+        "rmse_years": 43.97603230396034,
+        "signed_error_years": 43.936896005506156
+      },
+      {
+        "count": 943,
+        "decade": 1960,
+        "mae_years": 34.33509748108049,
+        "rmse_years": 34.437354605573624,
+        "signed_error_years": 34.33509748108049
+      },
+      {
+        "count": 1956,
+        "decade": 1970,
+        "mae_years": 25.683258180138623,
+        "rmse_years": 25.840982578353117,
+        "signed_error_years": 25.683258180138623
+      },
+      {
+        "count": 3270,
+        "decade": 1980,
+        "mae_years": 15.371657413327771,
+        "rmse_years": 15.66170940666849,
+        "signed_error_years": 15.371657413327771
+      },
+      {
+        "count": 11578,
+        "decade": 1990,
+        "mae_years": 5.637717049223354,
+        "rmse_years": 6.255034803191859,
+        "signed_error_years": 5.635872207812839
+      },
+      {
+        "count": 27443,
+        "decade": 2000,
+        "mae_years": 3.734670459918892,
+        "rmse_years": 4.4219498820903365,
+        "signed_error_years": -3.4149289745667364
+      },
+      {
+        "count": 732,
+        "decade": 2010,
+        "mae_years": 8.413557266789251,
+        "rmse_years": 8.482035085794733,
+        "signed_error_years": -8.413557266789251
+      }
+    ],
+    "count": 46127,
+    "distinct_artists": 2534,
+    "distinct_tracks": 46127,
+    "mae_years": 6.8563662373162195,
+    "maximum_raw_prediction_year": 2005.212220656157,
+    "median_absolute_error_years": 4.904582369103991,
+    "minimum_raw_prediction_year": 1997.144075381827,
+    "raw_mae_years": 6.8563662373162195,
+    "raw_out_of_range_rate": 0.0,
+    "raw_rmse_years": 10.110322359016264,
+    "rmse_years": 10.110322359016264,
+    "signed_error_years": 2.3352557230183186,
+    "within_10_years_rate": 0.8438658486352896,
+    "within_5_years_rate": 0.5100266655104386
+  }
+}

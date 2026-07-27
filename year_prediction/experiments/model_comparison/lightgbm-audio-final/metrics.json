@@ -1,0 +1,182 @@
+{
+  "best_iteration": 4962,
+  "target": {
+    "maximum": 2011,
+    "minimum": 1922,
+    "normalization": "(year - 1922) / 89"
+  },
+  "test": {
+    "by_decade": [
+      {
+        "count": 8,
+        "decade": 1920,
+        "mae_years": 59.12210669060522,
+        "rmse_years": 59.42250783237491,
+        "signed_error_years": 59.12210669060522
+      },
+      {
+        "count": 15,
+        "decade": 1930,
+        "mae_years": 54.191805069144465,
+        "rmse_years": 54.34303611067516,
+        "signed_error_years": 54.191805069144465
+      },
+      {
+        "count": 53,
+        "decade": 1940,
+        "mae_years": 38.60072927011058,
+        "rmse_years": 39.0094156087586,
+        "signed_error_years": 38.60072927011058
+      },
+      {
+        "count": 196,
+        "decade": 1950,
+        "mae_years": 32.46969360342321,
+        "rmse_years": 32.8687029831602,
+        "signed_error_years": 32.46969360342321
+      },
+      {
+        "count": 1253,
+        "decade": 1960,
+        "mae_years": 21.34972466999958,
+        "rmse_years": 22.42293033024696,
+        "signed_error_years": 21.348492566158125
+      },
+      {
+        "count": 2433,
+        "decade": 1970,
+        "mae_years": 14.634468130556657,
+        "rmse_years": 16.015094911441548,
+        "signed_error_years": 14.617283824626611
+      },
+      {
+        "count": 3678,
+        "decade": 1980,
+        "mae_years": 7.343892035555005,
+        "rmse_years": 8.902707169146883,
+        "signed_error_years": 6.492276513092298
+      },
+      {
+        "count": 11969,
+        "decade": 1990,
+        "mae_years": 4.433598662593606,
+        "rmse_years": 5.608010739802427,
+        "signed_error_years": 0.7252940177465984
+      },
+      {
+        "count": 29050,
+        "decade": 2000,
+        "mae_years": 4.514590930921447,
+        "rmse_years": 6.218470177523051,
+        "signed_error_years": -3.540977659154951
+      },
+      {
+        "count": 781,
+        "decade": 2010,
+        "mae_years": 6.563955463890764,
+        "rmse_years": 7.802906488560011,
+        "signed_error_years": -6.562139122203627
+      }
+    ],
+    "count": 49436,
+    "macro_decade_mae_years": 24.32245645268005,
+    "mae_years": 5.833896584679657,
+    "maximum_raw_prediction_year": 2012.104942197181,
+    "median_absolute_error_years": 3.9814070632460243,
+    "minimum_raw_prediction_year": 1967.2280869433262,
+    "raw_mae_years": 5.834011166971318,
+    "raw_out_of_range_rate": 0.0003641071284084473,
+    "raw_rmse_years": 8.363379039899433,
+    "rmse_years": 8.36330463630272,
+    "signed_error_years": -0.06921128896893687,
+    "within_10_years_rate": 0.8324095800631119,
+    "within_5_years_rate": 0.5906222186261024
+  },
+  "validation": {
+    "by_decade": [
+      {
+        "count": 4,
+        "decade": 1920,
+        "mae_years": 53.72840012965503,
+        "rmse_years": 53.8060920145272,
+        "signed_error_years": 53.72840012965503
+      },
+      {
+        "count": 9,
+        "decade": 1930,
+        "mae_years": 49.91531988446041,
+        "rmse_years": 50.46762814662634,
+        "signed_error_years": 49.91531988446041
+      },
+      {
+        "count": 10,
+        "decade": 1940,
+        "mae_years": 43.83750806649878,
+        "rmse_years": 44.24577337539166,
+        "signed_error_years": 43.83750806649878
+      },
+      {
+        "count": 182,
+        "decade": 1950,
+        "mae_years": 32.2970281105642,
+        "rmse_years": 32.70836956331092,
+        "signed_error_years": 32.2970281105642
+      },
+      {
+        "count": 943,
+        "decade": 1960,
+        "mae_years": 21.531727180165763,
+        "rmse_years": 22.494414834660905,
+        "signed_error_years": 21.531727180165763
+      },
+      {
+        "count": 1956,
+        "decade": 1970,
+        "mae_years": 14.457984924764299,
+        "rmse_years": 15.784748517199498,
+        "signed_error_years": 14.434897961203406
+      },
+      {
+        "count": 3270,
+        "decade": 1980,
+        "mae_years": 7.056383422378895,
+        "rmse_years": 8.688976865940866,
+        "signed_error_years": 6.298511490098901
+      },
+      {
+        "count": 11578,
+        "decade": 1990,
+        "mae_years": 4.569345733364312,
+        "rmse_years": 5.768140724255353,
+        "signed_error_years": 0.7631578284125576
+      },
+      {
+        "count": 27443,
+        "decade": 2000,
+        "mae_years": 4.361929493165248,
+        "rmse_years": 6.004889429222064,
+        "signed_error_years": -3.277207574267587
+      },
+      {
+        "count": 732,
+        "decade": 2010,
+        "mae_years": 7.330536964014829,
+        "rmse_years": 8.443968198637938,
+        "signed_error_years": -7.321368560864532
+      }
+    ],
+    "count": 46127,
+    "macro_decade_mae_years": 23.908616390903177,
+    "mae_years": 5.563194349310934,
+    "maximum_raw_prediction_year": 2013.7269085697706,
+    "median_absolute_error_years": 3.88835589629457,
+    "minimum_raw_prediction_year": 1957.9032011219497,
+    "raw_mae_years": 5.563510885044169,
+    "raw_out_of_range_rate": 0.00034686842846922626,
+    "raw_rmse_years": 7.911739624992255,
+    "rmse_years": 7.911465241310071,
+    "signed_error_years": -0.22425066702620164,
+    "within_10_years_rate": 0.8485919309731828,
+    "within_5_years_rate": 0.6049818978038892
+  }
+}
