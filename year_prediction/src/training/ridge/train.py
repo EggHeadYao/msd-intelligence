@@ -27,9 +27,11 @@ from data import (  # noqa: E402
     spark_path,
 )
 from distributed import (  # noqa: E402
+    direct_batch_statistics,
     direct_full_batch_statistics,
     evaluate_linear_model,
     prediction_row,
+    sample_mini_batch,
 )
 from model_io import (  # noqa: E402
     prepare_output_directory,
@@ -54,7 +56,7 @@ PREDICTION_SCHEMA = StructType(
 
 
 def default_config_path() -> Path:
-    return PROJECT_DIR / "config" / "experiment_a" / "ridge_t90.json"
+    return PROJECT_DIR / "config" / "ridge_t90.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -106,14 +108,20 @@ def validate_config(config: dict[str, Any]) -> None:
     require_number(config, "l2", 0.0, strict=False)
     require_number(config, "gradient_tolerance", 0.0, strict=False)
     execution = config["execution"]
-    expected = {
-        "aggregation": "direct_reduce",
-        "batch_fraction": 1.0,
-        "broadcast_weights": False,
-        "persist_training_data": False,
-    }
-    if execution != expected:
-        raise ValueError(f"Unsupported execution configuration: expected={expected}")
+    if execution.get("aggregation") != "direct_reduce":
+        raise ValueError("Unsupported gradient aggregation")
+    if execution.get("broadcast_weights") is not False:
+        raise ValueError("broadcast_weights must be false")
+    if execution.get("persist_training_data") is not False:
+        raise ValueError("persist_training_data must be false")
+    batch_fraction = float(execution.get("batch_fraction", 0.0))
+    if not math.isfinite(batch_fraction) or not 0.0 < batch_fraction <= 1.0:
+        raise ValueError("batch_fraction must be finite and in (0, 1]")
+    sampling_seed = execution.get("sampling_seed")
+    if batch_fraction < 1.0 and (
+        not isinstance(sampling_seed, int) or isinstance(sampling_seed, bool)
+    ):
+        raise ValueError("sampling_seed must be an integer for mini-batch training")
 
 
 def load_config(
@@ -167,13 +175,21 @@ def train(
         else 0.0
     )
     history: list[dict[str, Any]] = []
+    batch_fraction = float(config["execution"]["batch_fraction"])
+    sampling_seed = config["execution"].get("sampling_seed")
     optimizer_started = time.perf_counter()
     stop_reason = "max_iterations"
     for iteration in range(1, int(config["max_iterations"]) + 1):
         iteration_started = time.perf_counter()
         gradient_started = time.perf_counter()
-        statistics = direct_full_batch_statistics(
-            training_points,
+        batch_seed = None if sampling_seed is None else int(sampling_seed) + iteration
+        iteration_points = (
+            training_points
+            if batch_fraction == 1.0
+            else sample_mini_batch(training_points, batch_fraction, batch_seed)
+        )
+        statistics = direct_batch_statistics(
+            iteration_points,
             weights,
             intercept,
             float(config["l2"]),
@@ -202,6 +218,9 @@ def train(
             "training_objective_before_update": statistics.objective,
             "gradient_norm_before_update": norm,
             "training_count": statistics.count,
+            "training_population": data.counts[TRAIN],
+            "batch_fraction": batch_fraction,
+            "batch_seed": batch_seed,
             "learning_rate": float(config["learning_rate"]),
             "updated": not converged,
             "validation_after_update": validation,
@@ -293,6 +312,11 @@ def train(
             "final_evaluation": final_evaluation_seconds,
             "prediction_write": prediction_seconds,
             "total": time.perf_counter() - total_started,
+        },
+        "optimizer_work": {
+            "sampled_rows": sum(row["training_count"] for row in history),
+            "effective_data_passes": sum(row["training_count"] for row in history)
+            / data.counts[TRAIN],
         },
     }
     write_json(output / "model.json", model)
