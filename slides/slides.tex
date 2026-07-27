@@ -382,6 +382,92 @@
 
 \end{frame}
 
+\begin{frame}{C2: Canonical Heterogeneous Graph}
+
+\vspace{-.22cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  % Typed graph
+  \draw[rounded corners=4pt,draw=projectteal!55,fill=white]
+    (.10,3.86) rectangle (5.35,7.18);
+  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
+    at (.38,6.88) {Four canonical relation types};
+  \node[merlin card,draw=projectink,fill=projectink,text=white,
+    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (gt)
+    at (1.10,5.85) {Track};
+  \node[merlin card,draw=projectblue,fill=projectblue!12,
+    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (ga)
+    at (2.92,5.85) {Artist};
+  \node[merlin card,draw=projectgold,fill=projectgold!12,
+    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (gr)
+    at (1.10,4.55) {Release};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!12,
+    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (gm)
+    at (4.60,4.55) {Term};
+  \node[merlin card,draw=projectblue,fill=projectblue!12,
+    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (ga2)
+    at (4.60,6.20) {Artist};
+  \draw[merlin arrow] (gt) -- node[above,font=\tiny] {Track--Artist} (ga);
+  \draw[merlin arrow] (gt) -- node[left,font=\tiny] {Track--Release} (gr);
+  \draw[merlin arrow] (ga) -- node[below right,font=\tiny] {Artist--Term} (gm);
+  \draw[merlin arrow] (ga) -- node[above,font=\tiny] {directed similarity} (ga2);
+  \node[font=\tiny,text=projectink,text width=4.55cm,align=center]
+    at (2.72,4.10) {No pseudo song-level repetition of artist or term relations.};
+
+  % Semantic rebuild and exact artifact scale
+  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
+    (5.60,3.86) rectangle (11.30,7.18);
+  \node[font=\scriptsize\bfseries,text=projectgold!55!black,text width=5.05cm,
+    align=center] at (8.45,6.91) {Semantic graph rebuild};
+  \node[merlin card,draw=projectink!60,fill=white,text width=4.85cm,
+    minimum height=.72cm,font=\scriptsize] at (8.45,5.92)
+    {\bfseries $\sim 135$M incorrect track-expanded rows\\[-2pt]
+     \mdseries\tiny rebuilt with correct entity semantics---not deduplicated};
+  \draw[merlin arrow,draw=projectgold!80] (8.45,5.49) -- (8.45,5.15);
+  \node[merlin card,draw=projectgold,fill=projectgold!12,text width=2.15cm,
+    minimum height=.90cm] at (7.15,4.68)
+    {\bfseries 5,311,294\\[-2pt]\mdseries\scriptsize canonical edges};
+  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=2.15cm,
+    minimum height=.90cm] at (9.75,4.68)
+    {\bfseries 1,229,615\\[-2pt]\mdseries\scriptsize typed nodes};
+
+  % Meta-paths
+  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
+    (.10,.72) rectangle (6.42,3.60);
+  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
+    at (.38,3.30) {Four track-rooted meta-paths};
+  \node[anchor=west,font=\fontsize{7}{8}\selectfont] at (.45,2.78)
+    {\bfseries P1: Track $\rightarrow$ Artist $\rightarrow$ Track};
+  \node[anchor=west,font=\fontsize{7}{8}\selectfont,align=left] at (.45,2.23)
+    {\bfseries P2: Track $\rightarrow$ Artist $\rightarrow$ Similar Artist\\[-2pt]
+     \hspace{.54cm}$\rightarrow$ Track};
+  \node[anchor=west,font=\fontsize{7}{8}\selectfont,align=left] at (.45,1.57)
+    {\bfseries P3: Track $\rightarrow$ Artist $\rightarrow$ Term $\rightarrow$ Artist\\[-2pt]
+     \hspace{.54cm}$\rightarrow$ Track};
+  \node[anchor=west,font=\fontsize{7}{8}\selectfont] at (.45,.98)
+    {\bfseries P4: Track $\rightarrow$ Release $\rightarrow$ Track};
+
+  % Export-versus-serving boundary
+  \draw[rounded corners=4pt,draw=projectpurple!65,fill=projectpurple!4]
+    (6.67,.72) rectangle (11.30,3.60);
+  \node[font=\scriptsize\bfseries,text=projectpurple!75!black,text width=4.05cm,
+    align=center] at (8.98,3.28) {Export $\neq$ serving coverage};
+  \node[font=\fontsize{6.3}{7.2}\selectfont,text width=3.98cm,align=center]
+    at (8.98,2.76) {Encoder export: \textbf{1M normalized 128D roots}};
+  \node[font=\fontsize{6.3}{7.2}\selectfont,text width=3.98cm,align=center]
+    at (8.98,2.42) {Current Graph FAISS artifact: \textbf{1M rows}};
+  \node[merlin card,draw=projectpurple!55,fill=white,text width=3.72cm,
+    minimum height=.52cm,font=\fontsize{5.4}{6.2}\selectfont] at (8.98,1.75)
+    {$\texttt{has\_graph}(q,c)=1$ iff both are context-bearing\\and in the serving mapping};
+  \node[font=\fontsize{5.6}{6.4}\selectfont\bfseries,text=projectpurple!80!black,
+    text width=4.05cm,align=center] at (8.98,.93)
+    {Context-count audit filters roots; masks and other paths cover missing Graph.};
+
+  \node[anchor=south east,font=\tiny\itshape,text=projectteal!80!black]
+    at (11.20,.26) {serving policy: at most 250 Graph candidates per query};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
