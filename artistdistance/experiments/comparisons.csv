@@ -1,0 +1,5 @@
+comparison,baseline,candidate,wall_speedup
+engine_avro,mapreduce-avro,spark-avro,14.071
+engine_parquet,mapreduce-parquet,spark-parquet,14.436
+format_mapreduce,mapreduce-avro,mapreduce-parquet,0.953
+format_spark,spark-avro,spark-parquet,0.978

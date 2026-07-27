@@ -1,0 +1,5 @@
+engine,format,runs,median_wall_seconds,min_wall_seconds,max_wall_seconds,wall_iqr_seconds,median_yarn_seconds,median_memory_seconds,median_vcore_seconds,expected_total,reachable,unreachable,max_distance,all_verified
+mapreduce,avro,5,1368.240,1347.070,1384.870,13.120,538.505,2627413.000,1897.000,44745,43228,1517,10,true
+mapreduce,parquet,5,1435.800,1407.110,1444.370,12.490,597.707,2956610.000,2156.000,44745,43228,1517,10,true
+spark,avro,5,97.240,94.950,101.960,2.330,73.142,289864.000,177.000,44745,43228,1517,10,true
+spark,parquet,5,99.460,99.190,102.730,1.140,78.502,314957.000,192.000,44745,43228,1517,10,true
