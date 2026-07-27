@@ -300,6 +300,88 @@
 
 \end{frame}
 
+\begin{frame}{C1: PCA Compression and Verified Semantic Results}
+
+\vspace{-.24cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[rounded corners=2pt,fill=projectteal,text=white,
+    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (.88,7.18) {VERIFIED RESULT};
+
+  % Frozen C1 transformation
+  \node[merlin card,text width=1.45cm,inner xsep=2pt,minimum height=.68cm,
+    font=\scriptsize] (p5m) at (1.20,6.48) {Model-ready matrix};
+  \node[merlin card,draw=projectblue,fill=projectblue!10,text width=1.82cm,
+    inner xsep=1pt,minimum height=.68cm,font=\fontsize{7}{8}\selectfont] (p5s) at (3.35,6.48)
+    {StandardScaler\\[-2pt]\tiny mean + std};
+  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=1.62cm,
+    inner xsep=2pt,minimum height=.68cm,font=\scriptsize] (p5p) at (5.65,6.48)
+    {PCA-128\\[-2pt]\tiny no whitening};
+  \node[merlin card,text width=1.26cm,inner xsep=2pt,minimum height=.68cm,
+    font=\scriptsize] (p5l) at (7.82,6.48) {L2 normalize};
+  \node[merlin card,draw=projectgold,fill=projectgold!12,text width=1.48cm,
+    inner xsep=2pt,minimum height=.68cm,font=\scriptsize] (p5c) at (10.02,6.48)
+    {cosine retrieval};
+  \draw[merlin arrow] (p5m) -- (p5s);
+  \draw[merlin arrow] (p5s) -- (p5p);
+  \draw[merlin arrow] (p5p) -- (p5l);
+  \draw[merlin arrow] (p5l) -- (p5c);
+
+  \node[merlin note,text width=2.35cm] at (3.35,5.72) {prevents scale-dominant features};
+  \node[merlin note,text width=2.55cm,font=\fontsize{6}{7}\selectfont] at (5.65,5.72)
+    {Spark PCA projection; no whitening step};
+  \node[merlin note,text width=2.15cm] at (7.82,5.72) {inner product $=$ cosine};
+
+  % Qualitative semantic-sanity distribution view
+  \draw[rounded corners=4pt,draw=projectteal!55,fill=white,line width=.8pt]
+    (.12,.92) rectangle (7.20,5.28);
+  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
+    at (.42,4.98) {Semantic sanity --- schematic densities};
+  \draw[->,draw=projectink!75,line width=.8pt] (.75,1.55) -- (6.75,1.55);
+  \draw[draw=projectink!25] (.75,1.55) -- (.75,4.50);
+
+  \path[fill=black!18,draw=black!45,line width=.8pt]
+    (.88,1.55) -- (1.15,1.72) -- (1.45,2.22) -- (1.78,3.25) --
+    (2.08,3.62) -- (2.38,3.05) -- (2.72,2.18) -- (3.08,1.72) -- (3.42,1.55) -- cycle;
+  \path[fill=projectblue!24,draw=projectblue,line width=.9pt]
+    (2.15,1.55) -- (2.52,1.70) -- (2.92,2.18) -- (3.34,3.22) --
+    (3.72,3.85) -- (4.08,3.24) -- (4.47,2.20) -- (4.86,1.72) -- (5.18,1.55) -- cycle;
+  \path[fill=projectteal!25,draw=projectteal,line width=.9pt]
+    (3.35,1.55) -- (3.72,1.73) -- (4.12,2.20) -- (4.58,3.30) --
+    (5.00,4.12) -- (5.42,3.38) -- (5.82,2.25) -- (6.20,1.72) -- (6.52,1.55) -- cycle;
+
+  \node[font=\fontsize{5.8}{6.6}\selectfont\bfseries,text=projectteal!80!black,
+    text width=6.25cm,align=center] at (3.65,4.43)
+    {10K pairs/type $\cdot$ matched random (year + coverage)\\[-1pt]
+     frozen transform replay $\cdot$ 2K bootstrap};
+  \node[font=\tiny,fill=black!18,inner sep=2pt,align=center] at (1.62,1.18)
+    {matched random\\mean .0246};
+  \node[font=\tiny,fill=projectblue!20,inner sep=2pt,align=center] at (3.62,1.18)
+    {same artist\\mean .2670};
+  \node[font=\tiny,fill=projectteal!20,inner sep=2pt,align=center] at (5.45,1.18)
+    {same release\\mean .3319};
+
+  % Exact verified summaries
+  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=3.48cm,
+    minimum height=.67cm,font=\scriptsize] at (9.25,4.68)
+    {\bfseries $1{,}000{,}000 \times 128$D\\[-2pt]\mdseries\tiny normalized C1 embeddings};
+  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=3.48cm,
+    minimum height=.67cm,font=\scriptsize] at (9.25,3.66)
+    {\bfseries $\approx 90.80\%$\\[-2pt]\mdseries\tiny cumulative explained variance};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=3.48cm,
+    minimum height=.67cm,font=\scriptsize] at (9.25,2.64)
+    {\bfseries Pearson $r=0.9981$--$0.9988$\\[-2pt]\mdseries\tiny across the three pair cohorts};
+  \node[merlin card,draw=projectgold,fill=projectgold!9,text width=3.48cm,
+    minimum height=.78cm,font=\scriptsize] at (9.25,1.50)
+    {\bfseries $g=1.06$ artist; $1.35$ release\\[-2pt]
+     \mdseries\tiny each against random pairs};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.55cm,
+    align=center,minimum height=.48cm,font=\fontsize{7}{8}\selectfont\bfseries] at (5.70,.28)
+    {Formal L1-1: PASS. PCA-128 preserves metadata-correlated acoustic structure---not user preference or perceptual similarity.};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
