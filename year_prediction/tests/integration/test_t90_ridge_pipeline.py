@@ -158,8 +158,8 @@ class RidgePipelineTest(unittest.TestCase):
             self.assertEqual(metrics["train"]["count"], 6)
             self.assertEqual(metrics["validation"]["count"], 2)
             self.assertEqual(predictions.count(), 2)
-            self.assertEqual(baselines["mean"]["count"], 2)
-            self.assertEqual(baselines["median"]["count"], 2)
+            self.assertEqual(baselines["constant-mean"]["validation"]["count"], 2)
+            self.assertEqual(baselines["constant-median"]["validation"]["count"], 2)
             self.assertGreater(run_metadata["timing_seconds"]["gradient_reduce"], 0.0)
             validate_model(output, self.spark)
 
