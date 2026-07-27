@@ -230,6 +230,76 @@
 
 \end{frame}
 
+\begin{frame}{C1: Input, Processing, Output, and Role}
+
+\vspace{-.18cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  % C1 transformation pipeline
+  \node[merlin card,draw=projectink,fill=projectink,text=white,
+    text width=1.08cm,inner xsep=2pt,minimum height=1.04cm] (c1raw) at (.72,6.12)
+    {\bfseries 563D\\[-2pt]\scriptsize nullable raw view};
+  \node[merlin card,draw=projectblue,fill=projectblue!11,
+    text width=1.72cm,inner xsep=2pt,minimum height=1.04cm] (prep) at (2.40,6.12)
+    {\color{projectblue!70!black}\bfseries Preprocess\\[-2pt]
+     \mdseries\tiny median fill + masks\\[-1pt] encodings + clip/log};
+  \node[merlin card,draw=projectblue!70,fill=white,
+    text width=1.52cm,inner xsep=2pt,minimum height=1.04cm,
+    font=\fontsize{7}{8}\selectfont] (matrix) at (4.42,6.12)
+    {\bfseries 577 candidates\\[-2pt]\mdseries\tiny after engineering\\[-1pt]
+     $-14$ constants\\[-1pt]\bfseries 563 selected};
+  \node[merlin card,draw=projectteal,fill=projectteal!12,
+    text width=1.78cm,inner xsep=2pt,minimum height=1.04cm] (pca) at (6.52,6.12)
+    {\color{projectteal!80!black}\bfseries Spark ML\\[-2pt]
+     \mdseries\tiny StandardScaler\\[-1pt] center + unit std\\[-1pt] PCA-128};
+  \node[merlin card,draw=projectteal!75,fill=white,
+    text width=1.20cm,inner xsep=2pt,minimum height=1.04cm] (embed) at (8.55,6.12)
+    {\bfseries Audio vector\\[-2pt]\mdseries\scriptsize 128D + L2 norm};
+  \node[merlin card,draw=projectgold,fill=projectgold!14,
+    text width=1.36cm,inner xsep=2pt,minimum height=1.04cm] (c1faiss) at (10.45,6.12)
+    {\color{projectgold!60!black}\bfseries Retrieval role\\[-2pt]\mdseries\tiny IndexFlatIP\\[-1pt] cap $\leq 250$};
+
+  \draw[merlin arrow] (c1raw) -- (prep);
+  \draw[merlin arrow] (prep) -- (matrix);
+  \draw[merlin arrow] (matrix) -- (pca);
+  \draw[merlin arrow] (pca) -- (embed);
+  \draw[merlin arrow] (embed) -- (c1faiss);
+
+  \node[merlin note,text width=10.2cm,font=\fontsize{7}{8}\selectfont] at (5.70,4.64)
+    {The formal artifact starts and ends at \textbf{563 dimensions}, but the columns change after engineering and constant removal.};
+
+  % Inputs, independence boundary, and produced artifacts
+  \node[merlin card,draw=projectblue,fill=projectblue!7,
+    minimum width=3.42cm,minimum height=2.30cm,text width=3.02cm] at (1.80,2.55)
+    {\color{projectblue!70!black}\bfseries Audio input\\[3pt]
+     \mdseries\scriptsize Timbre + pitch summaries\\
+     rhythm + tempo + duration\\
+     loudness + confidence\\
+     segment-level statistics\\
+     availability information};
+
+  \node[merlin card,draw=projectpurple,fill=projectpurple!7,
+    minimum width=3.42cm,minimum height=2.30cm,text width=3.02cm] at (5.70,2.55)
+    {\color{projectpurple!75!black}\bfseries Acoustic independence\\[3pt]
+     \mdseries\scriptsize C1 does \textbf{not} use\\[2pt]
+     artist \quad release\\
+     year \quad popularity\\[4pt]
+     \color{projectink}\scriptsize Metadata-independent audio retrieval.};
+
+  \node[merlin card,draw=projectteal,fill=projectteal!7,
+    minimum width=3.42cm,minimum height=2.30cm,text width=3.02cm] at (9.60,2.55)
+    {\color{projectteal!80!black}\bfseries Output vs retrieval\\[3pt]
+     \mdseries\fontsize{7}{8}\selectfont C1: $1$M $\times 128$D normalized embeddings\\
+     frozen metadata + scaler + PCA\\[2pt]
+     FAISS: exact IP index + ID mapping\\
+     \color{projectink}Audio cap: $\leq 250$/query};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,
+    minimum width=8.1cm,minimum height=.60cm,font=\small\bfseries]
+    at (5.70,.06) {C1 maps nullable audio features into a compact retrieval space.};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
