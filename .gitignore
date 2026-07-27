@@ -13,6 +13,9 @@ artistdistance/target/
 !year_prediction/
 !year_prediction/**
 
+!drill/
+!drill/**
+
 !slides/
 !slides/img
 !slides/img/**
