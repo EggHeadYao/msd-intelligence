@@ -468,6 +468,92 @@
 
 \end{frame}
 
+\begin{frame}{C2: Eligibility-Aware Mixed Walks and Spark Word2Vec}
+
+\vspace{-.22cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  % End-to-end C2 representation flow
+  \node[merlin card,text width=1.05cm,inner xsep=2pt,minimum height=.72cm,
+    font=\tiny] (wgraph) at (.70,6.72) {canonical typed graph};
+  \node[merlin card,text width=1.18cm,inner xsep=2pt,minimum height=.72cm,
+    font=\tiny] (wadj) at (2.25,6.72) {paired compact adjacency};
+  \node[merlin card,draw=projectblue,fill=projectblue!9,text width=1.25cm,
+    inner xsep=2pt,minimum height=.72cm,font=\tiny] (wwalk) at (3.95,6.72)
+    {eligible mixed walks};
+  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=1.20cm,
+    inner xsep=2pt,minimum height=.72cm,font=\tiny] (wcorp) at (5.68,6.72)
+    {10M sequences\\$r=10, L=40$};
+  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=1.18cm,
+    inner xsep=2pt,minimum height=.72cm,font=\tiny] (ww2v) at (7.36,6.72)
+    {Spark Word2Vec-128};
+  \node[merlin card,text width=1.02cm,inner xsep=2pt,minimum height=.72cm,
+    font=\tiny] (wnorm) at (8.91,6.72) {L2 normalize};
+  \node[merlin card,draw=projectgold,fill=projectgold!12,text width=1.05cm,
+    inner xsep=2pt,minimum height=.72cm,font=\tiny] (wfaiss) at (10.52,6.72)
+    {Graph FAISS};
+  \draw[merlin arrow] (wgraph)--(wadj);
+  \draw[merlin arrow] (wadj)--(wwalk);
+  \draw[merlin arrow] (wwalk)--(wcorp);
+  \draw[merlin arrow] (wcorp)--(ww2v);
+  \draw[merlin arrow] (ww2v)--(wnorm);
+  \draw[merlin arrow] (wnorm)--(wfaiss);
+
+  % Dynamic eligibility logic
+  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
+    (.10,1.18) rectangle (5.50,5.98);
+  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
+    at (.38,5.67) {Dynamic eligibility at every step};
+  \node[merlin card,draw=projectink,fill=projectink,text=white,
+    minimum width=1.35cm,minimum height=.58cm,font=\scriptsize\bfseries] (cur)
+    at (2.78,4.98) {current track};
+  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=.88cm,
+    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp1) at (.92,3.96) {P1 eligible};
+  \node[merlin card,draw=black!25,fill=black!5,text=black!45,text width=.92cm,
+    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp2) at (2.16,3.96) {P2 unavailable};
+  \node[merlin card,draw=black!25,fill=black!5,text=black!45,text width=.92cm,
+    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp3) at (3.40,3.96) {P3 unavailable};
+  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=.88cm,
+    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp4) at (4.64,3.96) {P4 eligible};
+  \draw[merlin arrow] (cur) -- (wp1);
+  \draw[draw=black!25,line width=.7pt] (cur) -- (wp2);
+  \draw[draw=black!25,line width=.7pt] (cur) -- (wp3);
+  \draw[merlin arrow] (cur) -- (wp4);
+  \node[merlin card,draw=projectblue,fill=white,text width=3.95cm,
+    minimum height=.58cm,font=\scriptsize] at (2.80,3.02)
+    {uniform choice \textbf{only among eligible paths}};
+  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
+    at (.45,2.34) {$\bullet$ Recompute eligible paths after every transition.};
+  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
+    at (.45,1.91) {$\bullet$ Unavailable paths get zero probability.};
+  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
+    at (.45,1.48) {$\bullet$ No self-transition padding.};
+
+  % Spark execution design
+  \draw[rounded corners=4pt,draw=projectteal!60,fill=projectteal!4]
+    (5.75,1.18) rectangle (11.30,5.98);
+  \node[anchor=west,font=\small\bfseries,text=projectteal!80!black]
+    at (6.03,5.67) {Spark partition execution};
+  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=4.65cm,
+    minimum height=.70cm,font=\scriptsize] at (8.52,4.88)
+    {\texttt{repartition(track\_id)} $\rightarrow$ \texttt{mapPartitions}};
+  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
+    at (6.08,4.15) {$\bullet$ One compact adjacency load per worker.};
+  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
+    at (6.08,3.62) {$\bullet$ Batch walks; avoid row-wise init and repeated I/O.};
+  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
+    at (6.08,3.09) {$\bullet$ Deterministic RNG: seed + track + walk.};
+  \node[merlin card,draw=projectgold,fill=projectgold!9,text width=4.55cm,
+    minimum height=.78cm] at (8.52,2.02)
+    {\bfseries $\sim$400M tokens $\rightarrow$ 128D representation\\[-2pt]
+     \scriptsize trained with Spark ML Word2Vec};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.30cm,
+    align=center,minimum height=.58cm,font=\scriptsize\bfseries] at (5.70,.62)
+    {Output: a meta-path-projected track embedding, not a complete heterogeneous-node embedding.};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
