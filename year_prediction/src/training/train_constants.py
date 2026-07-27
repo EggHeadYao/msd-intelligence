@@ -13,8 +13,18 @@ RIDGE_DIR = MODULE_DIR / "ridge"
 sys.path.insert(0, str(MODULE_DIR))
 sys.path.insert(0, str(RIDGE_DIR))
 
-from data import TRAIN, VALIDATION, load_training_data, read_training_manifest  # noqa: E402
+from data import (  # noqa: E402
+    EXPECTED_COLUMNS,
+    SPLIT,
+    TRAIN,
+    VALIDATION,
+    read_training_manifest,
+    spark_path,
+)
 from model_io import write_json  # noqa: E402
+
+TEST = "test"
+MODEL_IDS = {"mean": "constant-mean", "median": "constant-median"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,19 +68,30 @@ def constant_metrics(validation: DataFrame, prediction: float) -> dict[str, floa
     return result
 
 
-def compute_constant_baselines(frame: DataFrame) -> dict[str, dict[str, float | int]]:
+def compute_constant_baselines(frame: DataFrame) -> dict[str, dict]:
+    available = {str(row[SPLIT]) for row in frame.select(SPLIT).distinct().collect()}
+    if not {TRAIN, VALIDATION}.issubset(available):
+        raise ValueError("constant baselines require train and validation splits")
     train = frame.where(F.col("split") == TRAIN)
-    validation = frame.where(F.col("split") == VALIDATION)
     statistics = train.agg(
         F.avg("year").alias("mean"),
         F.percentile_approx("year", 0.5, 10000).alias("median"),
     ).first()
-    mean = float(statistics["mean"])
-    median = float(statistics["median"])
-    return {
-        "mean": constant_metrics(validation, mean),
-        "median": constant_metrics(validation, median),
-    }
+    result: dict[str, dict] = {}
+    for name in ("mean", "median"):
+        prediction = float(statistics[name])
+        model = {
+            "model_id": MODEL_IDS[name],
+            "fit_split": TRAIN,
+            "prediction_year": prediction,
+        }
+        for split in (VALIDATION, TEST):
+            if split in available:
+                model[split] = constant_metrics(
+                    frame.where(F.col(SPLIT) == split), prediction
+                )
+        result[MODEL_IDS[name]] = model
+    return result
 
 
 def main() -> None:
@@ -83,13 +104,26 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
     try:
         manifest = read_training_manifest(args.manifest)
-        data = load_training_data(spark, args.input, manifest)
-        result = compute_constant_baselines(data.frame)
+        frame = spark.read.parquet(spark_path(args.input))
+        if tuple(frame.columns) != EXPECTED_COLUMNS:
+            raise ValueError(f"Unexpected T90 vector columns: {frame.columns}")
+        expected = {
+            split: int(manifest["counts"]["splits"][split]["tracks"])
+            for split in (TRAIN, VALIDATION, TEST)
+        }
+        actual = {
+            str(row[SPLIT]): int(row["count"])
+            for row in frame.groupBy(SPLIT).count().collect()
+        }
+        if actual != expected:
+            raise ValueError("T90 split counts differ from the manifest")
+        result = compute_constant_baselines(frame)
         write_json(args.output.resolve(), result)
         print(
             "year_constant_baselines "
-            f"mean_mae={result['mean']['mae_years']:.6f}, "
-            f"median_mae={result['median']['mae_years']:.6f}, output={args.output.resolve()}"
+            f"mean_test_mae={result['constant-mean']['test']['mae_years']:.6f}, "
+            f"median_test_mae={result['constant-median']['test']['mae_years']:.6f}, "
+            f"output={args.output.resolve()}"
         )
     finally:
         spark.stop()
