@@ -879,6 +879,81 @@
 
 \end{frame}
 
+\begin{frame}{Evaluation Protocol, Baselines, and Limitations}
+
+\vspace{-.24cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[rounded corners=2pt,fill=projectpurple,text=white,
+    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (10.30,7.18) {FROZEN PROTOCOL};
+
+  % Three layers answer three different questions
+  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=3.18cm,
+    minimum height=.88cm,font=\scriptsize] at (1.88,6.25)
+    {\color{projectblue!75!black}\bfseries 1. Candidate recall\\[-2pt]
+     \mdseries\tiny Did Stage 1 bring positives into the pool?};
+  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=3.18cm,
+    minimum height=.88cm,font=\scriptsize] at (5.70,6.25)
+    {\color{projectteal!80!black}\bfseries 2. Conditional ranking\\[-2pt]
+     \mdseries\tiny How well are recalled positives ordered?};
+  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=3.18cm,
+    minimum height=.88cm,font=\scriptsize] at (9.52,6.25)
+    {\color{projectgold!60!black}\bfseries 3. End-to-end\\[-2pt]
+     \mdseries\tiny What does the complete system return?};
+  \node[font=\fontsize{6.5}{7.4}\selectfont\bfseries,text=projectteal!80!black]
+    at (5.00,5.47) {Macro Recall / Hit Rate / MRR / nDCG \quad + \quad paired bootstrap confidence intervals};
+
+  % Frozen baselines
+  \draw[rounded corners=4pt,draw=projectteal!60,fill=white]
+    (.10,1.02) rectangle (6.42,5.27);
+  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
+    at (.38,4.98) {Frozen scorer baselines};
+  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
+    at (.40,4.45) {\textbf{Random} --- fixed-seed random order};
+  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
+    at (.40,4.02) {\textbf{C1-only} --- Audio cosine};
+  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
+    at (.40,3.59) {\textbf{C2-only} --- Graph cosine; missing Graph ranks lowest};
+  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
+    at (.40,3.16) {\textbf{Handcrafted} --- $0.5\,$Audio $+0.5\,$Graph; fallback to Audio};
+  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
+    at (.40,2.73) {\textbf{BFS heuristic} --- directed $1/(1+d)$};
+  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
+    at (.40,2.30) {\textbf{No-hard-neg} --- LR trained with random negatives only};
+  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
+    at (.40,1.87) {\textbf{Full MERLIN} --- LR with candidate-aware negatives};
+  \node[font=\fontsize{5.8}{6.7}\selectfont\bfseries,text=projectteal!80!black,
+    text width=5.72cm,align=center] at (3.26,1.32)
+    {Same queries, pool, budget, filters, metrics, and bootstrap---only the scorer changes.};
+
+  % Strata and limits
+  \draw[rounded corners=4pt,draw=projectpurple!60,fill=projectpurple!4]
+    (6.67,3.13) rectangle (11.30,5.27);
+  \node[font=\small\bfseries,text=projectpurple!75!black] at (8.98,4.94)
+    {Weak-label source strata};
+  \node[font=\fontsize{6.3}{7.2}\selectfont,text width=4.05cm,align=center]
+    at (8.98,4.21) {same-artist \quad $\vert$ \quad audio-derived\\[2pt]
+    tag-derived \quad $\vert$ \quad source-exclusive positives};
+  \node[font=\fontsize{5.9}{6.8}\selectfont\bfseries,text=projectpurple!80!black,
+    text width=4.08cm,align=center] at (8.98,3.44)
+    {This separates direct label-rule reproduction from cross-view gains.};
+
+  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
+    (6.67,1.02) rectangle (11.30,2.88);
+  \node[font=\small\bfseries,text=projectgold!60!black] at (8.98,2.62)
+    {Scope and limitations};
+  \node[font=\fontsize{6}{6.9}\selectfont,text width=4.05cm,align=left]
+    at (8.98,1.68) {$\bullet$ Weak labels are not user preference.\\
+    $\bullet$ C1/C2 are transductive representations.\\
+    $\bullet$ C1 depends on precomputed audio summaries.\\
+    $\bullet$ Evidence supports multi-view task consistency, not commercial recommendation effect.};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.45cm,
+    align=center,minimum height=.42cm,font=\fontsize{6.2}{7}\selectfont\bfseries]
+    at (5.70,.47) {Candidate ablations report each source @250, union @$\leq$1000, all-minus-one deltas, exclusives, missing signals, and shortages.};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
