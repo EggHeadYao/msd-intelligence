@@ -806,6 +806,79 @@
 
 \end{frame}
 
+\begin{frame}{Learned Ranker (R)}
+
+\vspace{-.22cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[rounded corners=2pt,fill=projectpurple,text=white,
+    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (1.03,7.18) {FROZEN PROTOCOL};
+
+  % Feature accounting
+  \draw[rounded corners=4pt,draw=projectteal!60,fill=projectteal!4]
+    (.10,.95) rectangle (4.25,6.88);
+  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
+    at (.38,6.57) {13 pair features};
+  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=3.40cm,
+    minimum height=.63cm,font=\scriptsize] at (2.18,5.84)
+    {Audio cosine \hfill \textbf{1}};
+  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=3.40cm,
+    minimum height=.63cm,font=\scriptsize] at (2.18,5.08)
+    {Graph cosine + mask \hfill \textbf{2}};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=3.40cm,
+    minimum height=.63cm,font=\scriptsize] at (2.18,4.32)
+    {BFS score + mask \hfill \textbf{2}};
+  \node[merlin card,draw=projectgold,fill=projectgold!9,text width=3.40cm,
+    minimum height=.63cm,font=\scriptsize] at (2.18,3.56)
+    {Tag cosine + mask \hfill \textbf{2}};
+  \node[merlin card,text width=3.40cm,minimum height=.63cm,font=\scriptsize]
+    at (2.18,2.80) {same release + mask \hfill \textbf{2}};
+  \node[merlin card,text width=3.40cm,minimum height=.63cm,font=\scriptsize]
+    at (2.18,2.04) {year gap + mask \hfill \textbf{2}};
+  \node[merlin card,draw=projectink!55,fill=white,text width=3.40cm,
+    minimum height=.72cm,font=\fontsize{7}{8}\selectfont] at (2.18,1.25)
+    {Audio$\times$Tag + Graph$\times$BFS \hfill \textbf{2}};
+
+  % Frozen preprocessing and model boundary
+  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
+    (4.50,3.43) rectangle (11.30,6.88);
+  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
+    at (4.78,6.57) {Frozen preprocessing vs optimizer};
+  \node[merlin card,text width=1.12cm,minimum height=.58cm,font=\tiny] (rf)
+    at (5.18,5.58) {raw pair features};
+  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=1.70cm,
+    minimum height=.66cm,font=\tiny] (ri) at (7.05,5.58)
+    {Set-A median imputation + feature construction};
+  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=1.52cm,
+    minimum height=.66cm,font=\tiny] (rscl) at (9.25,5.58)
+    {serialized external Set-A StandardScaler};
+  \draw[merlin arrow] (rf)--(ri);
+  \draw[merlin arrow] (ri)--(rscl);
+  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=2.12cm,
+    minimum height=.72cm,font=\tiny] at (9.83,4.48)
+    {Spark LR, L2\\\texttt{standardization=true}};
+  \draw[merlin arrow] (rscl) -- (9.25,4.72);
+  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=4.05cm,align=left]
+    at (6.63,4.37) {External scaler: explicit, serialized, fitted on Set A, and shared by train, B, final retrain, and Python serving.};
+  \node[font=\fontsize{6.2}{7.1}\selectfont\bfseries,text=projectblue!80!black,
+    text width=6.10cm,align=center] at (7.90,3.75)
+    {LR \texttt{standardization=true} is an optimizer/L2 configuration---not a second serving-time transform.};
+
+  % Model selection and online contract
+  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
+    (4.50,.95) rectangle (11.30,3.18);
+  \node[anchor=west,font=\small\bfseries,text=projectgold!60!black]
+    at (4.78,2.88) {Selection, freezing, and serving};
+  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=6.10cm,align=left]
+    at (7.90,2.35) {Train $\texttt{regParam}\in\{0.001,0.01,0.1\}$ on A $\rightarrow$ compare Audio / Relation / Mixed nDCG@20 on B $\rightarrow$ freeze $\rightarrow$ retrain on A+B+Remaining $\rightarrow$ evaluate C once.};
+  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=6.10cm,align=left]
+    at (7.90,1.55) {Python applies the frozen external mean/std exactly once, then the frozen coefficients and intercept. Rank by raw LR margin; sigmoid is not a calibrated probability; MMR is off by default.};
+
+  \node[anchor=south east,font=\tiny\itshape,text=projectteal!80!black]
+    at (11.18,.45) {availability masks preserve the distinction between zero and missing};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
