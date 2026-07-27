@@ -162,6 +162,74 @@
 
 \end{frame}
 
+\begin{frame}{Scaling MERLIN to One Million Tracks}
+
+\vspace{-.28cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \tikzset{
+    scale header/.style={rounded corners=2pt,draw=projectteal,fill=projectteal,
+      text=white,minimum height=.52cm,align=left,inner xsep=4pt,font=\scriptsize\bfseries},
+    scale stage/.style={rounded corners=2pt,draw=projectteal!55,fill=projectteal!9,
+      minimum height=.74cm,text width=1.58cm,align=left,inner xsep=4pt,inner ysep=2pt,
+      font=\fontsize{7}{8.2}\selectfont\bfseries,text=projectteal!85!black},
+    scale impl/.style={rounded corners=2pt,draw=projectteal!45,fill=white,
+      minimum height=.74cm,text width=3.78cm,align=left,inner xsep=4pt,inner ysep=2pt,
+      font=\fontsize{7}{8.2}\selectfont,text=projectink},
+    scale why/.style={rounded corners=2pt,draw=projectteal!45,fill=projectteal!3,
+      minimum height=.74cm,text width=4.76cm,align=left,inner xsep=4pt,inner ysep=2pt,
+      font=\fontsize{7}{8.2}\selectfont,text=projectink}
+  }
+
+  % Table header
+  \node[scale header,text width=1.58cm] at (.98,7.02) {Data stage};
+  \node[scale header,text width=3.78cm] at (4.05,7.02) {Main implementation};
+  \node[scale header,text width=4.76cm] at (8.72,7.02) {Why this tool fits the access pattern};
+
+  % 1. HDF5 extraction
+  \node[scale stage] at (.98,6.18) {HDF5 extraction};
+  \node[scale impl] at (4.05,6.18) {Python multiprocessing; batches; checkpoints};
+  \node[scale why] at (8.72,6.18) {$\sim$267 GB in many small HDF5 files; parallel reads and checkpoints fit the I/O bottleneck better than forcing Spark.};
+
+  % 2. Prepare
+  \node[scale stage] at (.98,5.31) {Prepare};
+  \node[scale impl] at (4.05,5.31) {Spark DataFrames + schema validation; partitioned Parquet + distributed joins};
+  \node[scale why] at (8.72,5.31) {Scalable structured cleaning and joins across million-row features and relation tables.};
+
+  % 3. C1
+  \node[scale stage] at (.98,4.44) {C1 audio view};
+  \node[scale impl] at (4.05,4.44) {Spark ML StandardScaler + PCA-128};
+  \node[scale why] at (8.72,4.44) {Distributed fit and transform; no full high-dimensional matrix in one Python process.};
+
+  % 4. C2 walk generation
+  \node[scale stage] at (.98,3.57) {C2 walk generation};
+  \node[scale impl] at (4.05,3.57) {\texttt{repartition(track\_id)} + \texttt{mapPartitions}};
+  \node[scale why] at (8.72,3.57) {Load compact adjacency once per worker and batch walks; reduce repeated initialization and I/O.};
+
+  % 5. C2 representation learning
+  \node[scale stage] at (.98,2.70) {C2 representation learning};
+  \node[scale impl] at (4.05,2.70) {Spark ML Word2Vec};
+  \node[scale why] at (8.72,2.70) {Partitioned training over $\sim$10M walks and $\sim$400M tokens.};
+
+  % 6. Serving retrieval
+  \node[scale stage,draw=projectgold!80,fill=projectgold!10,
+    text=projectgold!55!black] at (.98,1.83) {Retrieval};
+  \node[scale impl,draw=projectgold!70,fill=projectgold!5] at (4.05,1.83)
+    {FAISS \texttt{IndexFlatIP}};
+  \node[scale why,draw=projectgold!70,fill=projectgold!5] at (8.72,1.83)
+    {Efficient exact search over normalized 128D vectors on one serving machine.};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,
+    minimum width=6.55cm,minimum height=.64cm,text width=6.18cm,
+    align=center,font=\scriptsize\bfseries] at (3.38,.66)
+    {Spark: ETL, feature transformation, representation learning};
+  \node[rounded corners=3pt,draw=projectgold,fill=projectgold!14,
+    text=projectgold!55!black,minimum width=4.40cm,minimum height=.64cm,
+    text width=4.03cm,align=center,font=\scriptsize\bfseries] at (9.10,.66)
+    {FAISS: exact 128D retrieval, not distributed};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
