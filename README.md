@@ -46,10 +46,10 @@ Run one combination:
 ./benchmark/run_one.sh mapreduce avro 1
 ```
 
-Run all four combinations:
+Run the complete four-combination experiment with five repetitions:
 
 ```bash
-./benchmark/run_all.sh 3
+./benchmark/run_experiment.sh 5
 ```
 
-Use `SOURCE_ID=<artist_id>` to change the BFS source artist. Benchmark timing is read from YARN application status, and outputs are verified against the reference BFS before a run is marked as correct.
+Use `SOURCE_ID=<artist_id>` to change the fixed BFS source artist. The benchmark records complete command time, YARN time and resources, verifies every result against the reference BFS, supports interrupted-run resumption, and produces aggregate comparison CSV files.

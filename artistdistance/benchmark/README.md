@@ -1,10 +1,28 @@
 # Artist Distance Benchmark
 
-Run from `p1team02/artistdistance` after Hadoop commands are available:
+Run the commands from `p1team02/artistdistance` after Hadoop, HDFS, YARN, Spark, Java, and Maven are available.
 
-## `run_one.sh`
+## Complete Experiment
 
-Run one engine/format pair:
+Run five repetitions of all four engine/format combinations:
+
+```bash
+./benchmark/run_experiment.sh 5
+```
+
+`run_all.sh` is a compatibility alias for the same command. The experiment uses `ARGUACZ1187FB3F35C` by default because its BFS covers most of the full graph. Set `SOURCE_ID` to use another fixed source for every run:
+
+```bash
+SOURCE_ID=AR002UA1187B9A637D ./benchmark/run_experiment.sh 5
+```
+
+The script builds the Maven project, creates both full graph inputs from SQLite when they are absent, refreshes the corresponding HDFS inputs, and runs MapReduce/Avro, MapReduce/Parquet, Spark/Avro, and Spark/Parquet. Set `REBUILD_INPUTS=true` to recreate existing local inputs explicitly. The execution order rotates between repetitions to reduce order bias. Before each measured task, `run_one.sh` restarts HDFS and YARN and waits for the previously observed number of NodeManagers to return. Set `YARN_EXPECTED_RUNNING_NODES` when the cluster was not fully running before the command started.
+
+Verified combinations already present in `experiments/results.csv` are skipped, so the same command resumes an interrupted experiment. Do not change `SOURCE_ID` while resuming the same CSV.
+
+## One Combination
+
+Run a single combination when debugging:
 
 ```bash
 ./benchmark/run_one.sh mapreduce avro 1
@@ -13,49 +31,28 @@ Run one engine/format pair:
 ./benchmark/run_one.sh spark parquet 1
 ```
 
-Arguments:
+The arguments are the engine, storage format, and positive repetition number. `RESULTS_CSV` can redirect the row to a separate result file.
 
-- `engine`: `mapreduce` or `spark`.
-- `format`: `avro` or `parquet`.
-- `run_id`: repetition number written to `experiments/results.csv`.
+## Measurement and Verification
 
-Use `SOURCE_ID` to choose a BFS source artist:
+- `wall_seconds` is measured by `/usr/bin/time` around the complete `hadoop jar` or `spark-submit` command. It includes all BFS iterations and framework orchestration, but excludes cluster restart, input upload, output download, verification, and cleanup.
+- `yarn_seconds` is the sum of the completed YARN application durations. MapReduce launches one application per BFS iteration, while Spark normally uses one application for the complete BFS.
+- `memory_seconds` and `vcore_seconds` are aggregate allocations reported by YARN across the applications.
+- `expected_total`, `reachable`, `unreachable`, and `max_distance` come from the independent reference BFS verifier.
+- `verified` is true only when every output distance and predecessor is accepted by the verifier.
+
+Successful runs remove their local output copy, HDFS output, and staging files. The two common HDFS inputs remain available between combinations and are removed when the complete experiment finishes. A failed run keeps its output for diagnosis and stops the experiment.
+
+## Result Summary
+
+The complete experiment writes:
+
+- `experiments/results.csv`: one detailed row per measured run.
+- `experiments/summary.csv`: median, minimum, maximum, IQR, YARN resources, and graph outcome for each combination.
+- `experiments/comparisons.csv`: median wall-time speedups between engines and formats.
+
+The summary can be regenerated independently:
 
 ```bash
-SOURCE_ID=AR002UA1187B9A637D ./benchmark/run_one.sh spark parquet 1
+./benchmark/summarize_results.sh experiments/results.csv
 ```
-
-## `run_all.sh`
-
-Run all four required combinations:
-
-```bash
-./benchmark/run_all.sh 3
-```
-
-The optional argument is the number of repetitions. Each repetition runs:
-
-- `mapreduce avro`
-- `mapreduce parquet`
-- `spark avro`
-- `spark parquet`
-
-`SOURCE_ID` also applies to `run_all.sh`.
-
-## Benchmark Workflow
-
-### Restart and Data Setup
-
-`run_one.sh` restarts HDFS and YARN with `stop-all.sh` and `start-all.sh` before each submitted task, then waits for HDFS to leave safemode.
-
-Inputs are uploaded to HDFS under `/user/$USER/artistdistance-benchmark/input`. Outputs are written to `/user/$USER/artistdistance-benchmark/output`.
-
-### YARN Execution and Timing
-
-MapReduce jobs are submitted with `mapreduce.framework.name=yarn`. Spark jobs are submitted with `spark-submit --master yarn`.
-
-Timing is read from `yarn application -status`. MapReduce BFS submits one application per BFS job, so its time is the sum of those application durations.
-
-### Verification and Cleanup
-
-After timing is recorded, `run_one.sh` copies the output back to `experiments/output`, verifies it against the reference BFS result, and records the result in the `verified` column. Verification time is not included in `elapsed_seconds`. If verification succeeds, the script removes this run's HDFS output, local output copy, newly uploaded input, and matching YARN staging directories.
