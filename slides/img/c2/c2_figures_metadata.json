@@ -1,0 +1,111 @@
+{
+  "artifact_type": "merlin_c2_slide_figures",
+  "encoder": {
+    "dimension": 128,
+    "dtype": "float32",
+    "l2_normalized": true,
+    "rows": 1000000,
+    "training": {
+      "max_iter": 5,
+      "max_sentence_length": 40,
+      "min_count": 1,
+      "num_partitions": 20,
+      "seed": 42,
+      "step_size": 0.025,
+      "vector_size": 128,
+      "window_size": 5
+    }
+  },
+  "graph": {
+    "edges": 5311294,
+    "relations": {
+      "artist_similarity": 2201916,
+      "artist_term": 1109381,
+      "track_artist": 1000000,
+      "track_release": 999997
+    },
+    "typed_nodes": 1229615
+  },
+  "masked_evaluation": {
+    "bootstrap": {
+      "columns": [
+        "c2_recall_at_20",
+        "release_only_recall_at_20",
+        "c2_ndcg_at_20",
+        "release_only_ndcg_at_20"
+      ],
+      "confidence_level": 0.95,
+      "estimate": [
+        0.5860684966830745,
+        0.4305423794388693,
+        0.6430921649337116,
+        0.49839140535832055
+      ],
+      "lower": [
+        0.5776014068936217,
+        0.4228554682607826,
+        0.6342748538136781,
+        0.4906554783695702
+      ],
+      "method": "query-level percentile bootstrap of macro means",
+      "samples": 2000,
+      "seed": 42,
+      "upper": [
+        0.5944871470526673,
+        0.43811498991696435,
+        0.651799302941219,
+        0.5059737915944982
+      ]
+    },
+    "c2": {
+      "hit@10": 0.6802,
+      "hit@20": 0.6997,
+      "hit@50": 0.7182,
+      "mrr": 0.6318120557247314,
+      "ndcg@10": 0.6370291887796564,
+      "ndcg@20": 0.6430921649337117,
+      "ndcg@50": 0.6461393706622259,
+      "recall@10": 0.47083370382933565,
+      "recall@20": 0.5860684966830766,
+      "recall@50": 0.6848166108989506
+    },
+    "query_counts": {
+      "connectable": 9171,
+      "connectable_coverage": 0.9171,
+      "total": 10000,
+      "unconnectable": 829,
+      "without_positive": 0
+    },
+    "release_only": {
+      "hit@10": 0.6857,
+      "hit@20": 0.6913,
+      "hit@50": 0.6927,
+      "mrr": 0.641554147842802,
+      "ndcg@10": 0.5599446818162838,
+      "ndcg@20": 0.49839140535832593,
+      "ndcg@50": 0.46029837310371613,
+      "recall@10": 0.40094717777124994,
+      "recall@20": 0.430542379438869,
+      "recall@50": 0.43423807331739017
+    }
+  },
+  "sources": {
+    "encoder_metadata": "parquets_new/merlin/graph/graph_encoder_metadata.json",
+    "masked_report": "parquets_new/merlin/l1_2/evaluation/report.json",
+    "masked_report_sha256": "f2395236c695fb5b9d6e607407f08dcc96df36b6d2cb962283401fc0414a0840",
+    "prepared_manifest": "parquets_new/prepared/prepared_manifest.json",
+    "query_metrics": "parquets_new/merlin/l1_2/evaluation/query_metrics.parquet",
+    "query_metrics_sha256": "f01c6614fcbb12f5d1869c63500e27eea3cfba604cc0cb56c125f3e9f7449810",
+    "vocab": "parquets_new/merlin/graph/vocab.json",
+    "walks": "parquets_new/merlin/graph/walk_sequences.parquet"
+  },
+  "walks": {
+    "max_length": 40,
+    "mean_length": 39.985944,
+    "min_length": 1,
+    "no_eligible_path": 5889,
+    "rows": 10000000,
+    "target_length": 9994111,
+    "tokens": 399859440
+  }
+}

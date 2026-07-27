@@ -304,9 +304,6 @@
 
 \vspace{-.24cm}
 \begin{tikzpicture}[x=1cm,y=1cm]
-  \node[rounded corners=2pt,fill=projectteal,text=white,
-    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (.88,7.18) {VERIFIED RESULT};
-
   % Frozen C1 transformation
   \node[merlin card,text width=1.45cm,inner xsep=2pt,minimum height=.68cm,
     font=\scriptsize] (p5m) at (1.20,6.48) {Model-ready matrix};
@@ -382,274 +379,141 @@
 
 \end{frame}
 
-\begin{frame}{C2: Canonical Heterogeneous Graph}
+\begin{frame}{C2: Canonical Relations}
 
-\vspace{-.22cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  % Typed graph
-  \draw[rounded corners=4pt,draw=projectteal!55,fill=white]
-    (.10,3.86) rectangle (5.35,7.18);
-  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
-    at (.38,6.88) {Four canonical relation types};
-  \node[merlin card,draw=projectink,fill=projectink,text=white,
-    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (gt)
-    at (1.10,5.85) {Track};
-  \node[merlin card,draw=projectblue,fill=projectblue!12,
-    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (ga)
-    at (2.92,5.85) {Artist};
-  \node[merlin card,draw=projectgold,fill=projectgold!12,
-    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (gr)
-    at (1.10,4.55) {Release};
-  \node[merlin card,draw=projectpurple,fill=projectpurple!12,
-    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (gm)
-    at (4.60,4.55) {Term};
-  \node[merlin card,draw=projectblue,fill=projectblue!12,
-    minimum width=1.18cm,minimum height=.58cm,font=\scriptsize\bfseries] (ga2)
-    at (4.60,6.20) {Artist};
-  \draw[merlin arrow] (gt) -- node[above,font=\tiny] {Track--Artist} (ga);
-  \draw[merlin arrow] (gt) -- node[left,font=\tiny] {Track--Release} (gr);
-  \draw[merlin arrow] (ga) -- node[below right,font=\tiny] {Artist--Term} (gm);
-  \draw[merlin arrow] (ga) -- node[above,font=\tiny] {directed similarity} (ga2);
-  \node[font=\tiny,text=projectink,text width=4.55cm,align=center]
-    at (2.72,4.10) {No pseudo song-level repetition of artist or term relations.};
+\begin{columns}[T,onlytextwidth]
+  \column{.62\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{img/c2/c2_graph_schema.pdf}
 
-  % Semantic rebuild and exact artifact scale
-  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
-    (5.60,3.86) rectangle (11.30,7.18);
-  \node[font=\scriptsize\bfseries,text=projectgold!55!black,text width=5.05cm,
-    align=center] at (8.45,6.91) {Semantic graph rebuild};
-  \node[merlin card,draw=projectink!60,fill=white,text width=4.85cm,
-    minimum height=.72cm,font=\scriptsize] at (8.45,5.92)
-    {\bfseries $\sim 135$M incorrect track-expanded rows\\[-2pt]
-     \mdseries\tiny rebuilt with correct entity semantics---not deduplicated};
-  \draw[merlin arrow,draw=projectgold!80] (8.45,5.49) -- (8.45,5.15);
-  \node[merlin card,draw=projectgold,fill=projectgold!12,text width=2.15cm,
-    minimum height=.90cm] at (7.15,4.68)
-    {\bfseries 5,311,294\\[-2pt]\mdseries\scriptsize canonical edges};
-  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=2.15cm,
-    minimum height=.90cm] at (9.75,4.68)
-    {\bfseries 1,229,615\\[-2pt]\mdseries\scriptsize typed nodes};
+  \column{.33\textwidth}
+  \vspace{.35cm}
+  {\fontsize{25}{27}\selectfont\bfseries\color{projectteal}5.31M}\par
+  {\large canonical edges}\par
 
-  % Meta-paths
-  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
-    (.10,.72) rectangle (6.42,3.60);
-  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
-    at (.38,3.30) {Four track-rooted meta-paths};
-  \node[anchor=west,font=\fontsize{7}{8}\selectfont] at (.45,2.78)
-    {\bfseries P1: Track $\rightarrow$ Artist $\rightarrow$ Track};
-  \node[anchor=west,font=\fontsize{7}{8}\selectfont,align=left] at (.45,2.23)
-    {\bfseries P2: Track $\rightarrow$ Artist $\rightarrow$ Similar Artist\\[-2pt]
-     \hspace{.54cm}$\rightarrow$ Track};
-  \node[anchor=west,font=\fontsize{7}{8}\selectfont,align=left] at (.45,1.57)
-    {\bfseries P3: Track $\rightarrow$ Artist $\rightarrow$ Term $\rightarrow$ Artist\\[-2pt]
-     \hspace{.54cm}$\rightarrow$ Track};
-  \node[anchor=west,font=\fontsize{7}{8}\selectfont] at (.45,.98)
-    {\bfseries P4: Track $\rightarrow$ Release $\rightarrow$ Track};
+  \vspace{.45cm}
+  {\fontsize{25}{27}\selectfont\bfseries\color{projectblue}1.23M}\par
+  {\large typed nodes}\par
 
-  % Export-versus-serving boundary
-  \draw[rounded corners=4pt,draw=projectpurple!65,fill=projectpurple!4]
-    (6.67,.72) rectangle (11.30,3.60);
-  \node[font=\scriptsize\bfseries,text=projectpurple!75!black,text width=4.05cm,
-    align=center] at (8.98,3.28) {Export $\neq$ serving coverage};
-  \node[font=\fontsize{6.3}{7.2}\selectfont,text width=3.98cm,align=center]
-    at (8.98,2.76) {Encoder export: \textbf{1M normalized 128D roots}};
-  \node[font=\fontsize{6.3}{7.2}\selectfont,text width=3.98cm,align=center]
-    at (8.98,2.42) {Current Graph FAISS artifact: \textbf{1M rows}};
-  \node[merlin card,draw=projectpurple!55,fill=white,text width=3.72cm,
-    minimum height=.52cm,font=\fontsize{5.4}{6.2}\selectfont] at (8.98,1.75)
-    {$\texttt{has\_graph}(q,c)=1$ iff both are context-bearing\\and in the serving mapping};
-  \node[font=\fontsize{5.6}{6.4}\selectfont\bfseries,text=projectpurple!80!black,
-    text width=4.05cm,align=center] at (8.98,.93)
-    {Context-count audit filters roots; masks and other paths cover missing Graph.};
+  \vspace{.55cm}
+  {\small
+  Four track-rooted views:\par
+  \vspace{.12cm}
+  \textbf{artist}, similar artist,\par
+  term, and release.}
+\end{columns}
 
-  \node[anchor=south east,font=\tiny\itshape,text=projectteal!80!black]
-    at (11.20,.26) {serving policy: at most 250 Graph candidates per query};
-\end{tikzpicture}
+\vfill
+{\footnotesize Meta-paths specify typed semantic routes through a heterogeneous graph \autocite{sun2011pathsim}.}
 
 \end{frame}
 
-\begin{frame}{C2: Eligibility-Aware Mixed Walks and Spark Word2Vec}
+\begin{frame}{C2: Eligibility-Aware Walks}
 
-\vspace{-.22cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  % End-to-end C2 representation flow
-  \node[merlin card,text width=1.05cm,inner xsep=2pt,minimum height=.72cm,
-    font=\tiny] (wgraph) at (.70,6.72) {canonical typed graph};
-  \node[merlin card,text width=1.18cm,inner xsep=2pt,minimum height=.72cm,
-    font=\tiny] (wadj) at (2.25,6.72) {paired compact adjacency};
-  \node[merlin card,draw=projectblue,fill=projectblue!9,text width=1.25cm,
-    inner xsep=2pt,minimum height=.72cm,font=\tiny] (wwalk) at (3.95,6.72)
-    {eligible mixed walks};
-  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=1.20cm,
-    inner xsep=2pt,minimum height=.72cm,font=\tiny] (wcorp) at (5.68,6.72)
-    {10M sequences\\$r=10, L=40$};
-  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=1.18cm,
-    inner xsep=2pt,minimum height=.72cm,font=\tiny] (ww2v) at (7.36,6.72)
-    {Spark Word2Vec-128};
-  \node[merlin card,text width=1.02cm,inner xsep=2pt,minimum height=.72cm,
-    font=\tiny] (wnorm) at (8.91,6.72) {L2 normalize};
-  \node[merlin card,draw=projectgold,fill=projectgold!12,text width=1.05cm,
-    inner xsep=2pt,minimum height=.72cm,font=\tiny] (wfaiss) at (10.52,6.72)
-    {Graph FAISS};
-  \draw[merlin arrow] (wgraph)--(wadj);
-  \draw[merlin arrow] (wadj)--(wwalk);
-  \draw[merlin arrow] (wwalk)--(wcorp);
-  \draw[merlin arrow] (wcorp)--(ww2v);
-  \draw[merlin arrow] (ww2v)--(wnorm);
-  \draw[merlin arrow] (wnorm)--(wfaiss);
+\begin{center}
+  \includegraphics[width=.92\textwidth]{img/c2/c2_walk_policy.pdf}
+\end{center}
 
-  % Dynamic eligibility logic
-  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
-    (.10,1.18) rectangle (5.50,5.98);
-  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
-    at (.38,5.67) {Dynamic eligibility at every step};
-  \node[merlin card,draw=projectink,fill=projectink,text=white,
-    minimum width=1.35cm,minimum height=.58cm,font=\scriptsize\bfseries] (cur)
-    at (2.78,4.98) {current track};
-  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=.88cm,
-    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp1) at (.92,3.96) {P1 eligible};
-  \node[merlin card,draw=black!25,fill=black!5,text=black!45,text width=.92cm,
-    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp2) at (2.16,3.96) {P2 unavailable};
-  \node[merlin card,draw=black!25,fill=black!5,text=black!45,text width=.92cm,
-    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp3) at (3.40,3.96) {P3 unavailable};
-  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=.88cm,
-    inner xsep=2pt,minimum height=.48cm,font=\tiny] (wp4) at (4.64,3.96) {P4 eligible};
-  \draw[merlin arrow] (cur) -- (wp1);
-  \draw[draw=black!25,line width=.7pt] (cur) -- (wp2);
-  \draw[draw=black!25,line width=.7pt] (cur) -- (wp3);
-  \draw[merlin arrow] (cur) -- (wp4);
-  \node[merlin card,draw=projectblue,fill=white,text width=3.95cm,
-    minimum height=.58cm,font=\scriptsize] at (2.80,3.02)
-    {uniform choice \textbf{only among eligible paths}};
-  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
-    at (.45,2.34) {$\bullet$ Recompute eligible paths after every transition.};
-  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
-    at (.45,1.91) {$\bullet$ Unavailable paths get zero probability.};
-  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
-    at (.45,1.48) {$\bullet$ No self-transition padding.};
+\vspace{-.15cm}
+\begin{columns}[T,onlytextwidth]
+  \column{.31\textwidth}
+  \textbf{\color{projectteal}1. Check}\par
+  {\small Derive the paths available at the current track.}
 
-  % Spark execution design
-  \draw[rounded corners=4pt,draw=projectteal!60,fill=projectteal!4]
-    (5.75,1.18) rectangle (11.30,5.98);
-  \node[anchor=west,font=\small\bfseries,text=projectteal!80!black]
-    at (6.03,5.67) {Spark partition execution};
-  \node[merlin card,draw=projectteal,fill=projectteal!9,text width=4.65cm,
-    minimum height=.70cm,font=\scriptsize] at (8.52,4.88)
-    {\texttt{repartition(track\_id)} $\rightarrow$ \texttt{mapPartitions}};
-  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
-    at (6.08,4.15) {$\bullet$ One compact adjacency load per worker.};
-  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
-    at (6.08,3.62) {$\bullet$ Batch walks; avoid row-wise init and repeated I/O.};
-  \node[anchor=west,font=\fontsize{6.5}{7.4}\selectfont]
-    at (6.08,3.09) {$\bullet$ Deterministic RNG: seed + track + walk.};
-  \node[merlin card,draw=projectgold,fill=projectgold!9,text width=4.55cm,
-    minimum height=.78cm] at (8.52,2.02)
-    {\bfseries $\sim$400M tokens $\rightarrow$ 128D representation\\[-2pt]
-     \scriptsize trained with Spark ML Word2Vec};
+  \column{.31\textwidth}
+  \textbf{\color{projectteal}2. Sample}\par
+  {\small Choose uniformly only among eligible paths.}
 
-  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.30cm,
-    align=center,minimum height=.58cm,font=\scriptsize\bfseries] at (5.70,.62)
-    {Output: a meta-path-projected track embedding, not a complete heterogeneous-node embedding.};
-\end{tikzpicture}
+  \column{.31\textwidth}
+  \textbf{\color{projectteal}3. Repeat}\par
+  {\small Move to another track and recompute eligibility.}
+\end{columns}
+
+\vfill
+{\footnotesize No fixed path order, wasted probability, or self-transition padding.}
 
 \end{frame}
 
-\begin{frame}{C2: Masked-Artist Retrieval Experiment}
+\begin{frame}{C2: Distributed Walk2Vec}
 
-\vspace{-.22cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[rounded corners=2pt,fill=projectteal,text=white,
-    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (.88,7.18) {VERIFIED RESULT};
-  \node[anchor=west,font=\fontsize{6.3}{7.2}\selectfont\bfseries,text=projectink]
-    at (1.95,7.18) {Can remaining relations recover same-artist tracks after masking Track--Artist?};
+\vspace{.05cm}
+\begin{center}
+  {\large
+  canonical graph
+  \(\longrightarrow\)
+  10M mixed walks
+  \(\longrightarrow\)
+  Spark ML Word2Vec
+  \(\longrightarrow\)
+  normalized track vectors}
+\end{center}
 
-  % Experiment protocol lane
-  \node[merlin card,text width=1.55cm,inner xsep=2pt,minimum height=.62cm,font=\tiny] (mq)
-    at (1.05,6.35) {10K distinct-artist queries\\stratified by track count};
-  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=1.50cm,
-    inner xsep=2pt,minimum height=.62cm,font=\tiny] (mm) at (3.25,6.35)
-    {mask direct Track--Artist edges};
-  \node[merlin card,text width=1.25cm,inner xsep=2pt,minimum height=.62cm,font=\tiny] (mrw)
-    at (5.18,6.35) {rebuild walks};
-  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=1.42cm,
-    inner xsep=2pt,minimum height=.62cm,font=\tiny] (mtrain) at (7.05,6.35)
-    {retrain Word2Vec + FAISS};
-  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=1.62cm,
-    inner xsep=2pt,minimum height=.62cm,font=\tiny] (mret) at (9.35,6.35)
-    {same-artist retrieval at $K=20$};
-  \draw[merlin arrow] (mq)--(mm);
-  \draw[merlin arrow] (mm)--(mrw);
-  \draw[merlin arrow] (mrw)--(mtrain);
-  \draw[merlin arrow] (mtrain)--(mret);
+\vspace{.38cm}
+\begin{columns}[c,onlytextwidth]
+  \column{.31\textwidth}
+  \centering
+  {\fontsize{25}{27}\selectfont\bfseries\color{projectteal}10M}\par
+  {\large walks}\par
+  {\small \(r=10,\ L=40\)}
 
-  % Bar chart
-  \draw[rounded corners=4pt,draw=projectteal!55,fill=white]
-    (.10,.86) rectangle (7.20,5.78);
-  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
-    at (.42,5.48) {All-query metrics (10K queries)};
-  \draw[->,draw=projectink!70] (.78,1.58) -- (6.80,1.58);
-  \draw[->,draw=projectink!70] (.78,1.58) -- (.78,5.05);
-  \draw[draw=black!15] (.78,3.18) -- (6.70,3.18);
-  \draw[draw=black!15] (.78,4.78) -- (6.70,4.78);
-  \node[anchor=east,font=\tiny] at (.70,1.58) {0};
-  \node[anchor=east,font=\tiny] at (.70,3.18) {.5};
-  \node[anchor=east,font=\tiny] at (.70,4.78) {1.0};
+  \column{.34\textwidth}
+  \centering
+  {\fontsize{25}{27}\selectfont\bfseries\color{projectblue}399.86M}\par
+  {\large observed tokens}\par
+  {\small mean length \(39.986\)}
 
-  % Recall bars
-  \fill[projectteal!85] (1.15,1.58) rectangle (1.43,3.46);
-  \fill[projectgold!75] (1.48,1.58) rectangle (1.76,2.96);
-  \node[font=\tiny,rotate=90,anchor=west,text=white] at (1.29,1.70) {.5861};
-  \node[font=\tiny,rotate=90,anchor=west] at (1.62,1.70) {.4305};
-  \node[font=\tiny,align=center] at (1.45,1.23) {Recall\\@20};
-  % Hit bars
-  \fill[projectteal!85] (2.55,1.58) rectangle (2.83,3.82);
-  \fill[projectgold!75] (2.88,1.58) rectangle (3.16,3.79);
-  \node[font=\tiny,rotate=90,anchor=west,text=white] at (2.69,1.70) {.6997};
-  \node[font=\tiny,rotate=90,anchor=west] at (3.02,1.70) {.6913};
-  \node[font=\tiny,align=center] at (2.85,1.23) {Hit Rate\\@20};
-  % nDCG bars
-  \fill[projectteal!85] (3.95,1.58) rectangle (4.23,3.64);
-  \fill[projectgold!75] (4.28,1.58) rectangle (4.56,3.17);
-  \node[font=\tiny,rotate=90,anchor=west,text=white] at (4.09,1.70) {.6431};
-  \node[font=\tiny,rotate=90,anchor=west] at (4.42,1.70) {.4984};
-  \node[font=\tiny,align=center] at (4.25,1.23) {nDCG\\@20};
-  % MRR bars
-  \fill[projectteal!85] (5.35,1.58) rectangle (5.63,3.60);
-  \fill[projectgold!75] (5.68,1.58) rectangle (5.96,3.63);
-  \node[font=\tiny,rotate=90,anchor=west,text=white] at (5.49,1.70) {.6318};
-  \node[font=\tiny,rotate=90,anchor=west] at (5.82,1.70) {.6416};
-  \node[font=\tiny,align=center] at (5.65,1.23) {MRR\\@50};
-  \node[font=\tiny,fill=projectteal!85,text=white,inner sep=2pt] at (4.85,5.15) {C2};
-  \node[font=\tiny,fill=projectgold!70,inner sep=2pt] at (5.78,5.15) {release-only};
+  \column{.31\textwidth}
+  \centering
+  {\fontsize{25}{27}\selectfont\bfseries\color{projectgold}1M}\par
+  {\large 128D encoder exports}\par
+  {\small finite, unit normalized}
+\end{columns}
 
-  % Coverage and gateway semantics
-  \draw[rounded corners=4pt,draw=projectpurple!60,fill=projectpurple!4]
-    (7.45,3.42) rectangle (11.30,5.78);
-  \node[font=\small\bfseries,text=projectpurple!75!black] at (9.38,5.42)
-    {Connectable coverage};
-  \node[font=\scriptsize\bfseries,text=projectpurple!75!black,text width=3.25cm,
-    align=center] at (9.38,4.72) {9,171 connectable\\[-1pt]\large 91.71\%};
-  \node[font=\fontsize{6.5}{7.4}\selectfont,align=center,text width=3.25cm] at (9.38,4.08)
-    {829 structural failures count as failures in all-query metrics.};
+\vspace{.42cm}
+{\small
+\textbf{Distributed execution.}
+Walk generation batches roots with \texttt{repartition(track\_id)} and \texttt{mapPartitions}; Word2Vec trains with 20 final partitions, window 5, and 5 iterations.}
 
-  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
-    (7.45,.86) rectangle (11.30,3.18);
-  \node[font=\small\bfseries,text=projectgold!55!black] at (9.38,2.85)
-    {Release is the gateway};
-  \node[font=\fontsize{6.5}{7.4}\selectfont\bfseries,text width=3.20cm,align=center] at (9.38,2.36)
-    {First hop: P4 (Release)};
-  \node[font=\fontsize{6.5}{7.4}\selectfont,text width=3.20cm,align=center] at (9.38,1.92)
-    {P1--P3 may become eligible afterwards.};
-  \node[font=\fontsize{5.2}{6}\selectfont\bfseries,text=projectgold!55!black,text width=3.25cm,align=center]
-    at (9.38,1.25) {Release-only: $\uparrow$MRR, $\approx$Hit Rate.\\C2: $\uparrow$Recall/nDCG, broader discography.};
-
-  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.4cm,
-    align=center,minimum height=.54cm,font=\scriptsize\bfseries] at (5.70,.42)
-    {Supported claim: transductive cross-relation metadata reconstruction---not inductive or user-relevance validation.};
-\end{tikzpicture}
+\vfill
+{\footnotesize Word2Vec learns distributional vectors from local contexts \autocite{mikolov2013efficient}. Encoder export is verified; serving still filters contextless roots.}
 
 \end{frame}
 
+\begin{frame}{C2: Masked-Artist Recovery}
+
+{\small
+\textbf{10K queries, one per artist}
+\(\rightarrow\) mask query Track--Artist
+\(\rightarrow\) rebuild + retrain
+\(\rightarrow\) same-artist retrieval at \(K=20\).}
+
+\vspace{.08cm}
+\begin{columns}[T,onlytextwidth]
+  \column{.64\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{img/c2/c2_masked_results.pdf}
+
+  \column{.32\textwidth}
+  \vspace{.04cm}
+  {\fontsize{22}{24}\selectfont\bfseries\color{projectpurple}91.71\%}\par
+  {\large connectable}\par
+  {\small 9,171 of 10,000 queries}
+
+  \vspace{.20cm}
+  {\large\bfseries 829 disconnected}\par
+  {\small Counted as zero in all-query metrics.}
+
+  \vspace{.22cm}
+  {\small
+  \textbf{Hit@20}: .700 vs .691\par
+  \textbf{MRR@50}: .632 vs .642}
+\end{columns}
+
+\vfill
+{\small\color{projectteal!80!black}\textbf{Claim boundary:}
+Evidence supports transductive metadata reconstruction only---not user relevance or inductive cold-start generalization.}
+
+\end{frame}
 \begin{frame}{Multi-View Candidate Generation}
 
 \vspace{-.22cm}
