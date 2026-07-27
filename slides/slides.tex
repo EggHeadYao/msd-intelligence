@@ -554,6 +554,102 @@
 
 \end{frame}
 
+\begin{frame}{C2: Masked-Artist Retrieval Experiment}
+
+\vspace{-.22cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[rounded corners=2pt,fill=projectteal,text=white,
+    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (.88,7.18) {VERIFIED RESULT};
+  \node[anchor=west,font=\fontsize{6.3}{7.2}\selectfont\bfseries,text=projectink]
+    at (1.95,7.18) {Can remaining relations recover same-artist tracks after masking Track--Artist?};
+
+  % Experiment protocol lane
+  \node[merlin card,text width=1.55cm,inner xsep=2pt,minimum height=.62cm,font=\tiny] (mq)
+    at (1.05,6.35) {10K distinct-artist queries\\stratified by track count};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=1.50cm,
+    inner xsep=2pt,minimum height=.62cm,font=\tiny] (mm) at (3.25,6.35)
+    {mask direct Track--Artist edges};
+  \node[merlin card,text width=1.25cm,inner xsep=2pt,minimum height=.62cm,font=\tiny] (mrw)
+    at (5.18,6.35) {rebuild walks};
+  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=1.42cm,
+    inner xsep=2pt,minimum height=.62cm,font=\tiny] (mtrain) at (7.05,6.35)
+    {retrain Word2Vec + FAISS};
+  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=1.62cm,
+    inner xsep=2pt,minimum height=.62cm,font=\tiny] (mret) at (9.35,6.35)
+    {same-artist retrieval at $K=20$};
+  \draw[merlin arrow] (mq)--(mm);
+  \draw[merlin arrow] (mm)--(mrw);
+  \draw[merlin arrow] (mrw)--(mtrain);
+  \draw[merlin arrow] (mtrain)--(mret);
+
+  % Bar chart
+  \draw[rounded corners=4pt,draw=projectteal!55,fill=white]
+    (.10,.86) rectangle (7.20,5.78);
+  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
+    at (.42,5.48) {All-query metrics (10K queries)};
+  \draw[->,draw=projectink!70] (.78,1.58) -- (6.80,1.58);
+  \draw[->,draw=projectink!70] (.78,1.58) -- (.78,5.05);
+  \draw[draw=black!15] (.78,3.18) -- (6.70,3.18);
+  \draw[draw=black!15] (.78,4.78) -- (6.70,4.78);
+  \node[anchor=east,font=\tiny] at (.70,1.58) {0};
+  \node[anchor=east,font=\tiny] at (.70,3.18) {.5};
+  \node[anchor=east,font=\tiny] at (.70,4.78) {1.0};
+
+  % Recall bars
+  \fill[projectteal!85] (1.15,1.58) rectangle (1.43,3.46);
+  \fill[projectgold!75] (1.48,1.58) rectangle (1.76,2.96);
+  \node[font=\tiny,rotate=90,anchor=west,text=white] at (1.29,1.70) {.5861};
+  \node[font=\tiny,rotate=90,anchor=west] at (1.62,1.70) {.4305};
+  \node[font=\tiny,align=center] at (1.45,1.23) {Recall\\@20};
+  % Hit bars
+  \fill[projectteal!85] (2.55,1.58) rectangle (2.83,3.82);
+  \fill[projectgold!75] (2.88,1.58) rectangle (3.16,3.79);
+  \node[font=\tiny,rotate=90,anchor=west,text=white] at (2.69,1.70) {.6997};
+  \node[font=\tiny,rotate=90,anchor=west] at (3.02,1.70) {.6913};
+  \node[font=\tiny,align=center] at (2.85,1.23) {Hit Rate\\@20};
+  % nDCG bars
+  \fill[projectteal!85] (3.95,1.58) rectangle (4.23,3.64);
+  \fill[projectgold!75] (4.28,1.58) rectangle (4.56,3.17);
+  \node[font=\tiny,rotate=90,anchor=west,text=white] at (4.09,1.70) {.6431};
+  \node[font=\tiny,rotate=90,anchor=west] at (4.42,1.70) {.4984};
+  \node[font=\tiny,align=center] at (4.25,1.23) {nDCG\\@20};
+  % MRR bars
+  \fill[projectteal!85] (5.35,1.58) rectangle (5.63,3.60);
+  \fill[projectgold!75] (5.68,1.58) rectangle (5.96,3.63);
+  \node[font=\tiny,rotate=90,anchor=west,text=white] at (5.49,1.70) {.6318};
+  \node[font=\tiny,rotate=90,anchor=west] at (5.82,1.70) {.6416};
+  \node[font=\tiny,align=center] at (5.65,1.23) {MRR\\@50};
+  \node[font=\tiny,fill=projectteal!85,text=white,inner sep=2pt] at (4.85,5.15) {C2};
+  \node[font=\tiny,fill=projectgold!70,inner sep=2pt] at (5.78,5.15) {release-only};
+
+  % Coverage and gateway semantics
+  \draw[rounded corners=4pt,draw=projectpurple!60,fill=projectpurple!4]
+    (7.45,3.42) rectangle (11.30,5.78);
+  \node[font=\small\bfseries,text=projectpurple!75!black] at (9.38,5.42)
+    {Connectable coverage};
+  \node[font=\scriptsize\bfseries,text=projectpurple!75!black,text width=3.25cm,
+    align=center] at (9.38,4.72) {9,171 connectable\\[-1pt]\large 91.71\%};
+  \node[font=\fontsize{6.5}{7.4}\selectfont,align=center,text width=3.25cm] at (9.38,4.08)
+    {829 structural failures count as failures in all-query metrics.};
+
+  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
+    (7.45,.86) rectangle (11.30,3.18);
+  \node[font=\small\bfseries,text=projectgold!55!black] at (9.38,2.85)
+    {Release is the gateway};
+  \node[font=\fontsize{6.5}{7.4}\selectfont\bfseries,text width=3.20cm,align=center] at (9.38,2.36)
+    {First hop: P4 (Release)};
+  \node[font=\fontsize{6.5}{7.4}\selectfont,text width=3.20cm,align=center] at (9.38,1.92)
+    {P1--P3 may become eligible afterwards.};
+  \node[font=\fontsize{5.2}{6}\selectfont\bfseries,text=projectgold!55!black,text width=3.25cm,align=center]
+    at (9.38,1.25) {Release-only: $\uparrow$MRR, $\approx$Hit Rate.\\C2: $\uparrow$Recall/nDCG, broader discography.};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.4cm,
+    align=center,minimum height=.54cm,font=\scriptsize\bfseries] at (5.70,.42)
+    {Supported claim: transductive cross-relation metadata reconstruction---not inductive or user-relevance validation.};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
