@@ -2,349 +2,349 @@
   "direct": {
     "by_decade": [
       {
-        "count": 4,
+        "count": 8,
         "decade": 1920,
-        "mae_years": 69.75,
-        "rmse_years": 70.01249888412782,
-        "signed_error_years": 69.75
+        "mae_years": 69.0,
+        "rmse_years": 69.0869017976635,
+        "signed_error_years": 69.0
       },
       {
-        "count": 9,
+        "count": 15,
         "decade": 1930,
-        "mae_years": 62.0,
-        "rmse_years": 62.14499175315739,
-        "signed_error_years": 62.0
+        "mae_years": 61.53333333333333,
+        "rmse_years": 61.67927798972142,
+        "signed_error_years": 61.53333333333333
       },
       {
-        "count": 10,
+        "count": 53,
         "decade": 1940,
-        "mae_years": 55.5,
-        "rmse_years": 55.69829440835689,
-        "signed_error_years": 55.5
+        "mae_years": 48.471698113207545,
+        "rmse_years": 48.881643736065406,
+        "signed_error_years": 48.471698113207545
       },
       {
-        "count": 182,
+        "count": 196,
         "decade": 1950,
-        "mae_years": 37.16483516483517,
-        "rmse_years": 38.25492857710704,
-        "signed_error_years": 37.16483516483517
+        "mae_years": 37.0,
+        "rmse_years": 38.10096683116306,
+        "signed_error_years": 37.0
       },
       {
-        "count": 943,
+        "count": 1253,
         "decade": 1960,
-        "mae_years": 22.732767762460234,
-        "rmse_years": 25.75615731138029,
-        "signed_error_years": 22.683987274655355
+        "mae_years": 22.36392657621708,
+        "rmse_years": 25.68661275878842,
+        "signed_error_years": 22.28092577813248
       },
       {
-        "count": 1956,
+        "count": 2433,
         "decade": 1970,
-        "mae_years": 13.411042944785276,
-        "rmse_years": 17.072772185624967,
-        "signed_error_years": 12.401840490797547
+        "mae_years": 13.879572544184136,
+        "rmse_years": 17.64425600107536,
+        "signed_error_years": 12.791204274558158
       },
       {
-        "count": 3270,
+        "count": 3678,
         "decade": 1980,
-        "mae_years": 7.775229357798165,
-        "rmse_years": 10.377743180326808,
-        "signed_error_years": 5.410703363914373
+        "mae_years": 7.89994562262099,
+        "rmse_years": 10.407023812974973,
+        "signed_error_years": 5.564437194127243
       },
       {
-        "count": 11578,
+        "count": 11969,
         "decade": 1990,
-        "mae_years": 6.34030057004664,
-        "rmse_years": 8.080716485903242,
-        "signed_error_years": 1.5482812230091554
+        "mae_years": 6.385245216810093,
+        "rmse_years": 8.188444955925611,
+        "signed_error_years": 1.43963572562453
       },
       {
-        "count": 27443,
+        "count": 29050,
         "decade": 2000,
-        "mae_years": 4.345989869912182,
-        "rmse_years": 6.478359053603177,
-        "signed_error_years": -0.45924279415515795
+        "mae_years": 4.458278829604131,
+        "rmse_years": 6.7262299005236805,
+        "signed_error_years": -0.7371772805507745
       },
       {
-        "count": 732,
+        "count": 781,
         "decade": 2010,
-        "mae_years": 4.032786885245901,
-        "rmse_years": 6.49674151195998,
-        "signed_error_years": -4.032786885245901
+        "mae_years": 3.843790012804097,
+        "rmse_years": 6.250838612112258,
+        "signed_error_years": -3.843790012804097
       }
     ],
-    "count": 46127,
-    "macro_decade_mae_years": 28.305295255508355,
-    "mae_years": 6.002493116829623,
+    "count": 49436,
+    "macro_decade_mae_years": 27.48357902487814,
+    "mae_years": 6.292640990371389,
     "maximum_raw_prediction_year": 2008.0,
     "median_absolute_error_years": 4.0,
     "minimum_raw_prediction_year": 1960.0,
-    "raw_mae_years": 6.002493116829623,
+    "raw_mae_years": 6.292640990371389,
     "raw_out_of_range_rate": 0.0,
-    "raw_rmse_years": 9.122014917540458,
-    "rmse_years": 9.122014917540458,
-    "signed_error_years": 1.6014264964120797,
-    "within_10_years_rate": 0.8442127170637588,
-    "within_5_years_rate": 0.619832202397728
+    "raw_rmse_years": 9.684177588937306,
+    "rmse_years": 9.684177588937306,
+    "signed_error_years": 1.69137875232624,
+    "within_10_years_rate": 0.8309126952018772,
+    "within_5_years_rate": 0.6149364835342666
   },
   "fixed_blend": {
     "by_decade": [
       {
-        "count": 4,
+        "count": 8,
         "decade": 1920,
-        "mae_years": 67.15878295898438,
-        "rmse_years": 67.24434115200374,
-        "signed_error_years": 67.15878295898438
+        "mae_years": 66.20790100097656,
+        "rmse_years": 66.24443519660463,
+        "signed_error_years": 66.20790100097656
       },
       {
-        "count": 9,
+        "count": 15,
         "decade": 1930,
-        "mae_years": 61.50591362847222,
-        "rmse_years": 61.56323043975668,
-        "signed_error_years": 61.50591362847222
+        "mae_years": 58.318701171875,
+        "rmse_years": 58.371728975320416,
+        "signed_error_years": 58.318701171875
       },
       {
-        "count": 10,
+        "count": 53,
         "decade": 1940,
-        "mae_years": 52.83310546875,
-        "rmse_years": 53.00978390552201,
-        "signed_error_years": 52.83310546875
+        "mae_years": 48.0226359817217,
+        "rmse_years": 48.18595335645294,
+        "signed_error_years": 48.0226359817217
       },
       {
-        "count": 182,
+        "count": 196,
         "decade": 1950,
-        "mae_years": 36.87286041595124,
-        "rmse_years": 37.75230181172851,
-        "signed_error_years": 36.87286041595124
+        "mae_years": 36.87363542829241,
+        "rmse_years": 37.780080836204846,
+        "signed_error_years": 36.87363542829241
       },
       {
-        "count": 943,
+        "count": 1253,
         "decade": 1960,
-        "mae_years": 23.095937039161917,
-        "rmse_years": 25.53990387014375,
-        "signed_error_years": 23.06616767567769
+        "mae_years": 22.63380201968401,
+        "rmse_years": 25.450467215567564,
+        "signed_error_years": 22.605508206086643
       },
       {
-        "count": 1956,
+        "count": 2433,
         "decade": 1970,
-        "mae_years": 13.459468786945616,
-        "rmse_years": 16.620521573816895,
-        "signed_error_years": 13.081816441198555
+        "mae_years": 13.834056623766955,
+        "rmse_years": 17.01926363844608,
+        "signed_error_years": 13.381117463650842
       },
       {
-        "count": 3270,
+        "count": 3678,
         "decade": 1980,
-        "mae_years": 7.422545602780963,
-        "rmse_years": 9.621815944113782,
-        "signed_error_years": 6.554023766007263
+        "mae_years": 7.640181988980085,
+        "rmse_years": 9.729785470972129,
+        "signed_error_years": 6.609532317368474
       },
       {
-        "count": 11578,
+        "count": 11969,
         "decade": 1990,
-        "mae_years": 4.753327644309925,
-        "rmse_years": 6.277861642953354,
-        "signed_error_years": 1.8141941499537106
+        "mae_years": 4.857366423726789,
+        "rmse_years": 6.421918846308265,
+        "signed_error_years": 1.6943043515899145
       },
       {
-        "count": 27443,
+        "count": 29050,
         "decade": 2000,
-        "mae_years": 3.520333881320487,
-        "rmse_years": 5.440321010663641,
-        "signed_error_years": -2.170035943108215
+        "mae_years": 3.674873677186424,
+        "rmse_years": 5.738613480577869,
+        "signed_error_years": -2.414691651651248
       },
       {
-        "count": 732,
+        "count": 781,
         "decade": 2010,
-        "mae_years": 5.9177983184981215,
-        "rmse_years": 7.146536388264365,
-        "signed_error_years": -5.9177983184981215
+        "mae_years": 5.696112756081946,
+        "rmse_years": 6.876936030371981,
+        "signed_error_years": -5.696112756081946
       }
     ],
-    "count": 46127,
-    "macro_decade_mae_years": 27.654007374517487,
-    "mae_years": 5.125277434934223,
-    "maximum_raw_prediction_year": 2008.23193359375,
-    "median_absolute_error_years": 3.081787109375,
-    "minimum_raw_prediction_year": 1964.57568359375,
-    "raw_mae_years": 5.125277434934223,
+    "count": 49436,
+    "macro_decade_mae_years": 26.775926707229196,
+    "mae_years": 5.474501216495507,
+    "maximum_raw_prediction_year": 2008.302978515625,
+    "median_absolute_error_years": 3.194091796875,
+    "minimum_raw_prediction_year": 1964.468505859375,
+    "raw_mae_years": 5.474501216495507,
     "raw_out_of_range_rate": 0.0,
-    "raw_rmse_years": 8.20291606733542,
-    "rmse_years": 8.20291606733542,
-    "signed_error_years": 0.7360782602202547,
-    "within_10_years_rate": 0.8750406486439612,
-    "within_5_years_rate": 0.6900080213324084
+    "raw_rmse_years": 8.81429512809924,
+    "rmse_years": 8.81429512809924,
+    "signed_error_years": 0.8506223936472156,
+    "within_10_years_rate": 0.8625900153734121,
+    "within_5_years_rate": 0.6708269277449632
   },
   "moe": {
     "by_decade": [
       {
-        "count": 4,
+        "count": 8,
         "decade": 1920,
-        "mae_years": 67.9637451171875,
-        "rmse_years": 68.04437359718983,
-        "signed_error_years": 67.9637451171875
+        "mae_years": 66.93240356445312,
+        "rmse_years": 66.9625187624436,
+        "signed_error_years": 66.93240356445312
       },
       {
-        "count": 9,
+        "count": 15,
         "decade": 1930,
-        "mae_years": 62.32294379340278,
-        "rmse_years": 62.38209381759127,
-        "signed_error_years": 62.32294379340278
+        "mae_years": 59.033260091145834,
+        "rmse_years": 59.08200126058695,
+        "signed_error_years": 59.033260091145834
       },
       {
-        "count": 10,
+        "count": 53,
         "decade": 1940,
-        "mae_years": 53.4528564453125,
-        "rmse_years": 53.620711369296345,
-        "signed_error_years": 53.4528564453125
+        "mae_years": 48.683692788178064,
+        "rmse_years": 48.843357726234714,
+        "signed_error_years": 48.683692788178064
       },
       {
-        "count": 182,
+        "count": 196,
         "decade": 1950,
-        "mae_years": 37.35247199089972,
-        "rmse_years": 38.290950774460796,
-        "signed_error_years": 37.35247199089972
+        "mae_years": 37.40308800522162,
+        "rmse_years": 38.36293733272112,
+        "signed_error_years": 37.40308800522162
       },
       {
-        "count": 943,
+        "count": 1253,
         "decade": 1960,
-        "mae_years": 23.314366523686044,
-        "rmse_years": 25.909308394299813,
-        "signed_error_years": 23.259116697665362
+        "mae_years": 22.87754594052399,
+        "rmse_years": 25.87524014208081,
+        "signed_error_years": 22.809031663850508
       },
       {
-        "count": 1956,
+        "count": 2433,
         "decade": 1970,
-        "mae_years": 13.536809067053298,
-        "rmse_years": 16.832533070991637,
-        "signed_error_years": 13.03463489243833
+        "mae_years": 13.931882909233071,
+        "rmse_years": 17.236566615826398,
+        "signed_error_years": 13.341270311938064
       },
       {
-        "count": 3270,
+        "count": 3678,
         "decade": 1980,
-        "mae_years": 7.508095314889144,
-        "rmse_years": 9.76193609958428,
-        "signed_error_years": 6.5707500119457185
+        "mae_years": 7.752696565728657,
+        "rmse_years": 9.88691861072076,
+        "signed_error_years": 6.653863090610556
       },
       {
-        "count": 11578,
+        "count": 11969,
         "decade": 1990,
-        "mae_years": 4.829719821536535,
-        "rmse_years": 6.401388734100431,
-        "signed_error_years": 1.9164628506448114
+        "mae_years": 4.948293895786772,
+        "rmse_years": 6.563098894483762,
+        "signed_error_years": 1.8011651559823816
       },
       {
-        "count": 27443,
+        "count": 29050,
         "decade": 2000,
-        "mae_years": 3.4729789759185516,
-        "rmse_years": 5.420776332235537,
-        "signed_error_years": -2.0411353200056137
+        "mae_years": 3.622621393778238,
+        "rmse_years": 5.721513484335775,
+        "signed_error_years": -2.282427720087941
       },
       {
-        "count": 732,
+        "count": 781,
         "decade": 2010,
-        "mae_years": 5.777359592458589,
-        "rmse_years": 7.055086256022208,
-        "signed_error_years": -5.777359592458589
+        "mae_years": 5.5646475622199105,
+        "rmse_years": 6.782548048887042,
+        "signed_error_years": -5.5646475622199105
       }
     ],
-    "count": 46127,
-    "macro_decade_mae_years": 27.953134664234472,
-    "mae_years": 5.130115618610541,
-    "maximum_raw_prediction_year": 2008.4541015625,
-    "median_absolute_error_years": 3.044921875,
-    "minimum_raw_prediction_year": 1963.36572265625,
-    "raw_mae_years": 5.130115618610541,
+    "count": 49436,
+    "macro_decade_mae_years": 27.075013271626926,
+    "mae_years": 5.486239261289217,
+    "maximum_raw_prediction_year": 2008.51220703125,
+    "median_absolute_error_years": 3.1627197265625,
+    "minimum_raw_prediction_year": 1963.2061767578125,
+    "raw_mae_years": 5.486239261289217,
     "raw_out_of_range_rate": 0.0,
-    "raw_rmse_years": 8.28376860389298,
-    "rmse_years": 8.28376860389298,
-    "signed_error_years": 0.8460508693855754,
-    "within_10_years_rate": 0.8755175927331065,
-    "within_5_years_rate": 0.6922626661174583
+    "raw_rmse_years": 8.91254849072551,
+    "rmse_years": 8.91254849072551,
+    "signed_error_years": 0.9659310143417752,
+    "within_10_years_rate": 0.8634193704992313,
+    "within_5_years_rate": 0.6730722550368152
   },
   "ordinal": {
     "by_decade": [
       {
-        "count": 4,
+        "count": 8,
         "decade": 1920,
-        "mae_years": 63.938690185546875,
-        "rmse_years": 64.04933313414304,
-        "signed_error_years": 63.938690185546875
+        "mae_years": 63.30967712402344,
+        "rmse_years": 63.38010815527037,
+        "signed_error_years": 63.30967712402344
       },
       {
-        "count": 9,
+        "count": 15,
         "decade": 1930,
-        "mae_years": 58.237643771701386,
-        "rmse_years": 58.290982087679666,
-        "signed_error_years": 58.237643771701386
+        "mae_years": 55.46031901041667,
+        "rmse_years": 55.534844716643114,
+        "signed_error_years": 55.46031901041667
       },
       {
-        "count": 10,
+        "count": 53,
         "decade": 1940,
-        "mae_years": 50.35389404296875,
-        "rmse_years": 50.57494799295253,
-        "signed_error_years": 50.35389404296875
+        "mae_years": 45.378183040978776,
+        "rmse_years": 45.56881556612664,
+        "signed_error_years": 45.378183040978776
       },
       {
-        "count": 182,
+        "count": 196,
         "decade": 1950,
-        "mae_years": 34.95422765710852,
-        "rmse_years": 35.65444471774373,
-        "signed_error_years": 34.95422765710852
+        "mae_years": 34.755633918606506,
+        "rmse_years": 35.50094135871237,
+        "signed_error_years": 34.755633918606506
       },
       {
-        "count": 943,
+        "count": 1253,
         "decade": 1960,
-        "mae_years": 22.294173530910324,
-        "rmse_years": 24.164884196711956,
-        "signed_error_years": 22.294173530910324
+        "mae_years": 21.791225180660167,
+        "rmse_years": 23.87804075948137,
+        "signed_error_years": 21.791225180660167
       },
       {
-        "count": 1956,
+        "count": 2433,
         "decade": 1970,
-        "mae_years": 13.393404845567325,
-        "rmse_years": 15.912927372615432,
-        "signed_error_years": 13.270351729753802
+        "mae_years": 13.695852659878494,
+        "rmse_years": 16.285640013453644,
+        "signed_error_years": 13.54032143476418
       },
       {
-        "count": 3270,
+        "count": 3678,
         "decade": 1980,
-        "mae_years": 7.162892528848911,
-        "rmse_years": 9.154616620298878,
-        "signed_error_years": 6.486923805726778
+        "mae_years": 7.275286576487306,
+        "rmse_years": 9.206433345542294,
+        "signed_error_years": 6.432015564728198
       },
       {
-        "count": 11578,
+        "count": 11969,
         "decade": 1990,
-        "mae_years": 4.601825629105982,
-        "rmse_years": 5.938980716396609,
-        "signed_error_years": 1.4049403852369526
+        "mae_years": 4.646281927368358,
+        "rmse_years": 6.018593519593893,
+        "signed_error_years": 1.2666818276315377
       },
       {
-        "count": 27443,
+        "count": 29050,
         "decade": 2000,
-        "mae_years": 3.771281659905019,
-        "rmse_years": 5.625175157297132,
-        "signed_error_years": -2.6858165257092543
+        "mae_years": 3.9450985765046793,
+        "rmse_years": 5.916722727195523,
+        "signed_error_years": -2.9439285756306477
       },
       {
-        "count": 732,
+        "count": 781,
         "decade": 2010,
-        "mae_years": 6.4797409974812155,
-        "rmse_years": 7.560995461211775,
-        "signed_error_years": -6.4797409974812155
+        "mae_years": 6.2221626545494555,
+        "rmse_years": 7.2951763444197715,
+        "signed_error_years": -6.2221626545494555
       }
     ],
-    "count": 46127,
-    "macro_decade_mae_years": 26.518777484914427,
-    "mae_years": 5.198843543962186,
-    "maximum_raw_prediction_year": 2007.4254150390625,
-    "median_absolute_error_years": 3.28564453125,
+    "count": 49436,
+    "macro_decade_mae_years": 25.647972066947386,
+    "mae_years": 5.522623592561595,
+    "maximum_raw_prediction_year": 2007.4659423828125,
+    "median_absolute_error_years": 3.4075927734375,
     "minimum_raw_prediction_year": 1968.80517578125,
-    "raw_mae_years": 5.198843543962186,
+    "raw_mae_years": 5.522623592561595,
     "raw_out_of_range_rate": 0.0,
-    "raw_rmse_years": 7.986982961984655,
-    "rmse_years": 7.986982961984655,
-    "signed_error_years": 0.2960071726225963,
-    "within_10_years_rate": 0.8703579248596267,
-    "within_5_years_rate": 0.6686539337047717
+    "raw_rmse_years": 8.532371329845274,
+    "rmse_years": 8.532371329845274,
+    "signed_error_years": 0.38920566470253204,
+    "within_10_years_rate": 0.8566024759284732,
+    "within_5_years_rate": 0.6531272756695525
   }
 }
