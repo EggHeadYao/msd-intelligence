@@ -1,0 +1,19 @@
+{
+  "fit_split": "train",
+  "model_id": "constant-mean",
+  "prediction_year": 1998.329080290372,
+  "test": {
+    "count": 49436,
+    "mae_years": 8.143521943429167,
+    "prediction_year": 1998.329080290372,
+    "rmse_years": 10.80191669190103,
+    "signed_error_years": -0.16386007697156024
+  },
+  "validation": {
+    "count": 46127,
+    "mae_years": 7.738026186185222,
+    "prediction_year": 1998.329080290372,
+    "rmse_years": 10.216562299566583,
+    "signed_error_years": -0.5861537374207568
+  }
+}

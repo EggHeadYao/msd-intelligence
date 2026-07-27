@@ -4,6 +4,8 @@ This directory stores lightweight reports for the retained model comparisons. Ev
 
 The reported test metrics reflect the course-approved test-guided tuning protocol. They should not be described as estimates from an untouched test set.
 
+- `constant-mean`: predicts the training-set mean year for every track.
+- `constant-median`: predicts the training-set median year for every track.
 - `ridge-t90`: custom Spark SGD Ridge baseline on the T90 representation.
 - `rff-ridge-d*`: RBF random Fourier feature dimension comparison on T90.
 - `lightgbm-t90`: nonlinear T90 comparison.

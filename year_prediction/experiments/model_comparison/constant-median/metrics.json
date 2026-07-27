@@ -1,0 +1,19 @@
+{
+  "fit_split": "train",
+  "model_id": "constant-median",
+  "prediction_year": 2002.0,
+  "test": {
+    "count": 49436,
+    "mae_years": 7.581175661461283,
+    "prediction_year": 2002.0,
+    "rmse_years": 11.355792414488368,
+    "signed_error_years": 3.5070596326563637
+  },
+  "validation": {
+    "count": 46127,
+    "mae_years": 7.128514752747848,
+    "prediction_year": 2002.0,
+    "rmse_years": 10.65600066255253,
+    "signed_error_years": 3.084765972207167
+  }
+}
