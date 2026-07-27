@@ -6,7 +6,7 @@ FAILED=0
 
 # non-ASCII characters
 for FILE in $STAGED_FILES; do
-  [ -f "$FILE" ] && LC_ALL=C grep -q '[^[:print:][:space:]─│├└]' "$FILE" 2>/dev/null && {
+  [ -f "$FILE" ] && grep -Iq . "$FILE" && LC_ALL=C grep -q '[^[:print:][:space:]─│├└]' "$FILE" 2>/dev/null && {
     echo "Error: non-ASCII found in $FILE"
     FAILED=1
   }
