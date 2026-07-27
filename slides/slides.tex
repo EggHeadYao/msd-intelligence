@@ -733,6 +733,79 @@
 
 \end{frame}
 
+\begin{frame}{Ranker Training Pair Construction}
+
+\vspace{-.22cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[rounded corners=2pt,fill=projectpurple,text=white,
+    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (1.03,7.18) {FROZEN PROTOCOL};
+
+  % Split-before-pair discipline
+  \draw[rounded corners=4pt,draw=projectteal!60,fill=projectteal!4]
+    (.10,4.34) rectangle (11.30,6.86);
+  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
+    at (.38,6.57) {Split first; construct pairs only inside each split universe};
+  \node[merlin card,draw=projectink,fill=projectink,text=white,text width=1.34cm,
+    minimum height=.72cm,font=\fontsize{5.8}{6.6}\selectfont\bfseries] (gkey) at (1.05,5.50)
+    {group key:\\valid song ID\\else track ID};
+  \node[merlin card,draw=projectblue,fill=projectblue!10,text width=1.62cm,
+    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sa) at (3.20,5.50)
+    {\bfseries Set A\\[-2pt] train + weak thresholds\\imputation/scaler stats};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!10,text width=1.42cm,
+    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sb) at (5.42,5.50)
+    {\bfseries Set B\\[-2pt] \texttt{regParam} selection\\diagnostics};
+  \node[merlin card,draw=projectgold,fill=projectgold!11,text width=1.37cm,
+    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sc) at (7.53,5.50)
+    {\bfseries Set C\\[-2pt] one final evaluation};
+  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=1.62cm,
+    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sr) at (9.85,5.50)
+    {\bfseries Remaining\\[-2pt] final retraining only};
+  \draw[merlin arrow] (gkey)--(sa);
+  \draw[merlin arrow] (sa)--(sb);
+  \draw[merlin arrow] (sb)--(sc);
+  \draw[merlin arrow] (sc)--(sr);
+  \node[font=\fontsize{6.2}{7}\selectfont\bfseries,text=projectteal!80!black,
+    text width=9.95cm,align=center] at (5.70,4.58)
+    {Set C isolates supervised labels and pair endpoints; C1/C2 remain explicitly full-catalog transductive representations.};
+
+  % Positive and negative construction
+  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
+    (.10,1.05) rectangle (5.45,4.08);
+  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
+    at (.38,3.78) {Weak-positive predicate};
+  \node[merlin card,draw=projectblue,fill=white,text width=4.50cm,
+    minimum height=.66cm,font=\scriptsize\bfseries] at (2.78,3.08)
+    {\fontsize{7}{8}\selectfont same artist \quad OR \quad high Audio cosine \quad OR \quad high Tag cosine};
+  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=4.70cm]
+    at (.43,2.34) {$\bullet$ Audio and Tag thresholds are fitted on Set A only.};
+  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=4.70cm]
+    at (.43,1.84) {$\bullet$ Same release is a Ranker feature, not a positive rule.};
+  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=4.70cm]
+    at (.43,1.34) {$\bullet$ Same-song pairs are excluded, never labeled positive.};
+
+  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
+    (5.70,1.05) rectangle (11.30,4.08);
+  \node[anchor=west,font=\small\bfseries,text=projectgold!60!black]
+    at (5.98,3.78) {Negatives: 1 positive : 3 negatives};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=2.00cm,
+    minimum height=.72cm,font=\scriptsize] at (7.20,3.02)
+    {\bfseries $\sim75\%$\\[-2pt]\tiny candidate-aware negatives};
+  \node[merlin card,draw=projectink!55,fill=white,text width=1.76cm,
+    minimum height=.72cm,font=\scriptsize] at (9.70,3.02)
+    {\bfseries $\sim25\%$\\[-2pt]\tiny random negatives};
+  \node[font=\fontsize{6.4}{7.35}\selectfont,text width=4.88cm,align=left]
+    at (8.50,2.00) {Before writing: exclude self, same song, known positives and duplicate pairs; keep both endpoints inside the allowed split universe.};
+  \node[font=\fontsize{6.2}{7.1}\selectfont\bfseries,text=projectgold!60!black,
+    text width=4.85cm,align=center] at (8.50,1.30)
+    {Candidate-aware negatives teach local discrimination inside the serving pool.};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,text width=9.85cm,
+    align=center,minimum height=.50cm,font=\fontsize{7}{8}\selectfont\bfseries] at (5.70,.48)
+    {The supervision target is multi-view weak-label consistency---not observed user relevance.};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
