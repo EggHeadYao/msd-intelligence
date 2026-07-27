@@ -1,0 +1,4 @@
+model_id,batch_fraction,average_batch_rows,sampled_rows,effective_data_passes,gradient_reduce_seconds,training_loop_seconds,total_seconds,speedup_vs_full,time_reduction_percent
+ridge-t90,1.00,420013.00,42001300,100.000000,702.648652,719.666985,754.992403,1.000000,0.000
+ridge-t90-mb25,0.25,104988.44,10498844,24.996474,518.344241,537.287114,577.820806,1.306620,23.467
+ridge-t90-mb10,0.10,41985.28,4198528,9.996186,509.094498,529.242819,579.117012,1.303696,23.295

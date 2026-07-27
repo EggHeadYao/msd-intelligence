@@ -1,0 +1,7 @@
+target_name,target_validation_mae,model_id,first_iteration,cumulative_seconds,effective_data_passes,observed_validation_mae
+mae_6_50,6.500000,ridge-t90,50,363.996363,50.000000,6.493274
+mae_6_50,6.500000,ridge-t90-mb25,50,267.670007,12.504070,6.497637
+mae_6_50,6.500000,ridge-t90-mb10,50,274.228220,4.999367,6.494929
+full_batch_final,6.461948,ridge-t90,100,719.654468,100.000000,6.461948
+full_batch_final,6.461948,ridge-t90-mb25,95,508.451763,23.745541,6.461492
+full_batch_final,6.461948,ridge-t90-mb10,95,500.061810,9.494535,6.457244

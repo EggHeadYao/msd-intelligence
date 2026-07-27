@@ -1,0 +1,24 @@
+{
+  "final_gradient_norm": 0.005058723069664177,
+  "final_training_objective": 0.011758014705859321,
+  "iterations_completed": 100,
+  "stop_reason": "max_iterations",
+  "train": {
+    "count": 420013,
+    "mae_years": 6.836873723872126,
+    "raw_mae_years": 6.860816083073339,
+    "raw_out_of_range_rate": 0.0066450324156633244,
+    "raw_rmse_years": 9.64786772051903,
+    "rmse_years": 9.61683692286863,
+    "signed_error_years": -0.0248973165798613
+  },
+  "validation": {
+    "count": 46127,
+    "mae_years": 6.460784120080552,
+    "raw_mae_years": 6.493278454494015,
+    "raw_out_of_range_rate": 0.006828972185487892,
+    "raw_rmse_years": 9.023903976805203,
+    "rmse_years": 8.949783769364295,
+    "signed_error_years": -0.4884964260368295
+  }
+}

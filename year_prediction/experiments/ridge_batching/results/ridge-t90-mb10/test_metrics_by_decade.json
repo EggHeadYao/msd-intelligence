@@ -1,0 +1,77 @@
+{
+  "decades": [
+    {
+      "count": 8,
+      "decade": 1920,
+      "mae_years": 60.55671420569493,
+      "rmse_years": 60.84905310487096,
+      "signed_error_years": 60.55671420569493
+    },
+    {
+      "count": 15,
+      "decade": 1930,
+      "mae_years": 53.13759233167381,
+      "rmse_years": 53.29772990211078,
+      "signed_error_years": 53.13759233167381
+    },
+    {
+      "count": 53,
+      "decade": 1940,
+      "mae_years": 40.58393248401063,
+      "rmse_years": 40.90774751880055,
+      "signed_error_years": 40.58393248401063
+    },
+    {
+      "count": 196,
+      "decade": 1950,
+      "mae_years": 36.321550803830945,
+      "rmse_years": 36.647647750237006,
+      "signed_error_years": 36.321550803830945
+    },
+    {
+      "count": 1253,
+      "decade": 1960,
+      "mae_years": 27.259005340966738,
+      "rmse_years": 27.732146417964422,
+      "signed_error_years": 27.259005340966738
+    },
+    {
+      "count": 2433,
+      "decade": 1970,
+      "mae_years": 19.107593475473635,
+      "rmse_years": 19.711531250128672,
+      "signed_error_years": 19.107593475473635
+    },
+    {
+      "count": 3678,
+      "decade": 1980,
+      "mae_years": 9.134719154222152,
+      "rmse_years": 10.288336899554372,
+      "signed_error_years": 8.934230196219218
+    },
+    {
+      "count": 11969,
+      "decade": 1990,
+      "mae_years": 3.830660338070569,
+      "rmse_years": 4.925577553442471,
+      "signed_error_years": 1.3193924938989219
+    },
+    {
+      "count": 29050,
+      "decade": 2000,
+      "mae_years": 5.374843635938214,
+      "rmse_years": 6.678308090637825,
+      "signed_error_years": -4.723382880040575
+    },
+    {
+      "count": 781,
+      "decade": 2010,
+      "mae_years": 8.34558966351307,
+      "rmse_years": 9.233030961014391,
+      "signed_error_years": -8.28458136197952
+    }
+  ],
+  "format_version": 1,
+  "model_id": "ridge-t90-mb10",
+  "split": "test"
+}

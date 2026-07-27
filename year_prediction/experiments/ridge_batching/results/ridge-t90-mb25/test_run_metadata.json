@@ -1,0 +1,27 @@
+{
+  "counts": {
+    "artists": 2822,
+    "tracks": 49436
+  },
+  "evaluation": "course_test_benchmark",
+  "feature_manifest": "/home/egghead/472/p1/parquets/year_prediction/training/t90/manifest.json",
+  "feature_manifest_sha256": "a7a882ee8ce8e6831e2bda41fa88103907e379d42c9c312a7a7de35116cc563c",
+  "format_version": 1,
+  "input": "/home/egghead/472/p1/parquets/year_prediction/training/t90/vectors.parquet",
+  "model_directory": "/home/egghead/472/p1/parquets/year_prediction/models/ridge-t90-mb25",
+  "model_id": "ridge-t90-mb25",
+  "model_sha256": "f21e0942b5f6ccbea623c28040834290cc54b09155bf7c273a6c584bf4826e19",
+  "spark": {
+    "application_id": "local-1785134864303",
+    "default_parallelism": 4,
+    "master": "local[4]",
+    "version": "4.1.2"
+  },
+  "split": "test",
+  "timing_seconds": {
+    "data_validation": 10.721001095998872,
+    "metric_calculation": 8.958719124000709,
+    "prediction_write": 6.931296169999769,
+    "total": 27.617079559000558
+  }
+}

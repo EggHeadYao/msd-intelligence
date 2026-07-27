@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "metrics": {
+    "count": 49436,
+    "distinct_artists": 2822,
+    "distinct_tracks": 49436,
+    "macro_decade_mae_years": 26.45139278776843,
+    "mae_years": 6.745763224760567,
+    "maximum_raw_prediction_year": 2097.612537299708,
+    "median_absolute_error_years": 4.9850477808649885,
+    "minimum_raw_prediction_year": 1955.3711969272053,
+    "raw_mae_years": 6.7767301620122895,
+    "raw_out_of_range_rate": 0.0065539283113520514,
+    "raw_rmse_years": 9.458467095769594,
+    "rmse_years": 9.407590177233761,
+    "signed_error_years": -0.1041823039924725,
+    "within_10_years_rate": 0.8062343231653046,
+    "within_5_years_rate": 0.501638482077838
+  },
+  "model_id": "ridge-t90-mb25",
+  "split": "test"
+}

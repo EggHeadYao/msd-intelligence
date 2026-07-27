@@ -1,0 +1,46 @@
+{
+  "configuration": {
+    "execution": {
+      "aggregation": "direct_reduce",
+      "batch_fraction": 1.0,
+      "broadcast_weights": false,
+      "persist_training_data": false
+    },
+    "feature_manifest": "parquets/year_prediction/training/t90/manifest.json",
+    "gradient_tolerance": 1e-08,
+    "initialization": "zero_weights_train_mean_intercept",
+    "input": "parquets/year_prediction/training/t90/vectors.parquet",
+    "l2": 0.001,
+    "learning_rate": 0.08,
+    "max_iterations": 100,
+    "model_id": "ridge-t90",
+    "objective": "ridge_squared",
+    "output_root": "parquets/year_prediction/models",
+    "prediction_partitions": 8,
+    "shuffle_partitions": 32,
+    "validation_interval": 5
+  },
+  "configuration_path": "/home/egghead/472/p1/p1team02/year_prediction/config/experiment_a/ridge_t90.json",
+  "configuration_sha256": "908bcc537b7360a574c54dbc6f50762609d67a70f020b3693c4f8ff5d44e1a54",
+  "counts": {
+    "train": 420013,
+    "validation": 46127
+  },
+  "spark": {
+    "application_id": "local-1784550975685",
+    "default_parallelism": 4,
+    "master": "local[4]",
+    "shuffle_partitions": "32",
+    "version": "4.1.2"
+  },
+  "timing_seconds": {
+    "data_validation": 17.332541018986376,
+    "final_evaluation": 13.00564773500082,
+    "gradient_reduce": 702.6486524751817,
+    "parameter_update": 0.00499409410986118,
+    "prediction_write": 3.8108039399958216,
+    "total": 754.9924033030111,
+    "training_loop": 719.6669848690217,
+    "validation_during_training": 16.99814738088753
+  }
+}
