@@ -10,7 +10,20 @@
 \addbibresource{slides.bib}
 
 \definecolor{projectteal}{HTML}{236B65}
+\definecolor{projectblue}{HTML}{3E7198}
+\definecolor{projectpurple}{HTML}{76689A}
+\definecolor{projectgold}{HTML}{C98B38}
+\definecolor{projectink}{HTML}{173A38}
 \colortheme{projectteal}
+
+\tikzset{
+  merlin arrow/.style={->,>=stealth,line width=1.1pt,draw=projectteal!85!black},
+  merlin card/.style={rounded corners=3pt,draw=projectteal!60,fill=white,
+    line width=.8pt,align=center,inner sep=5pt},
+  merlin stage/.style={rounded corners=5pt,line width=1pt},
+  merlin label/.style={font=\scriptsize\bfseries,text=projectteal!85!black},
+  merlin note/.style={font=\scriptsize,text=projectink,align=center}
+}
 
 \begin{document}
 
@@ -30,7 +43,49 @@
 
 \section{Recommendation System}
 
-\begin{frame}{Recommendation System}
+\begin{frame}{Why a Two-Stage Recommendation System?}
+
+\vspace{-.15cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[merlin card,draw=projectteal!75,fill=projectteal!8,
+    minimum width=11.20cm,minimum height=.72cm,text width=10.65cm]
+    at (5.7,6.75) {\small Given one query track, retrieve the \alert{20 most similar tracks}\\[-1pt]
+    from a catalog of about \alert{one million}.};
+
+  \node[merlin card,draw=projectink,fill=projectink,text=white,
+    minimum width=2.95cm,minimum height=1.18cm] (catalog) at (1.55,4.95)
+    {\bfseries 1,000,000 tracks\\[-1pt]\scriptsize full catalog};
+
+  \node[merlin card,draw=projectblue,fill=projectblue!12,
+    minimum width=3.45cm,minimum height=1.18cm] (candidate) at (5.65,4.95)
+    {\color{projectblue!70!black}\bfseries Stage 1\\[-1pt]
+     \scriptsize high-recall candidate generation\\[-1pt]
+     \bfseries $\leq 1{,}000$ candidates};
+
+  \node[merlin card,draw=projectgold,fill=projectgold!13,
+    minimum width=2.75cm,minimum height=1.18cm] (ranking) at (9.85,4.95)
+    {\color{projectgold!65!black}\bfseries Stage 2\\[-1pt]
+     \scriptsize learned ranking\\[-1pt]
+     \bfseries Top-20};
+
+  \draw[merlin arrow,line width=1.5pt] (catalog) -- (candidate);
+  \draw[merlin arrow,line width=1.5pt] (candidate) -- (ranking);
+
+  \node[merlin card,minimum width=3.35cm,minimum height=1.15cm,text width=2.98cm]
+    at (1.78,2.65) {\color{projectteal!85!black}\bfseries Scale\\[-1pt]
+    \mdseries\scriptsize Full pair-feature scoring over one million tracks is too costly.};
+  \node[merlin card,minimum width=3.35cm,minimum height=1.15cm,text width=2.98cm]
+    at (5.70,2.65) {\color{projectteal!85!black}\bfseries Multiple views\\[-1pt]
+    \mdseries\scriptsize Audio, graph, artist distance, and tags express different similarity.};
+  \node[merlin card,minimum width=3.35cm,minimum height=1.15cm,text width=2.98cm]
+    at (9.62,2.65) {\color{projectteal!85!black}\bfseries Missing signals\\[-1pt]
+    \mdseries\scriptsize Independent retrieval paths provide coverage when a view is unavailable.};
+
+  \node[rounded corners=3pt,fill=projectteal,text=white,
+    minimum width=8.2cm,minimum height=.66cm,font=\small\bfseries]
+    at (5.7,.95) {Stage 1 protects recall; Stage 2 concentrates precision.};
+\end{tikzpicture}
+
 \end{frame}
 
 \section{Year Prediction}
