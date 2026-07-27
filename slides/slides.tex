@@ -88,6 +88,80 @@
 
 \end{frame}
 
+\begin{frame}{MERLIN Two-Stage Architecture}
+
+\vspace{-.28cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  % Stage backgrounds
+  \draw[merlin stage,draw=projectteal!65,fill=projectteal!5]
+    (.05,2.35) rectangle (11.35,6.72);
+  \draw[merlin stage,draw=projectgold!85,fill=projectgold!7]
+    (.05,.22) rectangle (11.35,2.08);
+
+  \node[anchor=west,merlin label] at (.28,6.45)
+    {STAGE 1 \;--\; MULTI-VIEW CANDIDATE GENERATION};
+  \node[anchor=west,font=\scriptsize\bfseries,text=projectgold!60!black]
+    at (.28,1.82) {STAGE 2 \;--\; LEARNED RANKING};
+
+  \node[merlin card,draw=projectink,fill=projectink,text=white,
+    minimum width=1.65cm,minimum height=.62cm,font=\small\bfseries] (query)
+    at (5.70,7.20) {Query track};
+
+  \node[merlin card,draw=projectblue,fill=projectblue!12,
+    minimum width=2.10cm,minimum height=.78cm] (c1) at (1.85,5.20)
+    {\color{projectblue!70!black}\bfseries C1 Audio\\[-2pt]\scriptsize acoustic similarity};
+  \node[merlin card,draw=projectblue,fill=projectblue!12,
+    minimum width=2.10cm,minimum height=.78cm] (c2) at (4.18,5.20)
+    {\color{projectblue!70!black}\bfseries C2 Graph\\[-2pt]\scriptsize learned relations};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!12,
+    minimum width=2.10cm,minimum height=.78cm] (bfs) at (7.22,5.20)
+    {\color{projectpurple!75!black}\bfseries BFS\\[-2pt]\scriptsize artist distance};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!12,
+    minimum width=2.10cm,minimum height=.78cm] (tag) at (9.55,5.20)
+    {\color{projectpurple!75!black}\bfseries Tag\\[-2pt]\scriptsize semantic overlap};
+
+  \coordinate (split) at (5.70,6.02);
+  \draw[merlin arrow] (query) -- (split);
+  \draw[draw=projectteal!75!black,line width=1.1pt] (1.85,6.02) -- (9.55,6.02);
+  \foreach \target in {c1,c2,bfs,tag}
+    \draw[merlin arrow] (split -| \target) -- (\target);
+
+  \node[font=\scriptsize\bfseries,text=projectblue!75!black,
+    fill=projectteal!5,inner xsep=5pt] at (3.02,5.93)
+    {Representation-based retrieval};
+  \node[font=\scriptsize\bfseries,text=projectpurple!80!black,
+    fill=projectteal!5,inner xsep=5pt] at (8.38,5.93)
+    {Explicit relation retrieval};
+
+  \node[merlin card,draw=projectteal!80,fill=white,
+    minimum width=6.55cm,minimum height=.64cm,font=\scriptsize\bfseries] (merge)
+    at (5.70,3.86) {filter $\rightarrow$ merge $\rightarrow$ deduplicate $\rightarrow$ preserve source evidence};
+  \foreach \source in {c1,c2,bfs,tag}
+    \draw[merlin arrow] (\source) -- (\source |- merge.north);
+
+  \node[merlin card,draw=projectteal,fill=projectteal!12,
+    minimum width=4.35cm,minimum height=.66cm] (pool) at (5.70,2.83)
+    {\bfseries canonical candidate pool $\leq 1{,}000$};
+  \draw[merlin arrow] (merge) -- (pool);
+
+  \node[merlin card,minimum width=2.25cm,minimum height=.65cm,font=\scriptsize]
+    (features) at (2.15,1.08) {13 pair features\\+ availability masks};
+  \node[merlin card,draw=projectgold,fill=projectgold!15,
+    minimum width=2.55cm,minimum height=.72cm] (ranker) at (5.70,1.08)
+    {\color{projectgold!60!black}\bfseries Learned Ranker (R)};
+  \node[merlin card,draw=projectink,fill=projectink,text=white,
+    minimum width=1.75cm,minimum height=.72cm] (top) at (9.25,1.08)
+    {\bfseries Top-20};
+  \draw[merlin arrow] (pool) -- (ranker);
+  \draw[merlin arrow] (features) -- (ranker);
+  \draw[merlin arrow] (ranker) -- (top);
+
+  \node[anchor=south east,font=\tiny\itshape,text=projectteal!80!black]
+    at (11.18,.31) {specialized retrieval for recall; learned late fusion for ranking};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
