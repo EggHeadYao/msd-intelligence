@@ -650,6 +650,89 @@
 
 \end{frame}
 
+\begin{frame}{Multi-View Candidate Generation}
+
+\vspace{-.22cm}
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[rounded corners=2pt,fill=projectpurple,text=white,
+    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (1.03,7.18) {FROZEN PROTOCOL};
+
+  % Four non-substitutable sources
+  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=2.18cm,
+    minimum height=1.02cm] (ca) at (1.48,6.28)
+    {\color{projectblue!75!black}\bfseries Audio / C1\\[-2pt]
+     \mdseries\tiny cosine $\cdot$ acoustic similarity\\[-1pt]
+     \bfseries max 250};
+  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=2.18cm,
+    minimum height=1.02cm] (cg) at (4.30,6.28)
+    {\color{projectteal!80!black}\bfseries Graph / C2\\[-2pt]
+     \mdseries\tiny cosine $\cdot$ smooth relation space\\[-1pt]
+     \bfseries max 250};
+  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=2.18cm,
+    minimum height=1.02cm] (cb) at (7.12,6.28)
+    {\color{projectpurple!80!black}\bfseries BFS\\[-2pt]
+     \mdseries\tiny directed artist distance\\[-1pt]
+     \bfseries max 250};
+  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=2.18cm,
+    minimum height=1.02cm] (ct) at (9.94,6.28)
+    {\color{projectgold!60!black}\bfseries Tag\\[-2pt]
+     \mdseries\tiny artist--term TF--IDF cosine\\[-1pt]
+     \bfseries max 250};
+
+  % Canonicalization lane
+  \node[merlin card,text width=1.52cm,minimum height=.58cm,font=\tiny] (cr)
+    at (.92,4.88) {source retrieval + caps};
+  \node[merlin card,text width=1.23cm,minimum height=.58cm,font=\tiny] (co)
+    at (2.90,4.88) {overfetch where required};
+  \node[merlin card,text width=1.56cm,minimum height=.58cm,font=\tiny] (cf)
+    at (5.03,4.88) {remove query / same song / invalid};
+  \node[merlin card,text width=1.20cm,minimum height=.58cm,font=\tiny] (cm)
+    at (7.03,4.88) {merge + deduplicate};
+  \node[merlin card,text width=1.42cm,minimum height=.58cm,font=\tiny] (cp)
+    at (9.03,4.88) {keep source scores + provenance};
+  \draw[merlin arrow] (cr)--(co);
+  \draw[merlin arrow] (co)--(cf);
+  \draw[merlin arrow] (cf)--(cm);
+  \draw[merlin arrow] (cm)--(cp);
+  \node[merlin card,draw=projectteal,fill=projectteal!12,text width=1.25cm,
+    minimum height=.62cm,font=\scriptsize\bfseries] (cup) at (10.70,4.88)
+    {pool $\leq 1000$};
+  \draw[merlin arrow] (cp)--(cup);
+
+  % Source policies
+  \draw[rounded corners=4pt,draw=projectblue!55,fill=projectblue!4]
+    (.10,1.12) rectangle (6.18,4.20);
+  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
+    at (.38,3.91) {Source-specific retrieval policy};
+  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=5.50cm]
+    at (.42,3.38) {$\bullet$ \textbf{Audio / Graph:} fetch $3\times\text{quota}+1$; filter query, same song and duplicate tracks; keep at most 250.};
+  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=5.50cm]
+    at (.42,2.67) {$\bullet$ \textbf{BFS:} directed artist distance $\leq 2$; at most 10 tracks from each artist.};
+  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=5.50cm]
+    at (.42,2.10) {$\bullet$ \textbf{Tag:} retrieve top TF--IDF artists; at most 5 tracks from each artist.};
+  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont\bfseries,
+    text=projectblue!80!black,text width=5.50cm] at (.42,1.48)
+    {$\bullet$ A short source returns its true count---never random padding.};
+
+  % Evaluation contract
+  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
+    (6.43,1.12) rectangle (11.30,4.20);
+  \node[anchor=west,font=\small\bfseries,text=projectgold!60!black]
+    at (6.70,3.91) {Evaluate recall before ranking};
+  \node[font=\fontsize{7}{8}\selectfont\bfseries,text width=4.22cm,align=center]
+    at (8.86,3.33) {A ranker cannot recover a positive that never enters the canonical pool.};
+  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=4.22cm,align=left]
+    at (8.86,2.43) {Reserve: source Recall@250; union Recall@$\leq$1000; all-minus-one delta; raw/unique counts and dedup rate; exclusive positives; missing signals and shortages.};
+  \node[font=\fontsize{6.1}{7}\selectfont\bfseries,text=projectgold!60!black,
+    text width=4.22cm,align=center] at (8.86,1.48)
+    {Single-source @250 vs union @1000 attributes coverage; it is not a same-budget model comparison.};
+
+  \node[anchor=south east,font=\tiny\itshape,text=projectteal!80!black]
+    at (11.20,.55) {provenance is preserved, but is not a default Ranker feature};
+\end{tikzpicture}
+
+\end{frame}
+
 \section{Year Prediction}
 
 \begin{frame}{Year Prediction}
