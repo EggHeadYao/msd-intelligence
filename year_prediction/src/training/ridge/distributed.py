@@ -22,7 +22,7 @@ from objectives import (
 )
 
 
-def direct_full_batch_statistics(
+def direct_batch_statistics(
     points: RDD[Point],
     weights: Sequence[float],
     intercept: float,
@@ -32,6 +32,25 @@ def direct_full_batch_statistics(
         lambda point: squared_point_partial(point, weights, intercept)
     ).reduce(merge_ridge_partials)
     return finalize_ridge_partial(partial, weights, l2)
+
+
+def direct_full_batch_statistics(
+    points: RDD[Point],
+    weights: Sequence[float],
+    intercept: float,
+    l2: float,
+) -> RidgeStatistics:
+    return direct_batch_statistics(points, weights, intercept, l2)
+
+
+def sample_mini_batch(
+    points: RDD[Point],
+    fraction: float,
+    seed: int,
+) -> RDD[Point]:
+    if not 0.0 < fraction < 1.0:
+        raise ValueError("mini-batch fraction must be between zero and one")
+    return points.sample(withReplacement=False, fraction=fraction, seed=seed)
 
 
 def evaluate_linear_model(
