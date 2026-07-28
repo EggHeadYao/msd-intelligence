@@ -869,8 +869,8 @@ def main() -> None:
                 "weak_label_thresholds": args.weak_thresholds,
                 "tag_idf": args.tag_idf,
                 **(
-                    {"evaluation_protocol": args.evaluation_protocol}
-                    if is_set_c
+                    {"evaluation_protocol": args.development_protocol}
+                    if is_development
                     else {}
                 ),
             },
@@ -879,6 +879,7 @@ def main() -> None:
             pair_count=validation_pair_count,
             group_row_count=validation_group_row_count,
             group_stats=group_stats,
+            selection_fold_stats=selection_fold_stats,
             apply_split=args.apply_split,
         )
         print(
