@@ -862,10 +862,11 @@ def prepare_query_pairs(
             rejection_counts["known_positive"] += 1
         else:
             eligible_candidates.append(candidate)
-    candidate_selected = nsmallest(
-        candidate_target,
+    candidate_selected = _source_balanced_candidate_sample(
+        query_id,
         eligible_candidates,
-        key=lambda item: _pair_hash(query_id, item[0], "candidate_aware"),
+        candidates,
+        candidate_target,
     )
     return PreparedQueryPairs(
         query_id,
@@ -874,6 +875,7 @@ def prepare_query_pairs(
         candidate_selected,
         negative_target,
         candidate_target,
+        len(allowed_positives) - len(selected_positives),
         rejection_counts,
     )
 
@@ -909,12 +911,15 @@ def finish_query_pairs(
         candidate_target,
     )
     positive_ids = set(selected_positives)
+    positive_weights, positive_weight_sums = _positive_loss_weights(
+        selected_positives
+    )
     rows = [
         {
             "query_track_id": query_id,
             "candidate_track_id": track_id,
             "label": 1,
-            SAMPLE_WEIGHT_COLUMN: 1.0,
+            SAMPLE_WEIGHT_COLUMN: positive_weights[track_id],
             "positive_sources": sorted(sources),
             "negative_source": None,
             "recall_sources": [],
@@ -945,14 +950,9 @@ def finish_query_pairs(
         }
         for track_id in random_selected
     )
-    rows.sort(
-        key=lambda row: (
-            -int(row["label"]),
-            _pair_hash(query_id, str(row["candidate_track_id"]), "output"),
-        )
-    )
     return rows, {
         "positive_count": len(positive_ids),
+        "unrecalled_positive_count": prepared.unrecalled_positive_count,
         "negative_count": negative_target,
         "candidate_aware_count": len(candidate_selected),
         "random_count": len(random_selected),
@@ -960,6 +960,7 @@ def finish_query_pairs(
         "negative_shortage": 0,
         "loss_weight_sums": {
             "positive": float(len(positive_ids)),
+            **positive_weight_sums,
             "candidate_aware": candidate_weight * len(candidate_selected),
             "random": random_weight * len(random_selected),
         },
@@ -984,6 +985,7 @@ def construct_query_pairs(
     is_positive: IsPositive,
     is_positive_batch: IsPositiveBatch | None = None,
     candidate_aware_fraction: float = CANDIDATE_AWARE_FRACTION,
+    is_positive_encoded_batch: IsPositiveEncodedBatch | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     """Construct one query's exact 1:3 curriculum and rejection audit."""
     prepared = prepare_query_pairs(
@@ -995,6 +997,7 @@ def construct_query_pairs(
         is_positive,
         is_positive_batch,
         candidate_aware_fraction,
+        is_positive_encoded_batch,
     )
     if prepared is None:
         return [], _empty_pair_audit()
