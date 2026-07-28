@@ -16,16 +16,22 @@ query track -> four-source recall -- C2 Graph FAISS -> candidate union
                                                 canonical pair features
                                                          |
                                                          v
-                                                frozen Logistic Ranker
+                                          frozen Logistic Ranker + C1 order
                                                          |
                                                          v
-                                                deterministic top 20
+                                            guarded quota-interleaved top 20
 ```
 
-Recall nominates candidates and preserves source evidence. Feature computation
+Recall nominates candidates and preserves source evidence. Unused union capacity
+is deterministically backfilled from additional Tag and BFS nominations without
+removing any source's primary quota. Feature computation
 then derives query/candidate signals independently of recall provenance. The
 ranker applies frozen Set-A preprocessing and scores every candidate by its raw
-LR margin. The production path does not apply MMR.
+LR margin. A Set-B-selected relation-evidence gate either keeps the pure C1
+order or applies the frozen LR/C1 quota interleave in the top 20. Relation
+evidence measures the density of valid BFS, Tag, and same-release signals over
+the whole candidate list, rather than its single largest value. The production
+path does not apply MMR.
 
 ## Package map
 
@@ -37,7 +43,7 @@ LR margin. The production path does not apply MMR.
 | [`recall/`](recall/README.md) | Quotas, online/streaming recall, and candidate pools |
 | [`ranking/`](ranking/README.md) | Pair features, LR artifacts, inference, and model selection |
 | [`training/`](training/README.md) | Splits, weak labels, pair sampling, and validation groups |
-| [`evaluation/`](evaluation/README.md) | Frozen Set-C protocol and ranking statistics |
+| [`evaluation/`](evaluation/README.md) | Reproducible Set-C development protocol and ranking statistics |
 | [`runtime/`](runtime/README.md) | Production assembly, validation, and recommendation APIs |
 | [`scripts/`](scripts/README.md) | Supported recall, training, and evaluation commands |
 
@@ -52,11 +58,11 @@ of the supported interface.
    source quotas.
 2. Duplicate track IDs are merged while source scores and ranks are retained
    for audit.
-3. The union is capped at 1,000 unique candidates and same-song items are
-   excluded.
+3. Additional Tag, then BFS nominations fill unused union capacity; the union
+   remains capped at 1,000 unique candidates and excludes same-song items.
 4. Canonical pair features are filled and scaled with frozen Set-A statistics.
-5. Candidates are sorted by `(-raw_margin, track_id)` and the top 20 are
-   returned.
+5. Queries below the frozen relation-evidence gate use C1-only order; other
+   queries deterministically interleave C1 and LR order in the top 20.
 
 Load the fail-closed production pipeline with the frozen C2 contract:
 
@@ -80,17 +86,17 @@ split assignments
   -> weak-label thresholds and positives
   -> Set-A candidate pool and tuning pairs/features
   -> Set-B candidate pool and validation groups/features
-  -> regularization selection and tuning model
-  -> streamed A+B+Remaining retrain pairs/features
+  -> Set-B tune selection and independent confirmation
+  -> streamed A+B+C+Remaining retrain pairs/features
   -> Full and no-hard-negative models
-  -> frozen Set-C protocol
-  -> Set-C candidates, groups, features, and evaluation report
+  -> reproducible Set-C development protocol
+  -> Set-C candidates, groups, features, and development report
 ```
 
 Set-A tuning artifacts live below `ranker/tuning/`. Root
 `training_pairs.parquet` and `raw_pair_features.parquet` are the canonical
 retrain datasets. Retraining streams bounded query batches and checkpoints
-published parts instead of persisting a 980K-query candidate pool.
+published parts instead of persisting an all-catalog candidate pool.
 
 The exact command order and stage-specific requirements are documented in
 [`scripts/ranker/README.md`](scripts/ranker/README.md). Recall-only commands are
@@ -103,17 +109,23 @@ documented in [`scripts/recall/README.md`](scripts/recall/README.md).
 - Training and inference share the same feature order, fill values,
   interactions, means, standard deviations, and zero-variance handling.
 - Recall-source flags and popularity are audit fields, not ranker features.
-- Splits are song-safe; Set C cannot be consumed by tuning, retraining, or
-  ablation construction.
-- Set-B validation uses frozen Audio-dominant, Relation-dominant, and Mixed
-  query groups built from cleaned pre-PCA C1 signals.
+- Splits are song-safe. Set C is reusable known development data and joins Set
+  A, Set B, and Remaining during final retraining. It is not an unbiased test.
+- Set B is song-safe and split into a 1% tune fold and an independent 2%
+  confirmation fold. Both use frozen Audio-dominant, Relation-dominant, and
+  Mixed query groups built from cleaned pre-PCA C1 signals.
+- Positive loss mass is balanced per query between Audio-derived and
+  relation-derived labels. Set-B tune jointly selects LR regularization, the C1
+  quota, and a relation-evidence gate. Confirmation failure publishes a strict
+  C1-order fallback and marks fusion unpublishable. The fallback may still be
+  measured on Set C for development diagnosis.
 - Every formal consumer validates artifact version, hashes, and parent lineage
   before loading data.
 - A schema, hash, lineage, or policy mismatch fails closed.
 
 The canonical feature list and persistence rules are in
-[`ranking/features/README.md`](ranking/features/README.md). Set-C protocol and
-metric rules are in [`evaluation/README.md`](evaluation/README.md).
+[`ranking/features/README.md`](ranking/features/README.md). Set-C development
+protocol and metric rules are in [`evaluation/README.md`](evaluation/README.md).
 
 ## Operational notes
 
