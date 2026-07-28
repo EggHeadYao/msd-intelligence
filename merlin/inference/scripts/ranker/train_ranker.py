@@ -591,6 +591,34 @@ def _configuration_group_means(
     return aggregated
 
 
+def _relation_gate_thresholds(
+    validation_scores: ValidationScoreTable,
+) -> tuple[float, ...]:
+    import numpy as np
+
+    by_query: dict[str, float] = {}
+    for query_id, fold, evidence in zip(
+        validation_scores.query_ids,
+        validation_scores.selection_folds,
+        validation_scores.relation_evidence,
+        strict=True,
+    ):
+        if fold != "tune":
+            continue
+        previous = by_query.setdefault(query_id, evidence)
+        if previous != evidence:
+            raise ValueError("relation evidence changed across query groups")
+    if not by_query:
+        raise ValueError("Set-B tune fold has no relation evidence")
+    values = np.asarray(tuple(by_query.values()), dtype=np.float64)
+    thresholds = {
+        float(value)
+        for value in np.quantile(values, np.linspace(0.0, 1.0, 21))
+    }
+    thresholds.add(math.nextafter(float(values.max()), math.inf))
+    return tuple(sorted(thresholds))
+
+
 def main() -> None:
     args = parse_args()
     if not math.isfinite(args.max_block_size_mb) or args.max_block_size_mb <= 0.0:
