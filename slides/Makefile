@@ -1,8 +1,8 @@
 LATEXMK ?= latexmk
 OUTDIR := build
 TARGET := slides
-TEX_SOURCES := $(TARGET).tex artistdistance_slides.tex model_slides.tex
-BIB_SOURCES := $(TARGET).bib model_refs.bib
+TEX_SOURCES := $(TARGET).tex artistdistance_slides.tex
+BIB_SOURCES := $(TARGET).bib
 STYLE_SOURCES := focs-slides.sty
 
 .PHONY: all clean
