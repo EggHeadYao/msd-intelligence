@@ -159,6 +159,10 @@ class LogisticRanker:
     stds: tuple[float, ...]
     coefficients: tuple[float, ...]
     intercept: float
+    audio_quota: int = 0
+    relation_gate_threshold: float = 0.0
+    high_evidence_audio_quota: int | None = None
+    high_relation_gate_threshold: float | None = None
 
     def __post_init__(self) -> None:
         size = len(self.feature_order)
@@ -170,6 +174,40 @@ class LogisticRanker:
             raise ValueError("ranker artifact contains a non-finite number")
         if any(value <= 0.0 for value in self.stds):
             raise ValueError("ranker standard deviations must be positive")
+        if not 0 <= self.audio_quota <= RANKING_LIMIT:
+            raise ValueError("ranker audio quota must be between 0 and 20")
+        if not math.isfinite(self.relation_gate_threshold) or self.relation_gate_threshold < 0.0:
+            raise ValueError("ranker relation gate threshold must be finite and non-negative")
+        high_quota = self.effective_high_evidence_audio_quota
+        high_threshold = self.effective_high_relation_gate_threshold
+        if not 0 <= high_quota <= self.audio_quota:
+            raise ValueError("high-evidence Audio quota must not exceed the middle quota")
+        if not math.isfinite(high_threshold) or high_threshold < self.relation_gate_threshold:
+            raise ValueError("high relation gate must not precede the first gate")
+
+    @property
+    def effective_high_evidence_audio_quota(self) -> int:
+        return (
+            self.audio_quota
+            if self.high_evidence_audio_quota is None
+            else self.high_evidence_audio_quota
+        )
+
+    @property
+    def effective_high_relation_gate_threshold(self) -> float:
+        return (
+            self.relation_gate_threshold
+            if self.high_relation_gate_threshold is None
+            else self.high_relation_gate_threshold
+        )
+
+    def effective_audio_quota(self, relation_evidence: float) -> int:
+        """Choose the C1 Top-20 quota from the two relation-evidence gates."""
+        if relation_evidence < self.relation_gate_threshold:
+            return RANKING_LIMIT
+        if relation_evidence < self.effective_high_relation_gate_threshold:
+            return self.audio_quota
+        return self.effective_high_evidence_audio_quota
 
     @classmethod
     def from_artifacts(
