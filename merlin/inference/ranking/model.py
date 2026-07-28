@@ -229,6 +229,12 @@ class LogisticRanker:
                 raise ValueError(f"{name} artifact feature order mismatch")
         if model.get("model_type") != "logistic_regression":
             raise ValueError("unsupported ranker model_type")
+        if model.get("ranking_policy") != "query_gated_audio_lr_quota_interleave":
+            raise ValueError("unsupported ranker ranking policy")
+        if model.get("gate_policy") != RELATION_GATE_POLICY:
+            raise ValueError("unsupported ranker gate policy")
+        if int(model.get("ranking_limit", -1)) != RANKING_LIMIT:
+            raise ValueError("ranker ranking limit mismatch")
         return cls(
             feature_schema_version=version,
             feature_order=order,
@@ -236,6 +242,17 @@ class LogisticRanker:
             stds=_floats(scaler["stds"]),
             coefficients=_floats(model["coefficients"]),
             intercept=float(model["intercept"]),
+            audio_quota=int(model.get("audio_quota", 0)),
+            relation_gate_threshold=float(model.get("relation_gate_threshold", 0.0)),
+            high_evidence_audio_quota=int(
+                model.get("high_evidence_audio_quota", model.get("audio_quota", 0))
+            ),
+            high_relation_gate_threshold=float(
+                model.get(
+                    "high_relation_gate_threshold",
+                    model.get("relation_gate_threshold", 0.0),
+                )
+            ),
         )
 
     def score(self, features: Mapping[str, float]) -> float:
