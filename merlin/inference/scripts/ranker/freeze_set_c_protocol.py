@@ -1,4 +1,4 @@
-"""Freeze the Set-C evaluation inputs before labels are opened."""
+"""Bind model and data inputs for a reproducible Set-C development run."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from pathlib import Path
 
 from ...artifacts.paths import InferenceArtifactPaths
 from ...artifacts.integrity import sha256_path
-from ...evaluation.protocol import create_set_c_protocol
+from ...evaluation.protocol import create_development_protocol
 
 
 def parse_args() -> argparse.Namespace:
     defaults = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=defaults.set_c_protocol)
+    parser.add_argument("--output", type=Path, default=defaults.development_protocol)
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     return parser.parse_args()
 
@@ -22,21 +22,6 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     paths = InferenceArtifactPaths()
-    opened_outputs = (
-        paths.set_c_candidate_pool,
-        paths.set_c_candidate_pool_manifest,
-        paths.set_c_positives,
-        paths.set_c_validation_pairs,
-        paths.set_c_groups_manifest,
-        paths.set_c_raw_features,
-        paths.set_c_raw_features_manifest,
-        paths.set_c_evaluation_report,
-    )
-    existing = [str(path) for path in opened_outputs if path.exists()]
-    if existing:
-        raise ValueError(
-            f"cannot freeze a new protocol after Set-C outputs exist: {existing}"
-        )
     manifests = {}
     for variant, path in (
         ("full", paths.ranker_training_manifest),
@@ -54,12 +39,26 @@ def main() -> None:
             or manifest.get("converged") is not True
             or actual_variant != variant
         ):
-            raise ValueError(f"cannot freeze invalid {variant} model")
+            raise ValueError(f"cannot bind invalid {variant} model")
         manifests[variant] = manifest
     if manifests["full"]["selected_reg_param"] != manifests["no_hard_neg"][
         "selected_reg_param"
     ]:
         raise ValueError("Full and no-hard-neg must use the same frozen regParam")
+    if manifests["full"].get("audio_quota") != manifests["no_hard_neg"].get(
+        "audio_quota"
+    ):
+        raise ValueError("Full and no-hard-neg must use the same frozen Audio quota")
+    if manifests["full"].get("relation_gate_threshold") != manifests[
+        "no_hard_neg"
+    ].get("relation_gate_threshold"):
+        raise ValueError("Full and no-hard-neg must share the frozen relation gate")
+    for field in (
+        "high_evidence_audio_quota",
+        "high_relation_gate_threshold",
+    ):
+        if manifests["full"].get(field) != manifests["no_hard_neg"].get(field):
+            raise ValueError(f"Full and no-hard-neg must share frozen {field}")
     if sha256_path(paths.ranker_scaler) != sha256_path(paths.no_hard_neg_scaler):
         raise ValueError("Full and no-hard-neg must share the frozen scaler")
     pair_manifests = {}
@@ -71,6 +70,13 @@ def main() -> None:
             pair_manifest = json.load(stream)
         if pair_manifest.get("stage") != "final_retrain":
             raise ValueError(f"{variant} pair manifest is not a retrain")
+        if pair_manifest.get("training_splits") != [
+            "remaining",
+            "set_a",
+            "set_b",
+            "set_c",
+        ]:
+            raise ValueError(f"{variant} retrain does not cover the full catalog")
         pair_manifests[variant] = pair_manifest
     full_counts = pair_manifests["full"].get("counts", {})
     no_hard_counts = pair_manifests["no_hard_neg"].get("counts", {})
@@ -87,7 +93,7 @@ def main() -> None:
         != 0.0
     ):
         raise ValueError("No-hard-neg does not preserve the Full query/pair budget")
-    protocol = create_set_c_protocol(
+    protocol = create_development_protocol(
         args.output,
         scope=args.scope,
         parent_paths={
@@ -105,7 +111,7 @@ def main() -> None:
         },
     )
     print(
-        "set_c_protocol_frozen "
+        "development_protocol_ready "
         f"version={protocol['artifact_version']} output={args.output}"
     )
 
