@@ -78,25 +78,35 @@ def select_guarded_ranker(
     )
 
 
-def select_grouped_reg_param(
-    query_scores: Mapping[float, Mapping[str, Mapping[str, float]]],
-) -> tuple[float, dict[str, object]]:
-    """Select regParam from unequal eligible-query sets across frozen strata."""
-    if set(query_scores) != set(REG_PARAMS):
-        raise ValueError("selection requires exactly the frozen three regParams")
-    group_sets = {tuple(sorted(scores)) for scores in query_scores.values()}
-    if len(group_sets) != 1 or not next(iter(group_sets), ()):
-        raise ValueError("regParam validation strata must be non-empty and aligned")
-    reference_scores = query_scores[REG_PARAMS[0]]
+def select_guarded_ranker_means(
+    tune_scores: Mapping[
+        tuple[float, int, int, float, float], Mapping[str, float]
+    ],
+    confirm_scores: Mapping[
+        tuple[float, int, int, float, float], Mapping[str, float]
+    ],
+    c1_tune_scores: Mapping[str, float],
+    c1_confirm_scores: Mapping[str, float],
+) -> tuple[tuple[float, int, int, float, float], dict[str, object]]:
+    """Select the strongest two-gate policy that passes both frozen folds."""
+    if not tune_scores or set(tune_scores) != set(confirm_scores):
+        raise ValueError("tune and confirmation configuration grids must align")
     if any(
-        set(scores[group]) != set(reference_scores[group])
-        for scores in query_scores.values()
-        for group in reference_scores
+        reg not in REG_PARAMS
+        or middle_quota not in ADAPTIVE_AUDIO_QUOTAS
+        or high_quota not in ADAPTIVE_AUDIO_QUOTAS
+        or high_quota > middle_quota
+        or low_threshold < 0.0
+        or high_threshold < low_threshold
+        for reg, middle_quota, high_quota, low_threshold, high_threshold in tune_scores
     ):
-        raise ValueError("regParam query IDs must align within each stratum")
-    means = {
-        reg_param: _three_strata_mean(scores)
-        for reg_param, scores in query_scores.items()
+        raise ValueError("adaptive ranker configuration grid is invalid")
+    tune = {
+        key: _validated_group_means(scores) for key, scores in tune_scores.items()
+    }
+    confirm = {
+        key: _validated_group_means(scores)
+        for key, scores in confirm_scores.items()
     }
     reference = max(REG_PARAMS, key=lambda reg: (means[reg], reg))
     selected = reference
