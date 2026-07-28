@@ -11,7 +11,7 @@ from ...artifacts.integrity import artifact_size_bytes, sha256_path
 from ...artifacts.paths import InferenceArtifactPaths
 from ...data.catalog import load_catalog_context
 from ...retrieval.faiss import FaissTrackIndex
-from ...evaluation.protocol import load_set_c_protocol
+from ...evaluation.protocol import load_development_protocol
 from ...retrieval.faiss import load_audio_index
 from ...ranking.features import (
     PairSignalLookups,
@@ -39,10 +39,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     parser.add_argument(
         "--stage",
-        choices=("tuning", "final_retrain", "final_evaluation"),
+        choices=("tuning", "final_retrain", "development_evaluation"),
         default="tuning",
     )
-    parser.add_argument("--evaluation-protocol", type=Path)
+    parser.add_argument("--development-protocol", type=Path)
     parser.add_argument("--graph-contract-key", default=GRAPH_CONTRACT_KEY)
     parser.add_argument("--graph-contract-version", default=GRAPH_CONTRACT_VERSION)
     parser.add_argument("--min-free-gb", type=float)
@@ -52,14 +52,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     paths = InferenceArtifactPaths()
-    is_set_c = args.stage == "final_evaluation"
+    is_development = args.stage == "development_evaluation"
     is_tuning = args.stage == "tuning"
-    if is_set_c and args.pair_kind != "validation":
+    if is_development and args.pair_kind != "validation":
         raise ValueError("evaluation requires validation pairs")
-    if is_set_c and args.evaluation_protocol is None:
-        raise ValueError("evaluation requires a frozen Set-C protocol")
-    if is_set_c and args.validation_positives == paths.validation_group_positives:
-        args.validation_positives = paths.set_c_positives
+    if is_development and args.development_protocol is None:
+        raise ValueError("evaluation requires a development protocol")
+    if is_development and args.validation_positives == paths.validation_group_positives:
+        args.validation_positives = paths.development_positives
     if args.pair_kind == "training":
         default_pairs = (
             paths.tuning_training_pairs if is_tuning else paths.training_pairs
@@ -78,14 +78,24 @@ def main() -> None:
             else paths.raw_pair_features_manifest
         )
     else:
-        default_pairs = paths.set_c_validation_pairs if is_set_c else paths.validation_pairs
-        default_pairs_manifest = (
-            paths.set_c_groups_manifest if is_set_c else paths.validation_groups_manifest
+        default_pairs = (
+            paths.development_validation_pairs
+            if is_development
+            else paths.validation_pairs
         )
-        default_output = paths.set_c_raw_features if is_set_c else paths.validation_raw_features
+        default_pairs_manifest = (
+            paths.development_groups_manifest
+            if is_development
+            else paths.validation_groups_manifest
+        )
+        default_output = (
+            paths.development_raw_features
+            if is_development
+            else paths.validation_raw_features
+        )
         default_output_manifest = (
-            paths.set_c_raw_features_manifest
-            if is_set_c
+            paths.development_raw_features_manifest
+            if is_development
             else paths.validation_raw_features_manifest
         )
     pairs = args.pairs or default_pairs
@@ -107,12 +117,15 @@ def main() -> None:
             expected_stage=args.stage,
         )
     else:
-        if args.stage not in {"tuning", "final_evaluation"}:
-            raise ValueError("validation features require tuning or final_evaluation")
-        if is_set_c:
-            load_set_c_protocol(
-                args.evaluation_protocol,
+        if args.stage not in {"tuning", "development_evaluation"}:
+            raise ValueError(
+                "validation features require tuning or development_evaluation"
+            )
+        if is_development:
+            load_development_protocol(
+                args.development_protocol,
                 expected_scope=args.scope,
+                expected_split="set_c",
                 expected_parent_hashes={
                     "split_manifest": sha256_path(paths.split_manifest),
                     "split_assignments": sha256_path(paths.split_assignments),
@@ -139,7 +152,7 @@ def main() -> None:
             positives_path=args.validation_positives,
             validation_pairs_path=pairs,
             expected_scope=args.scope,
-            expected_apply_split="set_c" if is_set_c else "set_b",
+            expected_apply_split="set_c" if is_development else "set_b",
         )
     audio = load_audio_index()
     graph = FaissTrackIndex.from_files(
@@ -203,8 +216,8 @@ def main() -> None:
             "songs_metadata": paths.songs_metadata,
             "graph_edges": paths.graph_edges,
             **(
-                {"evaluation_protocol": args.evaluation_protocol}
-                if is_set_c
+                {"evaluation_protocol": args.development_protocol}
+                if is_development
                 else {}
             ),
         },
