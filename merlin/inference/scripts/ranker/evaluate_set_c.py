@@ -429,12 +429,12 @@ def main() -> None:
         args.features,
         expected_scope=args.scope,
         expected_pair_kind="validation",
-        expected_stage="final_evaluation",
+        expected_stage="development_evaluation",
     )
     if feature_manifest.get("parent_hashes", {}).get(
         "evaluation_protocol"
     ) != sha256_path(args.protocol):
-        raise ValueError("Set-C features are not bound to the frozen protocol")
+        raise ValueError("development features are not bound to the protocol")
     full, fills = _load_ranker(paths.ranker_coefficients.parent, scope=args.scope, variant="full")
     no_hard, no_hard_fills = _load_ranker(
         paths.no_hard_neg_coefficients.parent,
@@ -448,11 +448,10 @@ def main() -> None:
     candidate_rows = []
     top_counts = {cutoff: Counter() for cutoff in EVALUATION_CUTOFFS}
     query_ids = set()
-    eligible_candidate_shortages = 0
+    eligible_candidate_counts = []
     for index, (query_id, rows) in enumerate(_query_groups(args.features), 1):
         query_ids.add(query_id)
-        if len(rows) < 1000:
-            eligible_candidate_shortages += 1
+        eligible_candidate_counts.append(len(rows))
         query_metrics, rankings = score_query(
             query_id,
             rows,
