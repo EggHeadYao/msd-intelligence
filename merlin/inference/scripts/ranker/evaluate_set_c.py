@@ -355,33 +355,19 @@ def _catalog_report(
         }
         for cutoff in top_counts
     }
-    catalog_tail_count = 0
-    for track, artist, song_popularity in parquet_rows(
-        metadata_path,
-        ("track_id", "artist_id", "song_hotttnesss"),
-        engine="pyarrow",
-    ):
-        track_id = str(track)
-        finite_pop = (
-            float(song_popularity)
-            if song_popularity is not None and math.isfinite(float(song_popularity))
-            else None
-        )
-        if finite_pop is not None and finite_pop <= tail_threshold:
-            catalog_tail_count += 1
-        for cutoff, counts in top_counts.items():
-            occurrences = counts.get(track_id, 0)
-            if not occurrences:
-                continue
+    catalog_tail_count = sum(value <= tail_threshold for value in popularity)
+    for cutoff, counts in top_counts.items():
+        for track_id, occurrences in counts.items():
+            artist, finite_pop = top_metadata.get(track_id, (None, None))
             accumulator = accumulators[cutoff]
             if artist:
-                accumulator["artists"].add(str(artist))
+                accumulator["artists"].add(artist)
             if finite_pop is not None:
                 accumulator["pop_sum"] += occurrences * finite_pop
                 accumulator["pop_count"] += occurrences
                 if finite_pop <= tail_threshold:
                     accumulator["tail_tracks"].add(track_id)
-    return {
+    coverage = {
         f"top_{cutoff}": {
             "catalog_track_coverage": len(counts) / catalog_tracks,
             "artist_coverage": len(accumulators[cutoff]["artists"]) / len(catalog_artists),
@@ -409,16 +395,18 @@ def _catalog_report(
             "tail_track_count": catalog_tail_count,
         }
     }
+    return query_artists, query_years, coverage
 
 
 def main() -> None:
     args = parse_args()
     if args.output.exists():
-        raise FileExistsError(f"Set-C evaluation report already exists: {args.output}")
+        raise FileExistsError(f"development report already exists: {args.output}")
     paths = InferenceArtifactPaths()
-    protocol = load_set_c_protocol(
+    protocol = load_development_protocol(
         args.protocol,
         expected_scope=args.scope,
+        expected_split="set_c",
         expected_parent_hashes=_protocol_parents(paths),
     )
     candidate_manifest = load_candidate_pool_manifest(
