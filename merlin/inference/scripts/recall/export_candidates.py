@@ -16,7 +16,7 @@ from ...artifacts.paths import (
 )
 from ...recall.pool import export_candidate_pool
 from ...artifacts.integrity import sha256_path
-from ...evaluation.protocol import load_set_c_protocol
+from ...evaluation.protocol import load_development_protocol
 from ...training.split import load_split_assignments, load_split_manifest
 from ...recall.factory import load_streaming_recall_engine, load_recall_pipeline
 from ..support.scratch import prepare_scratch_root
@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     source.add_argument("--split-assignments", type=Path)
     parser.add_argument("--split-manifest", type=Path)
     parser.add_argument("--query-split", choices=("set_a", "set_b", "set_c"))
-    parser.add_argument("--evaluation-protocol", type=Path)
+    parser.add_argument("--development-protocol", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--graph-contract-key", default=GRAPH_CONTRACT_KEY)
@@ -44,8 +44,6 @@ def main() -> None:
     args = parse_args()
     if args.limit_queries < 0:
         raise ValueError("limit-queries must be non-negative")
-    if args.query_split == "set_c" and args.limit_queries:
-        raise ValueError("formal Set-C evaluation cannot use a partial query limit")
     paths = InferenceArtifactPaths()
     split_scope = None
     assignments = None
@@ -61,7 +59,7 @@ def main() -> None:
         if (
             args.query_split is not None
             or args.split_manifest is not None
-            or args.evaluation_protocol is not None
+            or args.development_protocol is not None
         ):
             raise ValueError("query-split/split-manifest require split-assignments")
         queries = read_queries(args.queries)
@@ -83,26 +81,27 @@ def main() -> None:
     if args.limit_queries:
         queries = tuple(islice(queries, args.limit_queries))
     is_set_b = args.query_split == "set_b"
-    is_set_c = args.query_split == "set_c"
+    is_development = args.query_split == "set_c"
     output = args.output or (
-        paths.set_c_candidate_pool
-        if is_set_c
+        paths.development_candidate_pool
+        if is_development
         else paths.set_b_candidate_pool if is_set_b else CANDIDATE_POOL_PATH
     )
     manifest_path = args.manifest or (
-        paths.set_c_candidate_pool_manifest
-        if is_set_c
+        paths.development_candidate_pool_manifest
+        if is_development
         else paths.set_b_candidate_pool_manifest
         if is_set_b
         else CANDIDATE_POOL_MANIFEST_PATH
     )
     scope = "smoke" if args.limit_queries or split_scope == "smoke" else "formal"
-    if is_set_c:
-        if args.evaluation_protocol is None:
-            raise ValueError("Set-C candidate export requires a frozen evaluation protocol")
-        load_set_c_protocol(
-            args.evaluation_protocol,
+    if is_development:
+        if args.development_protocol is None:
+            raise ValueError("Set-C candidate export requires a development protocol")
+        load_development_protocol(
+            args.development_protocol,
             expected_scope=scope,
+            expected_split="set_c",
             expected_parent_hashes={
                 "split_manifest": sha256_path(args.split_manifest),
                 "split_assignments": sha256_path(args.split_assignments),
@@ -123,7 +122,7 @@ def main() -> None:
                 "graph_edges": sha256_path(paths.graph_edges),
             },
         )
-        parent_paths["evaluation_protocol"] = args.evaluation_protocol
+        parent_paths["evaluation_protocol"] = args.development_protocol
     projected_gb = (
         len(queries) * CANONICAL_CANDIDATE_LIMIT * 64 / (1024 ** 3)
     )
