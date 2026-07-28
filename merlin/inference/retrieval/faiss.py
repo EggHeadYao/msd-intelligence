@@ -113,14 +113,54 @@ class FaissTrackIndex:
         ]
         if not positions:
             return results
-        left = self._reconstruct_many([pairs[index][0] for index in positions])
-        right = self._reconstruct_many([pairs[index][1] for index in positions])
-        scores = np.einsum("ij,ij->i", left, right, optimize=True)
+        left_rows = np.fromiter(
+            (self._track_to_row[pairs[index][0]] for index in positions),
+            dtype=np.int64,
+            count=len(positions),
+        )
+        right_rows = np.fromiter(
+            (self._track_to_row[pairs[index][1]] for index in positions),
+            dtype=np.int64,
+            count=len(positions),
+        )
+        unique_rows, inverse = np.unique(
+            np.concatenate((left_rows, right_rows)),
+            return_inverse=True,
+        )
+        vectors = self._reconstruct_rows_uncached(unique_rows)
+        boundary = len(left_rows)
+        scores = np.empty(boundary, dtype=np.float32)
+        for start in range(0, boundary, 8_192):
+            stop = min(start + 8_192, boundary)
+            left = vectors[inverse[start:stop]]
+            right = vectors[inverse[boundary + start : boundary + stop]]
+            scores[start:stop] = np.einsum(
+                "ij,ij->i", left, right, optimize=True
+            )
         if not np.all(np.isfinite(scores)):
             raise ValueError("FAISS batch pair similarity is not finite")
         for position, score in zip(positions, scores, strict=True):
             results[position] = float(score)
         return results
+
+    def similarities_by_rows(
+        self,
+        left_row: int,
+        right_rows: np.ndarray,
+    ) -> np.ndarray:
+        """Compute exact similarities from integer rows without touching the LRU."""
+        rows = np.asarray(right_rows, dtype=np.int64)
+        if left_row < 0 or left_row >= len(self.row_to_track):
+            raise IndexError("left FAISS row is out of range")
+        if np.any((rows < 0) | (rows >= len(self.row_to_track))):
+            raise IndexError("right FAISS row is out of range")
+        if not len(rows):
+            return np.empty(0, dtype=np.float32)
+        left = self._reconstruct(self.row_to_track[left_row])
+        scores = self._reconstruct_rows_uncached(rows) @ left
+        if not np.all(np.isfinite(scores)):
+            raise ValueError("FAISS row similarity is not finite")
+        return np.asarray(scores, dtype=np.float32)
 
     def reconstruct_many(self, track_ids: Sequence[str]) -> np.ndarray:
         """Return a validated float32 matrix for known catalog tracks."""
