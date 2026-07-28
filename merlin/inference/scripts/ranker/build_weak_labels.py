@@ -56,7 +56,9 @@ def main() -> None:
     if not set_a:
         raise ValueError("split has no Set-A tracks for threshold fitting")
     query_splits = {value.strip() for value in args.query_splits.split(",") if value.strip()}
-    if not query_splits.issubset({"set_a", "set_b", "set_c", "remaining"}):
+    if not query_splits.issubset(
+        {"set_a", "set_b", "set_c", "remaining"}
+    ):
         raise ValueError("query-splits contains an unknown split")
 
     audio = load_audio_index()
