@@ -619,6 +619,50 @@ def _relation_gate_thresholds(
     return tuple(sorted(thresholds))
 
 
+def _select_ranker_configuration(
+    validation_scores: ValidationScoreTable,
+) -> tuple[float, int, int, float, float, dict[str, object]]:
+    """Tune an adaptive quota once and verify it on Set-B confirmation."""
+    _validate_score_rows(validation_scores)
+    thresholds = _relation_gate_thresholds(validation_scores)
+    scores = _configuration_group_means(validation_scores, thresholds)
+    selected_key, report = select_guarded_ranker_means(
+        scores["tune"],
+        scores["confirm"],
+        _baseline_group_means(validation_scores, "c1_only", "tune"),
+        _baseline_group_means(validation_scores, "c1_only", "confirm"),
+    )
+    (
+        selected_reg,
+        selected_quota,
+        selected_high_quota,
+        selected_threshold,
+        selected_high_threshold,
+    ) = selected_key
+    report["set_b_diagnostics"] = {
+        fold: {
+            scorer: _score_summary(
+                _baseline_group_means(validation_scores, scorer, fold)
+            )
+            for scorer in ("c1_only", "c2_only", "bfs")
+        }
+        for fold in ("tune", "confirm")
+    }
+    report["configuration_grid"] = {
+        "reg_params": list(REG_PARAMS),
+        "audio_quotas": list(ADAPTIVE_AUDIO_QUOTAS),
+        "relation_gate_thresholds": list(thresholds),
+    }
+    return (
+        selected_reg,
+        selected_quota,
+        selected_high_quota,
+        selected_threshold,
+        selected_high_threshold,
+        report,
+    )
+
+
 def main() -> None:
     args = parse_args()
     if not math.isfinite(args.max_block_size_mb) or args.max_block_size_mb <= 0.0:
