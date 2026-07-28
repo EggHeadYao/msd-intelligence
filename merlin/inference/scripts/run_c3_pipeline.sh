@@ -538,3 +538,18 @@ run_step development-features "$development_features" "$development_features_man
   --development-protocol "$development_protocol" \
   --scope formal \
   --min-free-gb "$MIN_FREE_GB"
+
+run_step development-evaluation "$development_report" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.evaluate_development \
+  --protocol "$development_protocol" \
+  --candidate-pool "$development_pool" \
+  --candidate-pool-manifest "$development_pool_manifest" \
+  --groups-manifest "$development_groups_manifest" \
+  --positives "$development_positives" \
+  --validation-pairs "$development_pairs" \
+  --features "$development_features" \
+  --features-manifest "$development_features_manifest" \
+  --output "$development_report" \
+  --scope formal
+
+printf 'c3_pipeline_complete from=%s to=%s\n' "$FROM_STEP" "$TO_STEP"
