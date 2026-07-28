@@ -113,3 +113,41 @@ For a non-canonical proxy run, add `--limit-queries N` to pair construction and
 provide explicit output and manifest paths outside the formal artifact tree.
 The limited pair manifest is marked `scope=smoke`; its feature export and model
 training must therefore also use `--scope smoke`.
+
+## 3. Set-B validation data
+
+Export the Set-B pool with the recall command, then build the three frozen query
+groups with Spark:
+
+```bash
+/opt/spark/bin/spark-submit \
+  --master 'local[6]' \
+  --driver-memory 5g \
+  --conf spark.eventLog.enabled=false \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  --conf spark.hadoop.fs.defaultFS=file:/// \
+  --conf spark.driver.bindAddress=127.0.0.1 \
+  "$MERLIN_ROOT/merlin/inference/scripts/ranker/build_validation_groups.py" \
+  --candidate-pool "$MERLIN_RANKER_ROOT/set_b_candidate_pool.parquet" \
+  --candidate-pool-manifest "$MERLIN_RANKER_ROOT/set_b_candidate_pool_manifest.json" \
+  --apply-split set_b \
+  --scope formal \
+  --audio-pair-engine numpy \
+  --audio-block-size 256 \
+  --shuffle-partitions 64 \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb 4
+
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.export_ranker_features \
+  --pair-kind validation \
+  --pairs parquets_new/merlin/ranker/validation_pairs.parquet \
+  --pairs-manifest parquets_new/merlin/ranker/validation_groups_manifest.json \
+  --validation-positives parquets_new/merlin/ranker/validation_group_positives.parquet \
+  --validation-thresholds parquets_new/merlin/ranker/validation_group_thresholds.json \
+  --output parquets_new/merlin/ranker/validation_raw_features.parquet \
+  --manifest parquets_new/merlin/ranker/validation_raw_features_manifest.json \
+  --stage tuning \
+  --scope formal \
+  --min-free-gb 8
+```
