@@ -525,12 +525,14 @@ def _configuration_group_means(
             table.column((reg_param, quota)), dtype=np.float64
         )
         for reg_param in REG_PARAMS
+        for quota in ADAPTIVE_AUDIO_QUOTAS
     }
-    c1_summary = _validation_summary(validation_scores, "c1_only")
-    c2_summary = _validation_summary(validation_scores, "c2_only")
-    bfs_summary = _validation_summary(validation_scores, "bfs")
-    query_scores = {
-        reg_param: _grouped_query_scores(validation_scores, reg_param)
+    c1 = np.asarray(table.column("c1_only"), dtype=np.float64)
+    evidence = np.asarray(table.relation_evidence, dtype=np.float64)
+    groups = np.asarray(table.query_groups, dtype=object)
+    folds = np.asarray(table.selection_folds, dtype=object)
+    grid = tuple(
+        (reg_param, middle_quota, high_quota, low_threshold, high_threshold)
         for reg_param in REG_PARAMS
     }
     selected_reg, report = select_grouped_reg_param(query_scores)
