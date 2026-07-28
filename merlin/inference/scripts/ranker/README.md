@@ -1,44 +1,28 @@
 # Ranker commands
 
-These entry points orchestrate supervised C3 data preparation, model training,
-and final evaluation.
+These are the canonical C3 commands after the current workflow redesign. Set A
+builds tuning data, Set B selects and confirms the guarded LR/C1 blend, and the
+retrain dataset streams Set A + Set B + Set C + Remaining. Set C is reusable
+development data, not an unbiased holdout.
 
-## Entry points
+## Recommended pipeline entry
 
-- `build_split.py` publishes deterministic split assignments and manifest.
-- `build_weak_labels.py` fits or applies frozen weak-label thresholds.
-- `build_training_pairs.py` constructs Set-A tuning data or streams the
-  A+B+Remaining retrain pairs and raw features.
-- `build_validation_groups.py` builds frozen Set-B or Set-C validation groups.
-- `export_ranker_features.py` exports training or validation raw features.
-- `train_ranker.py` runs Spark LR training, Set-B selection, and frozen
-  retraining.
-- `freeze_set_c_protocol.py` binds all inputs before Set C is opened.
-- `evaluate_set_c.py` scores Full/baseline/ablation rankings and publishes the
-  evaluation report.
+Run the complete workflow with one command:
 
-## Canonical order
-
-```text
-split
-  -> weak labels
-  -> Set-A candidates
-  -> Set-A tuning pairs/features
-  -> Set-B candidates and validation groups/features
-  -> tuning model and selected regularization
-  -> streamed A+B+Remaining pairs/features
-  -> Full and no-hard-negative models
-  -> frozen Set-C protocol
-  -> Set-C candidates/groups/features
-  -> evaluation report
+```bash
+./merlin/inference/scripts/run_c3_pipeline.sh
 ```
 
-Set-A tuning datasets live under `ranker/tuning/`. Root
-`training_pairs.parquet` and `raw_pair_features.parquet` are reserved for the
-canonical retrain datasets. The manifest stage remains `final_retrain` because
-it identifies the frozen protocol; published filenames do not use a `final_`
-prefix.
+The script skips complete outputs and lets the streamed retrain step resume
+from its checkpoint. It never deletes or overwrites artifacts automatically.
+Limit a run to a section with `--from` and `--to`, for example:
 
-High-volume jobs support explicit scratch roots and minimum-free-space guards.
-The streamed retrain command is resumable only when every input, output, and
-behavioral option matches the checkpoint contract.
+```bash
+./merlin/inference/scripts/run_c3_pipeline.sh --to tune-model
+./merlin/inference/scripts/run_c3_pipeline.sh --from retrain-data --to ablation-model
+./merlin/inference/scripts/run_c3_pipeline.sh --from development-protocol
+```
+
+Use `--list-steps` to show valid boundaries and `--dry-run` to print commands.
+The individual commands below remain the reference for manual recovery and
+debugging.
