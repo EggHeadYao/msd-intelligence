@@ -55,7 +55,8 @@ def build_split_artifacts(
     if scope not in {"formal", "smoke"}:
         raise ValueError("split scope must be formal or smoke")
     counts: Counter[str] = Counter()
-    group_splits: dict[str, str] = {}
+    fold_counts: Counter[str] = Counter()
+    group_assignments: dict[str, tuple[str, str]] = {}
     seen_tracks: set[str] = set()
 
     def assignments() -> Iterator[dict[str, object]]:
@@ -66,15 +67,20 @@ def build_split_artifacts(
                 raise ValueError(f"split input contains duplicate track {track_id!r}")
             seen_tracks.add(track_id)
             key = split_key(track_id, song_id)
-            assignment = assign_split(key)
-            previous = group_splits.setdefault(key, assignment)
-            if previous != assignment:
-                raise ValueError("one split group was assigned to multiple sets")
+            assignment, selection_fold = assign_split_and_fold(key)
+            previous = group_assignments.setdefault(
+                key, (assignment, selection_fold)
+            )
+            if previous != (assignment, selection_fold):
+                raise ValueError("one split group crosses a set or selection fold")
             counts[assignment] += 1
+            if selection_fold != "none":
+                fold_counts[selection_fold] += 1
             yield {
                 "track_id": track_id,
                 "split_key": key,
                 "split": assignment,
+                "selection_fold": selection_fold,
             }
 
     output = Path(assignments_path)
@@ -86,6 +92,7 @@ def build_split_artifacts(
             pa.field("track_id", pa.string(), nullable=False),
             pa.field("split_key", pa.string(), nullable=False),
             pa.field("split", pa.string(), nullable=False),
+            pa.field("selection_fold", pa.string(), nullable=False),
         ))
     row_count = write_row_artifact(assignments(), output, parquet_schema=parquet_schema)
     if row_count == 0:
@@ -97,10 +104,21 @@ def build_split_artifacts(
         "scope": scope,
         "seed": SPLIT_SEED,
         "split_key": "valid song_id else track_id",
-        "thresholds": {"set_a": 0.10, "set_b": 0.01, "set_c": 0.02},
+        "proportions": {
+            "set_a": 0.10,
+            "set_b": 0.03,
+            "set_c": 0.02,
+            "remaining": 0.85,
+        },
+        "set_b_selection_folds": {"tune": 0.01, "confirm": 0.02},
+        "hash_ranges": [
+            {"split": name, "selection_fold": fold, "lower": lower, "upper": upper}
+            for name, fold, lower, upper in SPLIT_RANGES
+        ],
         "track_count": row_count,
-        "group_count": len(group_splits),
+        "group_count": len(group_assignments),
         "track_counts": dict(sorted(counts.items())),
+        "set_b_selection_fold_counts": dict(sorted(fold_counts.items())),
         "assignments_file": output.name,
         "storage_format": "parquet" if output.suffix == ".parquet" else "jsonl_gzip",
         "assignments_sha256": sha256_path(output),
@@ -122,6 +140,17 @@ def load_split_manifest(
         raise ValueError("split artifact type mismatch")
     if manifest.get("artifact_version") != SPLIT_VERSION:
         raise ValueError("split artifact version mismatch")
+    expected_ranges = [
+        {"split": name, "selection_fold": fold, "lower": lower, "upper": upper}
+        for name, fold, lower, upper in SPLIT_RANGES
+    ]
+    if manifest.get("hash_ranges") != expected_ranges:
+        raise ValueError("split hash ranges changed")
+    if manifest.get("set_b_selection_folds") != {
+        "tune": 0.01,
+        "confirm": 0.02,
+    }:
+        raise ValueError("Set-B selection-fold proportions changed")
     assignments = Path(assignments_path)
     if manifest.get("assignments_file") != assignments.name:
         raise ValueError("split assignment path mismatch")
@@ -134,19 +163,25 @@ def load_split_manifest(
 
 def load_split_assignments(path: str | Path) -> dict[str, str]:
     assignments: dict[str, str] = {}
-    group_assignments: dict[str, str] = {}
+    group_assignments: dict[str, tuple[str, str]] = {}
     for row in read_row_artifact(path):
         track_id = str(row["track_id"])
         key = str(row["split_key"])
         split = str(row["split"])
+        selection_fold = str(row.get("selection_fold", "none"))
         if split not in {"set_a", "set_b", "set_c", "remaining"}:
             raise ValueError("split assignment contains an unknown set")
+        if selection_fold not in {"none", "tune", "confirm"}:
+            raise ValueError("split assignment contains an unknown selection fold")
+        if (split == "set_b") != (selection_fold in {"tune", "confirm"}):
+            raise ValueError("selection fold is inconsistent with the assigned split")
         if track_id in assignments:
             raise ValueError("split assignments contain a duplicate track")
-        if key in group_assignments and group_assignments[key] != split:
-            raise ValueError("one split group crosses multiple sets")
+        group_assignment = (split, selection_fold)
+        if key in group_assignments and group_assignments[key] != group_assignment:
+            raise ValueError("one split group crosses a set or selection fold")
         assignments[track_id] = split
-        group_assignments[key] = split
+        group_assignments[key] = group_assignment
     if not assignments:
         raise ValueError("split assignments must not be empty")
     return assignments
