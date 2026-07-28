@@ -11,6 +11,8 @@ import math
 from pathlib import Path
 from typing import Iterator, Mapping, Sequence
 
+import numpy as np
+
 from merlin.embedding.graph.config import GRAPH_CONTRACT_KEY, GRAPH_CONTRACT_VERSION
 
 from ...artifacts.integrity import sha256_path
@@ -56,7 +58,7 @@ from ...training.weak_labels import load_weak_positive_manifest, select_weak_pos
 from ...types import Candidate
 
 
-SPLITS = frozenset({"set_a", "set_b", "remaining"})
+SPLITS = frozenset({"set_a", "set_b", "set_c", "remaining"})
 FEATURE_PAIR_BATCH_SIZE = 32_768
 CHECKPOINT_QUERY_INTERVAL = 1_024
 
@@ -202,8 +204,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
+    if args.limit_queries and (args.output is None or args.manifest is None):
+        raise ValueError("limited tuning requires explicit pair output paths")
     output = args.output or paths.tuning_training_pairs
     manifest_path = args.manifest or paths.tuning_training_pairs_manifest
+    if args.limit_queries < 0:
+        raise ValueError("limit-queries must be non-negative")
+    output_scope = "smoke" if args.limit_queries else args.scope
     if args.features_output is not None or args.features_manifest is not None:
         raise ValueError("tuning features are exported by export_ranker_features")
     load_candidate_pool_manifest(
@@ -223,9 +230,13 @@ def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None
         raise ValueError("weak-positive manifest has no positive rows")
     prepare_scratch_root(
         output.parent,
-        scope=args.scope,
+        scope=output_scope,
         min_free_gb=args.min_free_gb,
-        projected_gb=positive_count * 4 * 80 / (1024**3),
+        projected_gb=(
+            min(positive_count, args.limit_queries * MAX_POSITIVES_PER_QUERY)
+            if args.limit_queries
+            else positive_count
+        ) * 4 * 80 / (1024**3),
     )
     thresholds = _load_thresholds(args.thresholds)
     audio = load_audio_index()
@@ -260,11 +271,12 @@ def _run_tuning(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None
             "audio_index_manifest": paths.audio_manifest,
             "tag_idf": paths.tag_idf,
         },
-        scope=args.scope,
+        scope=output_scope,
+        limit_queries=args.limit_queries,
     )
     print(
         "training_pairs_ready "
-        f"scope={args.scope} stage={args.stage} pairs={manifest['pair_count']} "
+        f"scope={output_scope} stage={args.stage} pairs={manifest['pair_count']} "
         f"output={output}",
     )
 
