@@ -491,12 +491,39 @@ def _validate_score_rows(table: ValidationScoreTable) -> None:
         seen.add(key)
 
 
-def _select_reg_configuration(
-    validation_scores: ValidationScoreTable,
-) -> tuple[float, dict[str, object]]:
-    """Choose the sole tunable Ranker parameter from Set-B query metrics."""
-    summaries = {
-        reg_param: _validation_summary(validation_scores, reg_param)
+def _baseline_group_means(
+    table: ValidationScoreTable,
+    key: object,
+    fold: str,
+) -> dict[str, float]:
+    import numpy as np
+
+    values = np.asarray(table.column(key), dtype=np.float64)
+    groups = np.asarray(table.query_groups, dtype=object)
+    folds = np.asarray(table.selection_folds, dtype=object)
+    means = {}
+    for group in QUERY_GROUPS:
+        selected = (folds == fold) & (groups == group)
+        if not np.any(selected):
+            raise ValueError(f"Set-B {fold} fold is missing a frozen query group")
+        means[group] = float(np.mean(values[selected]))
+    return means
+
+
+def _configuration_group_means(
+    table: ValidationScoreTable,
+    thresholds: tuple[float, ...],
+) -> dict[
+    str,
+    dict[tuple[float, int, int, float, float], dict[str, float]],
+]:
+    """Aggregate the full Set-B grid without retaining per-query dictionaries."""
+    import numpy as np
+
+    model_scores = {
+        (reg_param, quota): np.asarray(
+            table.column((reg_param, quota)), dtype=np.float64
+        )
         for reg_param in REG_PARAMS
     }
     c1_summary = _validation_summary(validation_scores, "c1_only")
