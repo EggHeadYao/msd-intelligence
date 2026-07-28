@@ -280,21 +280,6 @@ def _aggregate_random_expectation(
     return macro_metrics(expanded)
 
 
-def _query_metadata(path: Path, query_ids: set[str]) -> tuple[dict[str, str], dict[str, int]]:
-    artists = {}
-    years = {}
-    for track_id, artist_id, year, has_year in parquet_rows(
-        path, ("track_id", "artist_id", "year", "has_year"), engine="pyarrow"
-    ):
-        key = str(track_id)
-        if key not in query_ids:
-            continue
-        artists[key] = str(artist_id) if artist_id else f"missing:{key}"
-        if has_year and year is not None and int(year) > 0:
-            years[key] = int(year)
-    return artists, years
-
-
 def _decade_slices(rows: Iterable[Mapping[str, object]], years: Mapping[str, int]):
     slices = defaultdict(list)
     missing = []
@@ -316,25 +301,47 @@ def _decade_slices(rows: Iterable[Mapping[str, object]], years: Mapping[str, int
     }
 
 
-def _coverage_report(
+def _catalog_report(
     metadata_path: Path,
+    query_ids: set[str],
     top_counts: Mapping[int, Counter[str]],
-) -> dict[str, object]:
+) -> tuple[dict[str, str], dict[str, int], dict[str, object]]:
     import numpy as np
 
     popularity = []
     catalog_artists = set()
     catalog_tracks = 0
-    for _track, artist, song_popularity in parquet_rows(
+    query_artists = {}
+    query_years = {}
+    top_track_ids = set().union(*(counts for counts in top_counts.values()))
+    top_metadata = {}
+    for track, artist, song_popularity, year, has_year in parquet_rows(
         metadata_path,
-        ("track_id", "artist_id", "song_hotttnesss"),
+        ("track_id", "artist_id", "song_hotttnesss", "year", "has_year"),
         engine="pyarrow",
     ):
+        track_id = str(track)
         catalog_tracks += 1
         if artist:
             catalog_artists.add(str(artist))
-        if song_popularity is not None and math.isfinite(float(song_popularity)):
-            popularity.append(float(song_popularity))
+        finite_pop = (
+            float(song_popularity)
+            if song_popularity is not None and math.isfinite(float(song_popularity))
+            else None
+        )
+        if finite_pop is not None:
+            popularity.append(finite_pop)
+        if track_id in query_ids:
+            query_artists[track_id] = (
+                str(artist) if artist else f"missing:{track_id}"
+            )
+            if has_year and year is not None and int(year) > 0:
+                query_years[track_id] = int(year)
+        if track_id in top_track_ids:
+            top_metadata[track_id] = (
+                str(artist) if artist else None,
+                finite_pop,
+            )
     if not popularity:
         raise ValueError("catalog contains no finite popularity values")
     tail_threshold = float(np.quantile(np.asarray(popularity), 0.2, method="linear"))
