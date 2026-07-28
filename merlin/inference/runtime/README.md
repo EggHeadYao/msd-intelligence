@@ -16,10 +16,10 @@ pipeline. They do not train models or construct C1/C2 indexes.
 
 ```text
 query track
-  -> four-source recall (at most 1,000 unique candidates)
+  -> four-source primary recall + deterministic Tag/BFS backfill
   -> canonical pair features
-  -> frozen LR raw margins
-  -> deterministic sort
+  -> frozen LR raw margins and C1 order
+  -> relation gate: C1 fallback or deterministic quota interleave
   -> top 20 recommendations
 ```
 
