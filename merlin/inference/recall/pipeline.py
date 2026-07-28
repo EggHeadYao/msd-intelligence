@@ -77,6 +77,8 @@ def recall_candidates(
     retriever_limits: Mapping[str, int],
     candidate_limit: int,
     query_track_id: str,
+    backfill_limits: Mapping[str, int] | None = None,
+    backfill_order: Sequence[str] = (),
 ) -> tuple[list[Candidate], RecallAudit]:
     """Generate one deterministic candidate union and coverage audit."""
     if not query_track_id:
@@ -87,11 +89,22 @@ def recall_candidates(
         available = getattr(retriever, "is_available", lambda _query: True)
         availability[retriever.name] = bool(available(query_track_id))
         groups[retriever.name] = (
-            list(retriever.retrieve(query_track_id, retriever_limits[retriever.name]))
+            list(retriever.retrieve(
+                query_track_id,
+                (backfill_limits or retriever_limits)[retriever.name],
+            ))
             if availability[retriever.name]
             else []
         )
 
+    if backfill_limits is not None:
+        groups = allocate_backfill_groups(
+            groups,
+            retriever_limits,
+            backfill_limits,
+            backfill_order,
+            candidate_limit,
+        )
     return audit_recall_groups(
         groups,
         retriever_limits,
@@ -116,7 +129,7 @@ def audit_recall_groups(
         raise ValueError("candidate union exceeds configured cap")
     counts = {name: len(group) for name, group in groups.items()}
     shortages = {
-        name: int(retriever_limits[name]) - count
+        name: max(0, int(retriever_limits[name]) - count)
         for name, count in counts.items()
     }
     raw_count = sum(counts.values())
@@ -146,6 +159,8 @@ class RecallPipeline:
     retriever_limits: Mapping[str, int]
     candidate_limit: int = 1_000
     canonical: bool = False
+    backfill_limits: Mapping[str, int] | None = None
+    backfill_order: Sequence[str] = ()
 
     def __post_init__(self) -> None:
         validate_recall_configuration(
@@ -154,6 +169,23 @@ class RecallPipeline:
             self.candidate_limit,
             canonical=self.canonical,
         )
+        if self.backfill_limits is not None:
+            if set(self.backfill_limits) != set(self.retriever_limits):
+                raise ValueError("backfill limits must cover every retriever")
+            if any(
+                int(self.backfill_limits[name]) < int(limit)
+                for name, limit in self.retriever_limits.items()
+            ):
+                raise ValueError("backfill limits must retain every primary quota")
+            if set(self.backfill_order) - set(self.retriever_limits):
+                raise ValueError("backfill order contains an unknown source")
+        if self.canonical:
+            if self.backfill_limits is None:
+                raise ValueError("canonical recall requires a backfill policy")
+            validate_canonical_backfill(
+                self.backfill_limits,
+                tuple(self.backfill_order),
+            )
 
     def recall(self, query_track_id: str) -> tuple[list[Candidate], RecallAudit]:
         return recall_candidates(
@@ -161,6 +193,8 @@ class RecallPipeline:
             self.retriever_limits,
             self.candidate_limit,
             query_track_id,
+            self.backfill_limits,
+            self.backfill_order,
         )
 
     def recall_many(
@@ -190,11 +224,15 @@ class RecallPipeline:
             retrieved = overrides.get(retriever.name)
             if retrieved is None:
                 retrieved = (
-                    retrieve_many(queries, self.retriever_limits[retriever.name])
+                    retrieve_many(
+                        queries,
+                        (self.backfill_limits or self.retriever_limits)[retriever.name],
+                    )
                     if retrieve_many is not None
                     else {
                         query_id: retriever.retrieve(
-                            query_id, self.retriever_limits[retriever.name]
+                            query_id,
+                            (self.backfill_limits or self.retriever_limits)[retriever.name],
                         )
                         for query_id in queries
                         if states[query_id]
@@ -205,7 +243,17 @@ class RecallPipeline:
                 groups[query_id][retriever.name] = retrieved.get(query_id, ())
         return {
             query_id: audit_recall_groups(
-                groups[query_id],
+                (
+                    allocate_backfill_groups(
+                        groups[query_id],
+                        self.retriever_limits,
+                        self.backfill_limits,
+                        self.backfill_order,
+                        self.candidate_limit,
+                    )
+                    if self.backfill_limits is not None
+                    else groups[query_id]
+                ),
                 self.retriever_limits,
                 self.candidate_limit,
                 query_id,
