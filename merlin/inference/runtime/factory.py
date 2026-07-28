@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from ..artifacts.integrity import sha256_path
 from ..artifacts.paths import InferenceArtifactPaths
-from ..recall.policy import CANONICAL_RETRIEVER_LIMITS, load_candidate_policy
+from ..recall.policy import load_candidate_policy
 from ..data.catalog import SameSongFilter, load_same_song_filter
 from ..retrieval.faiss import FaissTrackIndex, load_audio_index
 from ..ranking.features import (
@@ -128,8 +128,18 @@ def build_inference_pipeline(artifacts: InferenceArtifacts) -> MerlinPipeline:
     )
     return MerlinPipeline(
         retrievers=(audio, graph, bfs, tag),
-        retriever_limits=CANONICAL_RETRIEVER_LIMITS,
+        retriever_limits={
+            str(name): int(limit)
+            for name, limit in artifacts.candidate_policy["retriever_limits"].items()
+        },
         feature_computer=features,
         ranker=artifacts.ranker,
         canonical=True,
+        backfill_limits={
+            str(name): int(limit)
+            for name, limit in artifacts.candidate_policy["backfill_limits"].items()
+        },
+        backfill_order=tuple(
+            str(name) for name in artifacts.candidate_policy["backfill_order"]
+        ),
     )
