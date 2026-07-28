@@ -556,20 +556,6 @@ def main() -> None:
 
         q_tracks = q_columns(query_b)
         c_tracks = c_columns(set_b)
-        valid_q_audio = (
-            q_tracks.where(
-                F.col("q_artist_id").isNotNull()
-                & (F.length("q_artist_id") > 0)
-                & F.col("q_release_id").isNotNull()
-                & (F.col("q_release_id") > 0)
-                & (F.col("q_norm") > 0.0)
-            )
-            .join(
-                F.broadcast(tagged_artists.select(F.col("artist_id").alias("q_artist_id"))),
-                "q_artist_id",
-                "inner",
-            )
-        )
         valid_c_audio = (
             c_tracks.where(
                 F.col("c_artist_id").isNotNull()
@@ -589,9 +575,27 @@ def main() -> None:
                 prefix="merlin-setb-audio-pairs-", dir=scratch_root
             )
             raw_audio_pairs_path = Path(audio_pair_temporary.name) / "pairs.parquet"
+            candidate_audio_rows = [
+                row.asDict(recursive=True) for row in valid_c_audio.collect()
+            ]
+            pool_query_ids = {
+                str(row["track_id"]) for row in pool_queries.collect()
+            }
+            query_audio_rows = [
+                {
+                    "query_track_id": row["candidate_track_id"],
+                    "q_song_id": row["c_song_id"],
+                    "q_artist_id": row["c_artist_id"],
+                    "q_release_id": row["c_release_id"],
+                    "q_vector": row["c_vector"],
+                    "q_norm": row["c_norm"],
+                }
+                for row in candidate_audio_rows
+                if row["candidate_track_id"] in pool_query_ids
+            ]
             write_audio_threshold_pairs_numpy(
-                [row.asDict(recursive=True) for row in valid_q_audio.collect()],
-                [row.asDict(recursive=True) for row in valid_c_audio.collect()],
+                query_audio_rows,
+                candidate_audio_rows,
                 raw_audio_pairs_path,
                 threshold=acoustic_p90,
                 block_size=args.audio_block_size,
