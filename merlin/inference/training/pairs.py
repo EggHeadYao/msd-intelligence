@@ -585,6 +585,69 @@ def _candidate_sources(
     return frozenset(str(source) for source in sources)
 
 
+def _source_balanced_candidate_sample(
+    query_id: str,
+    eligible: Sequence[tuple[str, object]],
+    candidates: CandidateCollection,
+    target: int,
+) -> list[tuple[str, object]]:
+    """Sample hard negatives evenly across their observable recall sources."""
+    if target <= 0 or not eligible:
+        return []
+    buckets: dict[str, list[tuple[str, object]]] = {}
+    sources_by_candidate = [
+        _candidate_sources(candidates, evidence) or frozenset(("unknown",))
+        for _track_id, evidence in eligible
+    ]
+    source_frequency = Counter(
+        source for sources in sources_by_candidate for source in sources
+    )
+    for item, sources in zip(eligible, sources_by_candidate, strict=True):
+        track_id = item[0]
+        owner = min(
+            sources,
+            key=lambda source: (
+                source_frequency[source],
+                _pair_hash(query_id, track_id, f"candidate_source:{source}"),
+                source,
+            ),
+        )
+        buckets.setdefault(owner, []).append(item)
+    source_order = sorted(
+        buckets,
+        key=lambda source: (
+            _pair_hash(query_id, source, "candidate_source_order"),
+            source,
+        ),
+    )
+    ordered = {
+        source: nsmallest(
+            target,
+            items,
+            key=lambda item: _pair_hash(
+                query_id, item[0], f"candidate_aware:{source}"
+            ),
+        )
+        for source, items in buckets.items()
+    }
+    positions = dict.fromkeys(source_order, 0)
+    selected: list[tuple[str, object]] = []
+    while len(selected) < target:
+        advanced = False
+        for source in source_order:
+            position = positions[source]
+            if position >= len(ordered[source]):
+                continue
+            selected.append(ordered[source][position])
+            positions[source] = position + 1
+            advanced = True
+            if len(selected) == target:
+                break
+        if not advanced:
+            break
+    return selected
+
+
 def _empty_pair_audit() -> dict[str, object]:
     return {
         "positive_count": 0,
