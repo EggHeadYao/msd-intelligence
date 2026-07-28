@@ -13,12 +13,13 @@ from ..artifacts.integrity import sha256_path
 from ..artifacts.io import read_row_artifact, write_json_atomic, write_row_artifact
 
 
-SPLIT_VERSION = "merlin_group_split_v1"
+SPLIT_VERSION = "merlin_group_split_v4"
 SPLIT_SEED = 42
-SPLIT_THRESHOLDS = (
-    ("set_a", 0.10),
-    ("set_b", 0.11),
-    ("set_c", 0.13),
+SPLIT_RANGES = (
+    ("set_a", "none", 0.00, 0.10),
+    ("set_b", "tune", 0.10, 0.11),
+    ("set_c", "none", 0.11, 0.13),
+    ("set_b", "confirm", 0.15, 0.17),
 )
 
 
@@ -28,13 +29,19 @@ def split_key(track_id: str, song_id: str | None) -> str:
     return song_id if song_id else track_id
 
 
-def assign_split(key: str, seed: int = SPLIT_SEED) -> str:
+def assign_split_and_fold(
+    key: str, seed: int = SPLIT_SEED
+) -> tuple[str, str]:
     digest = hashlib.sha256(f"{seed}\0{key}".encode("utf-8")).digest()
     value = int.from_bytes(digest[:8], "big") / float(1 << 64)
-    for name, threshold in SPLIT_THRESHOLDS:
-        if value < threshold:
-            return name
-    return "remaining"
+    for name, fold, lower, upper in SPLIT_RANGES:
+        if lower <= value < upper:
+            return name, fold
+    return "remaining", "none"
+
+
+def assign_split(key: str, seed: int = SPLIT_SEED) -> str:
+    return assign_split_and_fold(key, seed)[0]
 
 
 def build_split_artifacts(
