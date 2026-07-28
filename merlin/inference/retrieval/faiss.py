@@ -55,6 +55,10 @@ class FaissTrackIndex:
     def contains(self, track_id: str) -> bool:
         return track_id in self._track_to_row
 
+    def row_id(self, track_id: str) -> int | None:
+        """Return the stable FAISS row without reconstructing its vector."""
+        return self._track_to_row.get(track_id)
+
     def similarity(self, left_track_id: str, right_track_id: str) -> float | None:
         """Return catalog cosine, or ``None`` when either embedding is absent."""
         if not self.contains(left_track_id) or not self.contains(right_track_id):
@@ -83,7 +87,12 @@ class FaissTrackIndex:
         ]
         if not positions:
             return results
-        vectors = self._reconstruct_many([right_track_ids[index] for index in positions])
+        rows = np.fromiter(
+            (self._track_to_row[right_track_ids[index]] for index in positions),
+            dtype=np.int64,
+            count=len(positions),
+        )
+        vectors = self._reconstruct_rows_uncached(rows)
         scores = vectors @ left
         if not np.all(np.isfinite(scores)):
             raise ValueError("FAISS batch pair similarity is not finite")
@@ -119,6 +128,34 @@ class FaissTrackIndex:
         if missing:
             raise KeyError(f"track is not in FAISS mapping: {missing[0]}")
         return self._reconstruct_many(list(track_ids))
+
+    def _reconstruct_rows_uncached(self, rows: np.ndarray) -> np.ndarray:
+        """Reconstruct a row matrix without retaining per-vector Python objects."""
+        row_ids = np.asarray(rows, dtype=np.int64)
+        if not len(row_ids):
+            return np.empty((0, self.dimension), dtype=np.float32)
+        unique_rows, inverse = np.unique(row_ids, return_inverse=True)
+        if hasattr(self.index, "reconstruct_batch"):
+            unique_vectors = np.asarray(
+                self.index.reconstruct_batch(unique_rows),
+                dtype=np.float32,
+            )
+        else:
+            unique_vectors = np.asarray(
+                [self.index.reconstruct(int(row_id)) for row_id in unique_rows],
+                dtype=np.float32,
+            )
+        expected = (len(unique_rows), self.dimension)
+        if unique_vectors.shape != expected:
+            raise ValueError("reconstructed FAISS batch has an invalid shape")
+        if not np.all(np.isfinite(unique_vectors)):
+            raise ValueError("reconstructed FAISS batch contains non-finite values")
+        norms = np.linalg.norm(unique_vectors, axis=1)
+        if np.any(np.abs(norms - 1.0) > 1e-5):
+            raise ValueError("reconstructed FAISS batch is not unit normalized")
+        if len(unique_rows) == len(row_ids) and np.array_equal(unique_rows, row_ids):
+            return unique_vectors
+        return unique_vectors[inverse]
 
     def _reconstruct_many(self, track_ids: list[str]) -> np.ndarray:
         rows = [self._track_to_row[track_id] for track_id in track_ids]
