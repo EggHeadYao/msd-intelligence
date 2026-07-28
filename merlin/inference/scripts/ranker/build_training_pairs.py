@@ -707,7 +707,8 @@ def _run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
     allowed = {
         track_id for track_id, split in assignments.items() if split in SPLITS
     }
-    queries = tuple(sorted(allowed))
+    universe = tuple(sorted(allowed))
+    queries = universe
     if args.limit_queries:
         queries = tuple(islice(queries, args.limit_queries))
     scope = "smoke" if args.limit_queries else args.scope
@@ -738,6 +739,7 @@ def _run_config(args: argparse.Namespace, paths: InferenceArtifactPaths):
     return (
         assignments,
         allowed,
+        universe,
         queries,
         scope,
         output,
@@ -799,8 +801,19 @@ def _runtime(
             graph,
             bfs,
             tag,
-            TrackCodec.build(assignments, SPLITS, catalog.same_song),
+            TrackCodec.build(
+                assignments,
+                SPLITS,
+                catalog.same_song,
+                tag.track_to_artist,
+            ),
             limits,
+            {
+                str(name): int(limit)
+                for name, limit in policy["backfill_limits"].items()
+            },
+            tuple(str(name) for name in policy["backfill_order"]),
+            int(policy["candidate_limit"]),
         )
     computer = RankerFeatureComputer(
         tracks=catalog.ranker_tracks,
