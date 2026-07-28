@@ -1169,6 +1169,7 @@ def _write_streamed_rows(
                     query_count += 1
                     for key in (
                         "positive_count",
+                        "unrecalled_positive_count",
                         "negative_count",
                         "candidate_aware_count",
                         "random_count",
@@ -1189,6 +1190,7 @@ def _write_streamed_rows(
             query_count += 1
             for key in (
                 "positive_count",
+                "unrecalled_positive_count",
                 "negative_count",
                 "candidate_aware_count",
                 "random_count",
@@ -1213,7 +1215,13 @@ def _write_streamed_rows(
                 }
                 for row in pairs
             )
-            feature_writer.write_rows(features)
+            feature_writer.write_rows(
+                {
+                    **feature,
+                    "negative_source": pair["negative_source"],
+                }
+                for pair, feature in zip(pairs, features, strict=True)
+            )
     return {
         "query_count": query_count,
         "pair_count": pair_writer.count,
