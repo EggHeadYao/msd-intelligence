@@ -156,7 +156,7 @@ def _query_groups(path: Path) -> Iterable[tuple[str, list[dict[str, object]]]]:
             current_query = query_id
         if query_id != current_query:
             if query_id in seen:
-                raise ValueError("Set-C feature rows are not clustered by query")
+                raise ValueError("development feature rows are not clustered by query")
             seen.add(current_query)
             yield current_query, current_rows
             current_query = query_id
@@ -164,7 +164,7 @@ def _query_groups(path: Path) -> Iterable[tuple[str, list[dict[str, object]]]]:
         current_rows.append(row)
     if current_query is not None:
         if current_query in seen:
-            raise ValueError("Set-C feature rows repeat a completed query")
+            raise ValueError("development feature rows repeat a completed query")
         yield current_query, current_rows
 
 
@@ -183,6 +183,9 @@ def _candidate_metrics(rows: list[Mapping[str, object]]) -> list[dict[str, objec
     sources = ("audio", "graph", "bfs", "tag")
     for row in rows:
         recalled_by = {str(source) for source in row.get("recall_sources", ())}
+        primary_recalled_by = {
+            str(source) for source in row.get("primary_recall_sources", ())
+        }
         for membership in row["validation_groups"]:
             group = str(membership["query_group"])
             state = states.get(group)
@@ -197,7 +200,7 @@ def _candidate_metrics(rows: list[Mapping[str, object]]) -> list[dict[str, objec
             if int(membership["label"]) != 1:
                 continue
             state["union_hits"] += 1
-            state["source_hits"].update(recalled_by)
+            state["source_hits"].update(primary_recalled_by)
             if len(recalled_by) == 1:
                 state["exclusive_hits"].update(recalled_by)
             for source in sources:
