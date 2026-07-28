@@ -129,3 +129,67 @@ TO_INDEX=$(step_index "$TO_STEP") || die "unknown --to step: $TO_STEP"
 [[ -x $MERLIN_PYTHON ]] || die "Python is not executable: $MERLIN_PYTHON"
 [[ -x $MERLIN_SPARK_SUBMIT ]] || die "spark-submit is not executable: $MERLIN_SPARK_SUBMIT"
 cd "$MERLIN_ROOT"
+
+cleanup() {
+  if [[ -n $TEMP_ENTRY_DIR && -d $TEMP_ENTRY_DIR ]]; then
+    rm -rf -- "$TEMP_ENTRY_DIR"
+  fi
+}
+trap cleanup EXIT
+
+if [[ -n ${MERLIN_SPARK_ENTRY:-} ]]; then
+  [[ -f $MERLIN_SPARK_ENTRY ]] || die "Spark entry does not exist: $MERLIN_SPARK_ENTRY"
+else
+  TEMP_ENTRY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/merlin-c3-entry.XXXXXX")
+  MERLIN_SPARK_ENTRY=$TEMP_ENTRY_DIR/train_ranker.py
+  printf '%s\n' \
+    'from merlin.inference.scripts.ranker.train_ranker import main' \
+    '' \
+    'if __name__ == "__main__":' \
+    '    main()' >"$MERLIN_SPARK_ENTRY"
+fi
+
+run_command() {
+  printf '+'
+  printf ' %q' "$@"
+  printf '\n'
+  if ((DRY_RUN == 0)); then
+    "$@"
+  fi
+}
+
+outputs_complete() {
+  local output
+  for output in "$@"; do
+    [[ -e $output ]] || return 1
+  done
+}
+
+run_step() {
+  local name=$1 index
+  shift
+  index=$(step_index "$name") || die "internal unknown step: $name"
+  if ((index < FROM_INDEX || index > TO_INDEX)); then
+    return 0
+  fi
+
+  local -a outputs=()
+  while (($#)) && [[ $1 != -- ]]; do
+    outputs+=("$1")
+    shift
+  done
+  (($#)) || die "step $name has no command separator"
+  shift
+
+  if outputs_complete "${outputs[@]}"; then
+    printf 'c3_pipeline_skip step=%s reason=outputs_complete\n' "$name"
+    return 0
+  fi
+
+  printf 'c3_pipeline_start step=%s\n' "$name"
+  run_command "$@"
+  if ((DRY_RUN == 0)) && ! outputs_complete "${outputs[@]}"; then
+    die "step $name returned without all declared outputs"
+  fi
+  printf 'c3_pipeline_done step=%s\n' "$name"
+}
