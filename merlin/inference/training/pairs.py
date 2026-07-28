@@ -15,7 +15,7 @@ import numpy as np
 
 from ..artifacts.integrity import artifact_size_bytes, sha256_path
 from ..recall.pool import iter_candidate_pool
-from ..recall.streaming import EncodedCandidates
+from ..recall.streaming import EncodedCandidates, SOURCE_NAMES
 from ..artifacts.io import PartitionedParquetWriter, write_json_atomic, write_row_artifact
 from ..ranking.features import (
     FEATURE_SCHEMA,
@@ -28,20 +28,27 @@ from ..types import Candidate
 from .weak_labels import iter_weak_positives
 
 
-TRAINING_PAIR_VERSION = "merlin_training_pairs_v2"
+TRAINING_PAIR_VERSION = "merlin_training_pairs_v6"
 PAIR_SEED = 42
 NEGATIVE_RATIO = 3
 CANDIDATE_AWARE_FRACTION = 0.75
-LOSS_WEIGHT_STRATEGY = "per_query_candidate_curriculum"
+LOSS_WEIGHT_STRATEGY = "positive_modality_balance_and_candidate_curriculum"
 MAX_CANDIDATE_SAMPLE_WEIGHT = 20.0
+AUDIO_POSITIVE_SOURCE = "audio_derived"
+RELATION_POSITIVE_SOURCES = frozenset(("same_artist", "tag_derived"))
 IsPositive = Callable[[str, str], bool]
 IsPositiveBatch = Callable[[str, Sequence[str]], Sequence[bool]]
+IsPositiveEncodedBatch = Callable[
+    [EncodedCandidates, np.ndarray],
+    Sequence[bool] | np.ndarray,
+]
 IsPositivePairs = Callable[[Sequence[tuple[str, str]]], Sequence[bool]]
 SameSong = Callable[[str, str], bool]
 WeakPositiveMap = Mapping[str, Mapping[str, frozenset[str]]]
 WeakPositiveSource = str | Path | WeakPositiveMap
 CandidateInput = Mapping[str, object] | Candidate
 CandidateCollection = Sequence[CandidateInput] | EncodedCandidates
+CANDIDATE_SAMPLING_STRATEGY = "source_balanced_round_robin_v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +105,45 @@ def _negative_loss_weights(
     )
     candidate_weight_sum = candidate_weight * candidate_count
     return candidate_weight, (negative_count - candidate_weight_sum) / random_count
+
+
+def _positive_loss_weights(
+    positives: Mapping[str, frozenset[str]],
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Give audio and relation evidence equal loss mass within each query."""
+    count = len(positives)
+    if count == 0:
+        return {}, {"positive_audio": 0.0, "positive_relation": 0.0}
+    audio = {
+        track_id for track_id, sources in positives.items()
+        if AUDIO_POSITIVE_SOURCE in sources
+    }
+    relation = {
+        track_id for track_id, sources in positives.items()
+        if RELATION_POSITIVE_SOURCES.intersection(sources)
+    }
+    unknown = set(positives).difference(audio | relation)
+    if unknown:
+        raise ValueError("positive source is outside the modality-weight contract")
+    if audio and relation:
+        audio_mass = relation_mass = count / 2.0
+    elif audio:
+        audio_mass, relation_mass = float(count), 0.0
+    else:
+        audio_mass, relation_mass = 0.0, float(count)
+    weights = {
+        track_id: (
+            (audio_mass / len(audio) if track_id in audio else 0.0)
+            + (relation_mass / len(relation) if track_id in relation else 0.0)
+        )
+        for track_id in positives
+    }
+    if abs(sum(weights.values()) - count) > 1e-9:
+        raise AssertionError("positive modality weights changed total loss mass")
+    return weights, {
+        "positive_audio": audio_mass,
+        "positive_relation": relation_mass,
+    }
 
 
 def _histogram_percentiles(
