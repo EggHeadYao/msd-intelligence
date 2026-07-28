@@ -702,28 +702,46 @@ class StreamingRecallEngine:
         self,
         groups: Sequence[tuple[np.ndarray, np.ndarray]],
     ) -> EncodedCandidates:
+        lengths = np.fromiter(
+            (len(group_codes) for group_codes, _scores in groups),
+            dtype=np.int64,
+            count=len(SOURCE_NAMES),
+        )
+        if not int(lengths.sum()):
+            return EncodedCandidates(
+                self.codec,
+                np.empty(0, dtype=np.int32),
+                np.empty(0, dtype=np.uint8),
+                np.empty(0, dtype=np.uint8),
+                np.empty((0, len(SOURCE_NAMES)), dtype=np.float32),
+            )
+        all_codes = np.concatenate([group[0] for group in groups])
+        all_scores = np.concatenate([group[1] for group in groups])
+        sources = np.repeat(np.arange(len(SOURCE_NAMES), dtype=np.uint8), lengths)
+        source_positions = np.concatenate([
+            np.arange(length, dtype=np.int64) for length in lengths
+        ])
         positions: dict[int, int] = {}
         codes: list[int] = []
         masks: list[int] = []
         primary_masks: list[int] = []
         score_rows: list[list[float]] = []
-        for source_index, (group_codes, group_scores) in enumerate(groups):
-            for source_position, (code, score) in enumerate(
-                zip(group_codes, group_scores, strict=True)
-            ):
-                value = int(code)
-                position = positions.get(value)
-                if position is None:
-                    position = len(codes)
-                    positions[value] = position
-                    codes.append(value)
-                    masks.append(0)
-                    primary_masks.append(0)
-                    score_rows.append([float("nan")] * len(SOURCE_NAMES))
-                masks[position] |= 1 << source_index
-                if source_position < self.limits[SOURCE_NAMES[source_index]]:
-                    primary_masks[position] |= 1 << source_index
-                score_rows[position][source_index] = float(score)
+        for code, score, source_index, source_position in zip(
+            all_codes, all_scores, sources, source_positions, strict=True
+        ):
+            value = int(code)
+            position = positions.get(value)
+            if position is None:
+                position = len(codes)
+                positions[value] = position
+                codes.append(value)
+                masks.append(0)
+                primary_masks.append(0)
+                score_rows.append([float("nan")] * len(SOURCE_NAMES))
+            masks[position] |= 1 << source_index
+            if source_position < self.limits[SOURCE_NAMES[source_index]]:
+                primary_masks[position] |= 1 << source_index
+            score_rows[position][source_index] = float(score)
         return EncodedCandidates(
             self.codec,
             np.asarray(codes, dtype=np.int32),
