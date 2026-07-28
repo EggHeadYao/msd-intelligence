@@ -595,24 +595,54 @@ def _source_balanced_candidate_sample(
     if target <= 0 or not eligible:
         return []
     buckets: dict[str, list[tuple[str, object]]] = {}
-    sources_by_candidate = [
-        _candidate_sources(candidates, evidence) or frozenset(("unknown",))
-        for _track_id, evidence in eligible
-    ]
-    source_frequency = Counter(
-        source for sources in sources_by_candidate for source in sources
-    )
-    for item, sources in zip(eligible, sources_by_candidate, strict=True):
-        track_id = item[0]
-        owner = min(
-            sources,
-            key=lambda source: (
-                source_frequency[source],
-                _pair_hash(query_id, track_id, f"candidate_source:{source}"),
-                source,
+    if isinstance(candidates, EncodedCandidates):
+        positions = np.fromiter(
+            (int(evidence) for _track_id, evidence in eligible),
+            dtype=np.int64,
+            count=len(eligible),
+        )
+        masks = candidates.source_masks[positions]
+        source_bits = np.asarray(
+            tuple(1 << index for index in range(len(SOURCE_NAMES))),
+            dtype=masks.dtype,
+        )
+        memberships = (masks[:, None] & source_bits[None, :]) != 0
+        frequencies = np.count_nonzero(memberships, axis=0)
+        tie_order = sorted(
+            range(len(SOURCE_NAMES)),
+            key=lambda index: _pair_hash(
+                query_id, SOURCE_NAMES[index], "candidate_source_owner"
             ),
         )
-        buckets.setdefault(owner, []).append(item)
+        priorities = np.empty(len(SOURCE_NAMES), dtype=np.int64)
+        priorities[tie_order] = np.arange(len(SOURCE_NAMES), dtype=np.int64)
+        costs = frequencies * len(SOURCE_NAMES) + priorities
+        owners = np.argmin(
+            np.where(memberships, costs[None, :], np.iinfo(np.int64).max),
+            axis=1,
+        )
+        for item, owner, mask in zip(eligible, owners, masks, strict=True):
+            source = SOURCE_NAMES[int(owner)] if int(mask) else "unknown"
+            buckets.setdefault(source, []).append(item)
+    else:
+        sources_by_candidate = [
+            _candidate_sources(candidates, evidence) or frozenset(("unknown",))
+            for _track_id, evidence in eligible
+        ]
+        source_frequency = Counter(
+            source for sources in sources_by_candidate for source in sources
+        )
+        for item, sources in zip(eligible, sources_by_candidate, strict=True):
+            track_id = item[0]
+            owner = min(
+                sources,
+                key=lambda source: (
+                    source_frequency[source],
+                    _pair_hash(query_id, track_id, f"candidate_source:{source}"),
+                    source,
+                ),
+            )
+            buckets.setdefault(owner, []).append(item)
     source_order = sorted(
         buckets,
         key=lambda source: (
