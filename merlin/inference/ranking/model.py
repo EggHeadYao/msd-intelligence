@@ -274,6 +274,71 @@ class LogisticRanker:
             logit += coefficient * ((value - mean) / std)
         return logit
 
+    def _ranking_signals(
+        self,
+        features: Sequence[Mapping[str, float]],
+    ) -> tuple[tuple[float, ...], float]:
+        return _query_signals(features, include_audio=True)
+
+    def _fallback_margins(
+        self,
+        features: Sequence[Mapping[str, float]],
+        selected_indexes: Sequence[int],
+    ) -> dict[int, float]:
+        selected = set(selected_indexes)
+        margins = {}
+        for index, features_by_name in enumerate(features):
+            is_selected = index in selected
+            missing = [
+                name for name in self.feature_order if name not in features_by_name
+            ]
+            if missing:
+                raise ValueError(f"ranker features missing: {missing}")
+            logit = self.intercept
+            for name, mean, std, coefficient in zip(
+                self.feature_order,
+                self.means,
+                self.stds,
+                self.coefficients,
+                strict=True,
+            ):
+                value = float(features_by_name[name])
+                if not math.isfinite(value):
+                    raise ValueError(f"ranker feature {name} is not finite")
+                if is_selected:
+                    logit += coefficient * ((value - mean) / std)
+            if is_selected:
+                margins[index] = logit
+        return margins
+
+    def rank(
+        self,
+        features: Sequence[Mapping[str, float]],
+        candidate_ids: Sequence[str],
+        limit: int = RANKING_LIMIT,
+    ) -> tuple[tuple[int, float], ...]:
+        """Return quota-interleaved indexes paired with their LR margins."""
+        if len(features) != len(candidate_ids):
+            raise ValueError("ranking vector lengths differ")
+        if len(set(candidate_ids)) != len(candidate_ids):
+            raise ValueError("ranking candidate IDs must be unique")
+        if not 1 <= limit <= RANKING_LIMIT:
+            raise ValueError("ranking limit must be between 1 and 20")
+        audio, relation_evidence = self._ranking_signals(features)
+        effective_quota = self.effective_audio_quota(relation_evidence)
+        if effective_quota == RANKING_LIMIT:
+            indexes = tuple(sorted(
+                range(len(candidate_ids)),
+                key=lambda index: (-audio[index], candidate_ids[index]),
+            )[:limit])
+            margins = self._fallback_margins(features, indexes)
+            return tuple((index, margins[index]) for index in indexes)
+        margins = tuple(self.raw_margin(values) for values in features)
+        indexes = quota_interleave_indices(
+            candidate_ids, margins, audio, effective_quota, limit=limit
+        )
+        return tuple((index, margins[index]) for index in indexes)
+
 
 def write_ranker_artifacts(
     output_dir: str | Path,
