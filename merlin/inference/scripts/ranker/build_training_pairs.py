@@ -993,6 +993,7 @@ def _run_random_only_derived(
     (
         assignments,
         allowed,
+        universe,
         _queries,
         scope,
         output,
@@ -1000,7 +1001,6 @@ def _run_random_only_derived(
         feature_output,
         feature_manifest,
     ) = _run_config(args, paths)
-    universe = tuple(sorted(allowed))
     checkpoint_path = output.with_suffix(output.suffix + ".checkpoint.json")
     contract = {
         "scope": scope,
@@ -1013,6 +1013,7 @@ def _run_random_only_derived(
         "source_part_count": len(pair_parts),
         "rows_per_query": rows_per_query,
         "rows_per_file": args.rows_per_file,
+        "random_sampling": "query_seeded_splitmix64_v1",
         "output": str(output.resolve()),
         "features_output": str(feature_output.resolve()),
     }
@@ -1079,12 +1080,12 @@ def _run_random_only_derived(
                 raise ValueError("Full feature sample weights are not floating point")
             pair_table = pair_table.set_column(
                 pair_weight_index,
-                SAMPLE_WEIGHT_COLUMN,
+                pair_schema.field(SAMPLE_WEIGHT_COLUMN),
                 pc.cast(pair_table[SAMPLE_WEIGHT_COLUMN], pa.float32()),
             )
             feature_table = feature_table.set_column(
                 feature_weight_index,
-                SAMPLE_WEIGHT_COLUMN,
+                feature_schema.field(SAMPLE_WEIGHT_COLUMN),
                 pc.cast(feature_table[SAMPLE_WEIGHT_COLUMN], pa.float32()),
             )
             if pair_table.schema != pair_schema or feature_table.schema != feature_schema:
@@ -1104,18 +1105,6 @@ def _run_random_only_derived(
             hard_mask = pc.fill_null(
                 pc.equal(pair_table["negative_source"], "candidate_aware"),
                 False,
-            )
-            keep_mask = pc.invert(hard_mask)
-            reused_pairs = pair_table.filter(keep_mask)
-            reused_features = feature_table.filter(keep_mask)
-            unit_weights = pa.repeat(
-                pa.scalar(1.0, type=pa.float32()), reused_pairs.num_rows
-            )
-            reused_pairs = reused_pairs.set_column(
-                pair_weight_index, SAMPLE_WEIGHT_COLUMN, unit_weights
-            )
-            reused_features = reused_features.set_column(
-                feature_weight_index, SAMPLE_WEIGHT_COLUMN, unit_weights
             )
             labels = pair_table["label"].combine_chunks()
             positive_count = int(pc.sum(labels).as_py())
@@ -1191,12 +1180,8 @@ def _run_random_only_derived(
                 or replacements.features.num_rows != hard_count
             ):
                 raise ValueError("derived replacement count differs from removed hard negatives")
-            pair_writer.write_table(
-                pa.concat_tables((reused_pairs, replacements.pairs))
-            )
-            feature_writer.write_table(
-                pa.concat_tables((reused_features, replacements.features))
-            )
+            pair_writer.write_table(replacements.pairs)
+            feature_writer.write_table(replacements.features)
             totals["positive_count"] += positive_count
             totals["negative_count"] += random_count + hard_count
             totals["random_count"] += random_count + hard_count
@@ -1226,7 +1211,8 @@ def _run_random_only_derived(
                 f"no_hard_derivation_progress queries={processed_queries}/{query_count}",
                 flush=True,
             )
-    if processed_queries != query_count or pair_writer.count != pair_count:
+    replaced_count = int(full_counts.get("candidate_aware_count", -1))
+    if processed_queries != query_count or pair_writer.count != replaced_count:
         raise ValueError("derived no-hard-neg output is incomplete")
     if (
         totals["positive_count"] != int(full_counts["positive_count"])
