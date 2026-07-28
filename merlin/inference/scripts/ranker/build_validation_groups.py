@@ -437,11 +437,25 @@ def main() -> None:
             threshold_sample_count = threshold_pair_ids.count()
             if threshold_sample_count == 0:
                 raise ValueError("Set-A pre-PCA threshold sample is empty")
+            threshold_track_ids = (
+                threshold_pair_ids.select(
+                    F.col("q_track_id").alias(TRACK_ID_COLUMN)
+                )
+                .unionByName(
+                    threshold_pair_ids.select(
+                        F.col("c_track_id").alias(TRACK_ID_COLUMN)
+                    )
+                )
+                .distinct()
+            )
+            threshold_vectors = set_a.select(
+                TRACK_ID_COLUMN, "pre_pca_vector", "pre_pca_norm"
+            ).join(
+                F.broadcast(threshold_track_ids), TRACK_ID_COLUMN, "inner"
+            )
             vector_positions, normalized_vectors = collect_normalized_vector_matrix(
-                set_a.select(
-                    TRACK_ID_COLUMN, "pre_pca_vector", "pre_pca_norm"
-                ).toLocalIterator(),
-                capacity=set_a_count,
+                threshold_vectors.toLocalIterator(),
+                capacity=min(set_a_count, 2 * threshold_sample_count),
                 dimension=len(feature_columns),
             )
             threshold_sample_count, acoustic_p50, acoustic_p90 = (
