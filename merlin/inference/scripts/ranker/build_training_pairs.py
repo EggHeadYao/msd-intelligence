@@ -1289,6 +1289,7 @@ def _run(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
     (
         assignments,
         allowed,
+        universe,
         queries,
         scope,
         output,
@@ -1296,12 +1297,21 @@ def _run(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
         feature_output,
         feature_manifest,
     ) = _run_config(args, paths)
+    thresholds, audio, audio_retriever, tag, computer, recall_engine = _runtime(
+        args, paths, assignments
+    )
+    queries = tuple(sorted(
+        queries,
+        key=lambda query_id: (tag.track_to_artist.get(query_id, ""), query_id),
+    ))
     checkpoint_path = output.with_suffix(output.suffix + ".checkpoint.json")
     checkpoint_contract = {
         "stage": "final_retrain",
         "negative_mode": args.negative_mode,
         "scope": scope,
         "query_count": len(queries),
+        "query_ordering": "artist_then_track_v1",
+        "random_sampling": "query_seeded_splitmix64_v1",
         "rows_per_file": args.rows_per_file,
         "positive_neighbor_limit": args.positive_neighbor_limit,
         "split_assignments": str(args.split_assignments.resolve()),
@@ -1328,12 +1338,10 @@ def _run(args: argparse.Namespace, paths: InferenceArtifactPaths) -> None:
             f"retrain_resume queries={processed_queries}/{len(queries)}",
             flush=True,
         )
-    thresholds, audio, audio_retriever, tag, computer, recall_engine = _runtime(
-        args, paths, assignments
-    )
     pair_manifest, _feature_manifest = write_training_and_feature_artifacts(
         _query_rows(
             queries[processed_queries:],
+            universe,
             allowed,
             thresholds,
             recall_engine,
