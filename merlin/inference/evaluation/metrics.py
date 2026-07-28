@@ -292,28 +292,30 @@ def paired_bootstrap_ci(
     """Bootstrap Full-minus-baseline with equal validation-stratum weight."""
     import numpy as np
 
+    baseline_tuple = (baseline,)
     values = {
         (str(row["query_track_id"]), str(row["query_group"]), str(row["scorer"])):
         float(row[metric])
         for row in rows
-        if row["scorer"] in {"full", baseline}
+        if row["scorer"] == "full" or row["scorer"] in baseline_tuple
     }
-    differences: dict[str, list[tuple[str, tuple[float]]]] = defaultdict(list)
+    differences: dict[str, list[tuple[str, tuple[float, ...]]]] = defaultdict(list)
     for query_id, group, scorer in values:
         if scorer != "full":
             continue
-        other = values.get((query_id, group, baseline))
-        if other is not None:
+        full = values[(query_id, group, scorer)]
+        others = tuple(values.get((query_id, group, name)) for name in baseline_tuple)
+        if all(value is not None for value in others):
             differences[group].append((
                 query_id,
-                (values[(query_id, group, scorer)] - other,),
+                tuple(full - float(value) for value in others),
             ))
     if any(not differences[group] for group in VALIDATION_QUERY_GROUPS):
-        raise ValueError(f"paired bootstrap is missing rows for {baseline}")
+        raise ValueError("paired bootstrap is missing paired scorer rows")
     if samples <= 0:
         raise ValueError("paired bootstrap samples must be positive")
     generator = np.random.default_rng(seed)
-    estimates = np.empty((samples, 1), dtype=np.float64)
+    estimates = np.empty((samples, len(baseline_tuple)), dtype=np.float64)
     if clusters is None:
         arrays = {
             group: np.asarray([value for _query, value in differences[group]])
@@ -321,7 +323,7 @@ def paired_bootstrap_ci(
         }
         for start in range(0, samples, 64):
             stop = min(start + 64, samples)
-            block = np.zeros((stop - start, 1), dtype=np.float64)
+            block = np.zeros((stop - start, len(baseline_tuple)), dtype=np.float64)
             for group_values in arrays.values():
                 indexes = generator.integers(
                     0,
@@ -331,14 +333,16 @@ def paired_bootstrap_ci(
                 block += group_values[indexes].mean(axis=1)
             estimates[start:stop] = block / len(VALIDATION_QUERY_GROUPS)
     else:
-        cluster_rows: dict[str, dict[str, list[tuple[float]]]] = defaultdict(
+        cluster_rows: dict[str, dict[str, list[tuple[float, ...]]]] = defaultdict(
             lambda: defaultdict(list)
         )
         for group, items in differences.items():
             for query_id, value in items:
                 cluster_rows[clusters.get(query_id, f"missing:{query_id}")][group].append(value)
         cluster_ids = tuple(sorted(cluster_rows))
-        sums = np.zeros((len(cluster_ids), len(VALIDATION_QUERY_GROUPS), 1))
+        sums = np.zeros((
+            len(cluster_ids), len(VALIDATION_QUERY_GROUPS), len(baseline_tuple)
+        ))
         counts = np.zeros((len(cluster_ids), len(VALIDATION_QUERY_GROUPS)))
         for cluster_index, cluster_id in enumerate(cluster_ids):
             for group_index, group in enumerate(VALIDATION_QUERY_GROUPS):
