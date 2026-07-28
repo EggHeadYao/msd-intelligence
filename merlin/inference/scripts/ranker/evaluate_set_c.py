@@ -517,21 +517,21 @@ def main() -> None:
         "primary_metric": f"three_strata_macro_ndcg@{PRIMARY_CUTOFF}",
         "cutoffs": list(EVALUATION_CUTOFFS),
         "evaluated_query_count": len(query_ids),
-        "set_c_track_count": split_count,
+        "development_track_count": split_count,
         "queries_without_any_eligible_group": split_count - len(query_ids),
         "group_eligibility": group_manifest["group_stats"],
         "candidate_layer": _aggregate_candidate(candidate_rows),
         "ranking": ranking_report,
         "paired_inference_full_minus_baseline": inference,
         "robustness": {
-            "coverage_popularity_tail": _coverage_report(
-                paths.songs_metadata, top_counts
-            ),
+            "coverage_popularity_tail": coverage,
             "precomputed_acoustic_cold": ranking_report[
                 "precomputed_acoustic_cold"
             ],
             "decade_slices": _decade_slices(ranking_rows, years),
-            "eligible_query_candidate_shortage_count": eligible_candidate_shortages,
+            "eligible_query_candidate_counts": _candidate_count_distribution(
+                eligible_candidate_counts
+            ),
             "year_semantics": "MSD static year; not first-release time",
         },
         "lineage": {
@@ -547,7 +547,7 @@ def main() -> None:
     }
     write_json_atomic(report, args.output)
     print(
-        f"set_c_evaluation_ready queries={len(query_ids)} output={args.output}",
+        f"development_evaluation_ready queries={len(query_ids)} output={args.output}",
         flush=True,
     )
 
