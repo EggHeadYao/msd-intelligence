@@ -59,3 +59,57 @@ export JAVA_TOOL_OPTIONS='-XX:UseAVX=0 -XX:UseSSE=2 -XX:-TieredCompilation'
 Do not remove an active `.c3-scratch` directory. Set `--min-free-gb` according
 to available disk; lowering it to zero disables only the reserve, not the
 projected-work check.
+
+## 1. Split and weak labels
+
+Rebuild the split whenever its artifact version or split policy changes. Before
+exporting candidates, also ensure the recall contract is current; rebuild it
+with the command in [`../recall/README.md`](../recall/README.md) only when the
+candidate-policy or Tag-IDF contract changed.
+
+```bash
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_split \
+  --songs-metadata parquets_new/prepared/songs_metadata.parquet \
+  --assignments parquets_new/merlin/ranker/split_assignments.parquet \
+  --manifest parquets_new/merlin/ranker/split_manifest.json
+
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_weak_labels \
+  --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
+  --split-manifest parquets_new/merlin/ranker/split_manifest.json \
+  --query-splits set_a \
+  --min-free-gb 8
+```
+
+## 2. Set-A tuning data
+
+First export the Set-A pool with the recall command, then build pairs and raw
+features:
+
+```bash
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
+  --candidate-pool parquets_new/merlin/ranker/candidate_pool.parquet \
+  --candidate-pool-manifest parquets_new/merlin/ranker/candidate_pool_manifest.json \
+  --weak-positives parquets_new/merlin/ranker/weak_positives.parquet \
+  --weak-positives-manifest parquets_new/merlin/ranker/weak_positives_manifest.json \
+  --thresholds parquets_new/merlin/ranker/weak_label_thresholds.json \
+  --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
+  --stage tuning \
+  --scope formal \
+  --output parquets_new/merlin/ranker/tuning/training_pairs.parquet \
+  --manifest parquets_new/merlin/ranker/tuning/training_pairs_manifest.json
+
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.export_ranker_features \
+  --pair-kind training \
+  --pairs parquets_new/merlin/ranker/tuning/training_pairs.parquet \
+  --pairs-manifest parquets_new/merlin/ranker/tuning/training_pairs_manifest.json \
+  --output parquets_new/merlin/ranker/tuning/raw_pair_features.parquet \
+  --manifest parquets_new/merlin/ranker/tuning/raw_pair_features_manifest.json \
+  --stage tuning \
+  --scope formal \
+  --min-free-gb 8
+```
+
+For a non-canonical proxy run, add `--limit-queries N` to pair construction and
+provide explicit output and manifest paths outside the formal artifact tree.
+The limited pair manifest is marked `scope=smoke`; its feature export and model
+training must therefore also use `--scope smoke`.
