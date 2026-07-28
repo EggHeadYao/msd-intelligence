@@ -151,3 +151,39 @@ groups with Spark:
   --scope formal \
   --min-free-gb 8
 ```
+
+## 4. Select the frozen model configuration
+
+This trains the Set-A LR grid and uses the Set-B tune/confirm folds to select
+regularization, Audio quota, and relation-evidence gate:
+
+```bash
+/opt/spark/bin/spark-submit \
+  --master 'local[4]' \
+  --driver-memory 5500m \
+  --conf spark.eventLog.enabled=false \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  --conf spark.hadoop.fs.defaultFS=file:/// \
+  --conf spark.driver.bindAddress=127.0.0.1 \
+  --conf spark.memory.fraction=0.40 \
+  "$MERLIN_SPARK_ENTRY" \
+  --train-features "$MERLIN_RANKER_ROOT/tuning/raw_pair_features.parquet" \
+  --train-features-manifest "$MERLIN_RANKER_ROOT/tuning/raw_pair_features_manifest.json" \
+  --validation-features "$MERLIN_RANKER_ROOT/validation_raw_features.parquet" \
+  --validation-features-manifest "$MERLIN_RANKER_ROOT/validation_raw_features_manifest.json" \
+  --output "$MERLIN_RANKER_ROOT/tuning_model" \
+  --stage tuning \
+  --scope formal \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb 4 \
+  --max-block-size-mb 8 \
+  --parent audio_index_manifest="$MERLIN_ROOT/parquets_new/merlin/audio/index_audio_manifest.json" \
+  --parent graph_index_manifest="$MERLIN_ROOT/parquets_new/merlin/graph/index_graph_manifest.json" \
+  --parent candidate_policy_manifest="$MERLIN_RANKER_ROOT/candidate_policy_manifest.json" \
+  --parent tag_idf="$MERLIN_RANKER_ROOT/tag_idf.json" \
+  --parent validation_features_manifest="$MERLIN_RANKER_ROOT/validation_raw_features_manifest.json"
+```
+
+Read `selected_reg_param` from `tuning_model/training_manifest.json` and use
+that exact value as `MERLIN_REG` below. Do not select it from Set C.
