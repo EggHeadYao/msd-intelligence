@@ -11,7 +11,7 @@ from typing import Mapping, Sequence
 
 from ..artifacts.integrity import sha256_path
 from ..artifacts.io import write_json_atomic
-from .features import FEATURE_ORDER, FEATURE_SCHEMA
+from .features import FEATURE_ORDER, FEATURE_SCHEMA, SAMPLE_WEIGHT_COLUMN
 
 
 RANKER_TRAINING_VERSION = "merlin_ranker_training_v4"
@@ -356,6 +356,10 @@ def write_ranker_artifacts(
     parent_paths: Mapping[str, str | Path],
     scope: str,
     constant_features: Sequence[str] = (),
+    audio_quota: int = 0,
+    relation_gate_threshold: float = 0.0,
+    high_evidence_audio_quota: int | None = None,
+    high_relation_gate_threshold: float | None = None,
 ) -> dict[str, object]:
     if scope not in {"formal", "smoke"}:
         raise ValueError("ranker scope must be formal or smoke")
@@ -364,6 +368,47 @@ def write_ranker_artifacts(
         raise ValueError("ranker artifact vector length mismatch")
     if any(float(value) <= 0.0 for value in stds):
         raise ValueError("ranker scaler standard deviations must be positive")
+    if not 0 <= audio_quota <= RANKING_LIMIT:
+        raise ValueError("audio quota must be between 0 and 20")
+    if not math.isfinite(relation_gate_threshold) or relation_gate_threshold < 0.0:
+        raise ValueError("relation gate threshold must be finite and non-negative")
+    high_quota = (
+        audio_quota
+        if high_evidence_audio_quota is None
+        else high_evidence_audio_quota
+    )
+    high_threshold = (
+        relation_gate_threshold
+        if high_relation_gate_threshold is None
+        else high_relation_gate_threshold
+    )
+    if not 0 <= high_quota <= audio_quota:
+        raise ValueError("high-evidence Audio quota must not exceed the middle quota")
+    if not math.isfinite(high_threshold) or high_threshold < relation_gate_threshold:
+        raise ValueError("high relation gate must not precede the first gate")
+    publishable = selection.get("publishable_fusion")
+    if not isinstance(publishable, bool):
+        raise ValueError("ranker selection must declare publishable_fusion")
+    if publishable == (audio_quota == RANKING_LIMIT and high_quota == RANKING_LIMIT):
+        raise ValueError("ranker publication state and Audio quota are inconsistent")
+    if float(selection.get("selected_reg_param", -1.0)) != float(reg_param):
+        raise ValueError("ranker selection regParam does not match the model")
+    if int(selection.get("selected_audio_quota", -1)) != audio_quota:
+        raise ValueError("ranker selection Audio quota does not match the model")
+    if float(selection.get("selected_relation_gate_threshold", -1.0)) != float(
+        relation_gate_threshold
+    ):
+        raise ValueError("ranker selection relation gate does not match the model")
+    if int(selection.get(
+        "selected_high_evidence_audio_quota",
+        selection.get("selected_audio_quota", -1),
+    )) != high_quota:
+        raise ValueError("ranker selection high-evidence quota does not match the model")
+    if float(selection.get(
+        "selected_high_relation_gate_threshold",
+        selection.get("selected_relation_gate_threshold", -1.0),
+    )) != float(high_threshold):
+        raise ValueError("ranker selection high relation gate does not match the model")
     constant = tuple(str(name) for name in constant_features)
     if len(set(constant)) != len(constant) or any(
         name not in FEATURE_ORDER for name in constant
