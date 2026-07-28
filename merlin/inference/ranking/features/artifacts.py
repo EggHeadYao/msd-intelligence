@@ -21,7 +21,8 @@ from ...types import Candidate
 from .compute import FEATURE_SCHEMA, RankerFeatureComputer
 
 
-RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v3"
+RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v6"
+LEGACY_VALIDATION_RAW_FEATURE_VERSION = "merlin_ranker_raw_features_v5"
 SAMPLE_WEIGHT_COLUMN = "sample_weight"
 RAW_BASE_FEATURES = (
     "cos_audio",
@@ -44,7 +45,6 @@ FILL_FEATURES = (
     "year_gap",
 )
 
-
 def raw_feature_parquet_schema(pair_kind: str):
     if pair_kind not in {"training", "validation"}:
         raise ValueError("raw-feature pair kind must be training or validation")
@@ -58,10 +58,13 @@ def raw_feature_parquet_schema(pair_kind: str):
         fields.extend((
             pa.field("label", pa.int64(), nullable=False),
             pa.field(SAMPLE_WEIGHT_COLUMN, pa.float32(), nullable=False),
+            pa.field("negative_source", pa.string()),
         ))
     else:
         fields.extend((
             pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
+            pa.field("primary_recall_sources", pa.list_(pa.string()), nullable=False),
+            pa.field("selection_fold", pa.string(), nullable=False),
             pa.field("validation_groups", pa.list_(pa.struct((
                 pa.field("query_group", pa.string(), nullable=False),
                 pa.field("label", pa.int64(), nullable=False),
@@ -117,11 +120,11 @@ def export_raw_pair_features(
         raise ValueError("raw-feature scope must be formal or smoke")
     if pair_kind not in {"training", "validation"}:
         raise ValueError("raw-feature pair kind must be training or validation")
-    if stage not in {"tuning", "final_retrain", "final_evaluation"}:
+    if stage not in {"tuning", "final_retrain", "development_evaluation"}:
         raise ValueError(
-            "raw-feature stage must be tuning, final_retrain, or final_evaluation"
+            "raw-feature stage must be tuning, final_retrain, or development_evaluation"
         )
-    if stage == "final_evaluation" and pair_kind != "validation":
+    if stage == "development_evaluation" and pair_kind != "validation":
         raise ValueError("evaluation features require validation pairs")
     counts: Counter[str] = Counter()
     loss_weight_sums: Counter[str] = Counter()
@@ -136,15 +139,26 @@ def export_raw_pair_features(
                 "query_track_id",
                 "candidate_track_id",
                 "recall_sources",
+                "primary_recall_sources",
+                "selection_fold",
                 "validation_groups",
             ),
             engine="pyarrow",
         ):
-            query_id, candidate_id, recall_sources, validation_groups = values
+            (
+                query_id,
+                candidate_id,
+                recall_sources,
+                primary_recall_sources,
+                selection_fold,
+                validation_groups,
+            ) = values
             yield {
                 "query_track_id": query_id,
                 "candidate_track_id": candidate_id,
                 "recall_sources": list(recall_sources or ()),
+                "primary_recall_sources": list(primary_recall_sources or ()),
+                "selection_fold": str(selection_fold),
                 "validation_groups": list(validation_groups or ()),
             }
 
@@ -181,6 +195,7 @@ def export_raw_pair_features(
                     "candidate_track_id": candidate_id,
                     "label": label,
                     SAMPLE_WEIGHT_COLUMN: sample_weight,
+                    "negative_source": pair.get("negative_source"),
                     **raw,
                 }
 
@@ -193,6 +208,14 @@ def export_raw_pair_features(
             seen_queries.add(query_id)
             pairs = list(grouped)
             for pair, candidate_id, raw in compute(query_id, pairs):
+                selection_fold = str(pair["selection_fold"])
+                expected_folds = (
+                    {"none"}
+                    if stage == "development_evaluation"
+                    else {"tune", "confirm"}
+                )
+                if selection_fold not in expected_folds:
+                    raise ValueError("validation feature selection fold is invalid")
                 groups = []
                 for group in pair["validation_groups"]:
                     label = int(group["label"])
@@ -206,10 +229,15 @@ def export_raw_pair_features(
                     counts["group_rows"] += 1
                     counts[f"label_{label}"] += 1
                 counts["rows"] += 1
+                counts[f"selection_fold_{selection_fold}"] += 1
                 yield {
                     "query_track_id": query_id,
                     "candidate_track_id": candidate_id,
                     "recall_sources": list(pair.get("recall_sources", [])),
+                    "primary_recall_sources": list(
+                        pair.get("primary_recall_sources", [])
+                    ),
+                    "selection_fold": selection_fold,
                     "validation_groups": groups,
                     **raw,
                 }
@@ -277,7 +305,12 @@ def load_raw_feature_manifest(
         manifest = json.load(stream)
     if manifest.get("artifact_type") != "ranker_raw_pair_features":
         raise ValueError("raw-feature artifact type mismatch")
-    if manifest.get("artifact_version") != RAW_FEATURE_VERSION:
+    artifact_version = manifest.get("artifact_version")
+    pair_kind = manifest.get("pair_kind")
+    if artifact_version != RAW_FEATURE_VERSION and not (
+        pair_kind == "validation"
+        and artifact_version == LEGACY_VALIDATION_RAW_FEATURE_VERSION
+    ):
         raise ValueError("raw-feature artifact version mismatch")
     if manifest.get("feature_schema_version") != FEATURE_SCHEMA:
         raise ValueError("raw-feature schema version mismatch")
