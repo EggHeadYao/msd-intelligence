@@ -291,3 +291,66 @@ export MERLIN_REG='<selected_reg_param>'
   --parent candidate_policy_manifest="$MERLIN_RANKER_ROOT/candidate_policy_manifest.json" \
   --parent tag_idf="$MERLIN_RANKER_ROOT/tag_idf.json"
 ```
+
+## 7. Reproducible Set-C development run
+
+Only start this after both retrained model manifests exist. Freeze the protocol
+first, then export the Set-C candidate pool before building its groups.
+
+```bash
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.prepare_development_protocol \
+  --scope formal
+
+"$MERLIN_PYTHON" -m merlin.inference.scripts.recall.export_candidates \
+  --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
+  --split-manifest parquets_new/merlin/ranker/split_manifest.json \
+  --query-split set_c \
+  --development-protocol \
+    parquets_new/merlin/ranker/development_evaluation/protocol.json \
+  --min-free-gb 8
+
+/opt/spark/bin/spark-submit \
+  --master 'local[6]' \
+  --driver-memory 5g \
+  --conf spark.eventLog.enabled=false \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  --conf spark.hadoop.fs.defaultFS=file:/// \
+  --conf spark.driver.bindAddress=127.0.0.1 \
+  "$MERLIN_ROOT/merlin/inference/scripts/ranker/build_validation_groups.py" \
+  --apply-split set_c \
+  --development-protocol "$MERLIN_RANKER_ROOT/development_evaluation/protocol.json" \
+  --scope formal \
+  --audio-pair-engine numpy \
+  --audio-block-size 256 \
+  --shuffle-partitions 64 \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb 4
+
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.export_ranker_features \
+  --pair-kind validation \
+  --stage development_evaluation \
+  --development-protocol \
+    parquets_new/merlin/ranker/development_evaluation/protocol.json \
+  --scope formal \
+  --min-free-gb 8
+
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.evaluate_development \
+  --scope formal
+```
+
+The canonical order is therefore:
+
+```text
+split -> recall contract -> weak labels
+      -> Set-A pool/pairs/features
+      -> Set-B pool/groups/features -> tuning and confirmation
+      -> streamed full retrain data -> Full and no-hard-negative models
+      -> development protocol -> Set-C pool/groups/features -> report
+```
+
+Set-A artifacts live under `ranker/tuning/`; canonical retrain artifacts live
+at the ranker root and never use a `final_` filename prefix. A failed Set-B
+confirmation writes a C1-order fallback and marks fusion unpublishable. High-
+volume outputs are append/resume safe only when every manifest input and
+behavioral option still matches the checkpoint contract.
