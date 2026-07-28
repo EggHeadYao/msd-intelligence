@@ -246,6 +246,11 @@ def _loss_weight_manifest(
     return {
         "column": SAMPLE_WEIGHT_COLUMN,
         "strategy": LOSS_WEIGHT_STRATEGY,
+        "positive_modality_balance": "equal_mass_per_query_when_both_exist",
+        "positive_audio_weight_sum": float(totals.get("positive_audio", 0.0)),
+        "positive_relation_weight_sum": float(
+            totals.get("positive_relation", 0.0)
+        ),
         "candidate_aware_target_fraction": float(candidate_target_fraction),
         "positive_weight_sum": float(totals.get("positive", 0.0)),
         "candidate_aware_weight_sum": candidate,
@@ -268,6 +273,8 @@ def _streamed_feature_manifest(
     totals = stats["totals"]
     assert isinstance(totals, Counter)
     loss_weight_totals = stats["loss_weight_totals"]
+    effective_pair_count = int(stats.get("effective_pair_count", stats["feature_count"]))
+    stored_counts = stats.get("stored_counts", totals)
     feature_parents = {
         **parent_hashes,
         "training_pairs": sha256_path(output),
@@ -280,14 +287,19 @@ def _streamed_feature_manifest(
         "scope": scope,
         "pair_kind": "training",
         "stage": "final_retrain",
-        "row_layout": "one_row_per_training_pair",
+        "row_layout": (
+            "random_replacement_delta"
+            if effective_pair_count != int(stats["feature_count"])
+            else "one_row_per_training_pair"
+        ),
         "feature_schema_version": FEATURE_SCHEMA,
         "raw_feature_order": list(RAW_BASE_FEATURES),
         "row_count": stats["feature_count"],
+        "effective_row_count": effective_pair_count,
         "counts": {
             "rows": stats["feature_count"],
-            "label_0": int(totals["negative_count"]),
-            "label_1": int(totals["positive_count"]),
+            "label_0": int(stored_counts["negative_count"]),
+            "label_1": int(stored_counts["positive_count"]),
         },
         "loss_weighting": _loss_weight_manifest(
             loss_weight_totals,
