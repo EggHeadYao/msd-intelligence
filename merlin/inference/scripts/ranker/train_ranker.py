@@ -252,34 +252,77 @@ def expand_solver_coefficients(
 
 def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTable:
     """Score every Set-B ranker and baseline in one query-grouped Spark job."""
+    import numpy as np
+
     coefficient_rows = tuple(
         tuple(float(value) for value in models[reg_param].coefficients)
         for reg_param in REG_PARAMS
     )
     intercepts = tuple(float(models[reg_param].intercept) for reg_param in REG_PARAMS)
-    model_names = tuple(f"reg:{reg_param:.17g}" for reg_param in REG_PARAMS)
-    reg_by_scorer = dict(zip(model_names, REG_PARAMS, strict=True))
+    configurations = tuple(
+        (reg_param, quota)
+        for reg_param in REG_PARAMS
+        for quota in AUDIO_QUOTAS
+    )
+    model_names = tuple(
+        f"reg:{reg_param:.17g}:audio_quota:{quota}"
+        for reg_param, quota in configurations
+    )
+    config_by_scorer = dict(zip(model_names, configurations, strict=True))
     scorer_names = model_names + ("c1_only", "c2_only", "bfs")
+    quota_sources = tuple(
+        tuple(
+            int(
+                rank * quota // 20
+                > (rank - 1) * quota // 20
+            )
+            for rank in range(1, 21)
+        )
+        for quota in AUDIO_QUOTAS
+    )
+    coefficient_matrix = np.asarray(coefficient_rows, dtype=np.float64).T
+    intercept_array = np.asarray(intercepts, dtype=np.float64)
+    discounts = np.asarray(
+        tuple(1.0 / math.log2(rank + 1.0) for rank in range(1, 21)),
+        dtype=np.float64,
+    )
 
     def score_query(query):
         import numpy as np
         import pandas as pd
 
         query_id = str(query["query_track_id"].iloc[0])
+        folds = set(query["selection_fold"].astype(str))
+        if len(folds) != 1:
+            raise ValueError("Set-B query crosses selection folds")
+        selection_fold = next(iter(folds))
         candidate_ids = query["candidate_track_id"].astype(str).to_numpy()
         feature_matrix = np.vstack(query["feature_array"].to_numpy()).astype(
             np.float64, copy=False
         )
-        lr_score_matrix = (
-            feature_matrix @ np.asarray(coefficient_rows, dtype=np.float64).T
-            + np.asarray(intercepts, dtype=np.float64)
-        )
+        lr_score_matrix = feature_matrix @ coefficient_matrix + intercept_array
         audio_scores = query["cos_audio"].to_numpy(dtype=np.float64)
-        scores = {
-            **{
-                name: lr_score_matrix[:, model_index]
-                for model_index, name in enumerate(model_names)
-            },
+        bfs_evidence = np.where(
+            query["has_bfs"].to_numpy(dtype=np.float64) > 0.0,
+            np.maximum(query["bfs_score"].to_numpy(dtype=np.float64), 0.0),
+            0.0,
+        )
+        tag_evidence = np.where(
+            query["has_tags"].to_numpy(dtype=np.float64) > 0.0,
+            np.maximum(
+                query["tag_tfidf_cosine"].to_numpy(dtype=np.float64), 0.0
+            ),
+            0.0,
+        )
+        release_evidence = np.maximum(
+            query["same_release"].to_numpy(dtype=np.float64), 0.0
+        )
+        relation_evidence = float(max(
+            np.mean(bfs_evidence),
+            np.mean(tag_evidence),
+            np.mean(release_evidence),
+        ))
+        baseline_scores = {
             "c1_only": audio_scores,
             "c2_only": np.where(
                 query["has_graph"].to_numpy(dtype=np.float64) > 0.0,
