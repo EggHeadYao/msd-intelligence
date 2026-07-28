@@ -1352,17 +1352,29 @@ def _streamed_pair_manifest(
     recall_source_totals = stats["recall_source_totals"]
     if totals["negative_count"] != NEGATIVE_RATIO * totals["positive_count"]:
         raise ValueError("streamed training artifact violates the 1:3 ratio")
+    effective_pair_count = int(stats.get("effective_pair_count", stats["pair_count"]))
     return {
         "artifact_type": "ranker_training_pairs",
         "artifact_version": TRAINING_PAIR_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "scope": scope,
         "stage": "final_retrain",
+        "training_splits": sorted(training_splits("final_retrain")),
         "seed": PAIR_SEED,
+        "random_sampling": "query_seeded_splitmix64_v1",
+        "row_ordering": "positive_candidate_random_v1",
+        "positive_selection": "recalled_weak_positives_only",
+        "candidate_aware_sampling": CANDIDATE_SAMPLING_STRATEGY,
         "negative_ratio": NEGATIVE_RATIO,
         "candidate_aware_target_fraction": candidate_aware_fraction,
         "query_count": stats["query_count"],
         "pair_count": stats["pair_count"],
+        "effective_pair_count": effective_pair_count,
+        "dataset_layout": (
+            "random_replacement_delta"
+            if effective_pair_count != int(stats["pair_count"])
+            else "materialized"
+        ),
         "counts": dict(sorted(totals.items())),
         "actual_candidate_aware_fraction": (
             totals["candidate_aware_count"] / totals["negative_count"]
