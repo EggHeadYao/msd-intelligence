@@ -535,6 +535,8 @@ def load_ranker_bundle(
         raise ValueError("Ranker training manifest is not converged")
     if manifest.get("class_weight") != "none":
         raise ValueError("Ranker training manifest must disable class weights")
+    if manifest.get("sample_weight_column") != SAMPLE_WEIGHT_COLUMN:
+        raise ValueError("Ranker training manifest sample-weight contract mismatch")
     if manifest.get("feature_schema_version") != FEATURE_SCHEMA:
         raise ValueError("Ranker training manifest schema version mismatch")
     if tuple(manifest.get("feature_order", ())) != FEATURE_ORDER:
@@ -559,6 +561,20 @@ def load_ranker_bundle(
         raise ValueError("Ranker scorer schema version mismatch")
     if ranker.feature_order != FEATURE_ORDER:
         raise ValueError("Ranker scorer feature order mismatch")
+    if int(manifest.get("audio_quota", -1)) != ranker.audio_quota:
+        raise ValueError("Ranker manifest audio quota mismatch")
+    if float(manifest.get("relation_gate_threshold", -1.0)) != ranker.relation_gate_threshold:
+        raise ValueError("Ranker manifest relation gate threshold mismatch")
+    if int(manifest.get("high_evidence_audio_quota", ranker.audio_quota)) != (
+        ranker.effective_high_evidence_audio_quota
+    ):
+        raise ValueError("Ranker manifest high-evidence Audio quota mismatch")
+    if float(manifest.get(
+        "high_relation_gate_threshold", ranker.relation_gate_threshold
+    )) != ranker.effective_high_relation_gate_threshold:
+        raise ValueError("Ranker manifest high relation gate threshold mismatch")
+    if int(manifest.get("ranking_limit", -1)) != RANKING_LIMIT:
+        raise ValueError("Ranker manifest ranking limit mismatch")
     return ranker
 
 
