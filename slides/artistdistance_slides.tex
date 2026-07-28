@@ -534,56 +534,160 @@
 \end{frame}
 
 
-\begin{frame}{Spark: keep the graph, move the frontier}
+\newcommand{\AdjacencyTable}{%
+\begin{tabular}{@{}cl@{}}
+\multicolumn{2}{c}{\color{projectteal}\bfseries adjacency}\\[2pt]
+\toprule
+src & neighbors \\
+\midrule
+A & \texttt{[B,C]} \\
+B & \texttt{[A,D,E]} \\
+C & \texttt{[B,E,F]} \\
+D & \texttt{[]} \\
+E & \texttt{[]} \\
+F & \texttt{[]} \\
+\bottomrule
+\end{tabular}}
+\newcommand{\InitialFrontierTable}{%
+\begin{tabular}{@{}ccc@{}}
+\multicolumn{3}{c}{\color{frontierpurple}\bfseries frontier}\\[2pt]
+\toprule
+id & distance & parent \\
+\midrule
+B & 1 & A \\
+C & 1 & A \\
+\bottomrule
+\end{tabular}}
+\newcommand{\InitialVisitedTable}{%
+\begin{tabular}{@{}ccc@{}}
+\multicolumn{3}{c}{\color{projectteal}\bfseries visited}\\[2pt]
+\toprule
+id & distance & parent \\
+\midrule
+A & 0 & -- \\
+B & 1 & A \\
+C & 1 & A \\
+\bottomrule
+\end{tabular}}
+\newcommand{\CandidatesTable}{%
+\begin{tabular}{@{}ccc@{}}
+\multicolumn{3}{c}{\color{black!48}\bfseries candidates}\\[2pt]
+\toprule
+id & distance & parent \\
+\midrule
+A & 2 & B \\
+D & 2 & B \\
+E & 2 & B \\
+B & 2 & C \\
+E & 2 & C \\
+F & 2 & C \\
+\bottomrule
+\end{tabular}}
+\newcommand{\UnvisitedTable}{%
+\begin{tabular}{@{}ccc@{}}
+\multicolumn{3}{c}{\color{black!48}\bfseries unvisited}\\[2pt]
+\toprule
+id & distance & parent \\
+\midrule
+D & 2 & B \\
+E & 2 & B \\
+E & 2 & C \\
+F & 2 & C \\
+\bottomrule
+\end{tabular}}
+\newcommand{\NextFrontierTable}{%
+\begin{tabular}{@{}ccc@{}}
+\multicolumn{3}{c}{\color{frontierpurple}\bfseries nextFrontier}\\[2pt]
+\toprule
+id & distance & parent \\
+\midrule
+D & 2 & B \\
+E & 2 & B \\
+F & 2 & C \\
+\bottomrule
+\end{tabular}}
+\newcommand{\NextVisitedTable}{%
+\begin{tabular}{@{}ccc@{}}
+\multicolumn{3}{c}{\color{projectteal}\bfseries nextVisited}\\[2pt]
+\toprule
+id & distance & parent \\
+\midrule
+A & 0 & -- \\
+B & 1 & A \\
+C & 1 & A \\
+D & 2 & B \\
+E & 2 & B \\
+F & 2 & C \\
+\bottomrule
+\end{tabular}}
+
+\begin{frame}{Spark}
 
 \centering
 \begin{tikzpicture}[
 	>=stealth,
-	stage/.style={rounded corners=2pt,minimum width=1.95cm,minimum height=2.15cm,
-		align=center,draw=structbgcolor,line width=1.05pt,fill=structbgcolor!12,
-		font=\small},
-	flow/.style={->,line width=1.1pt,draw=black!48}
+	df/.style={rounded corners=2pt,draw=black!24,line width=.8pt,fill=white,
+		inner xsep=4pt,inner ysep=3pt,
+		font=\fontsize{9}{8.3}\selectfont\setlength{\tabcolsep}{3pt}},
+	flow/.style={->,line width=1.15pt,draw=black!48},
+	link/.style={line width=1.15pt,draw=black!48},
+	sqllabel/.style={font=\fontsize{6.8}{7.6}\selectfont\bfseries,
+		text=black!58,align=center}
 ]
-	\node[rounded corners=2pt,draw=black!25,fill=black!3,minimum width=8.8cm,
-		minimum height=.58cm,font=\small\bfseries] at (0,2.5)
-		{Same level: visited $=\{A,B,C\}$, frontier $=\{B,C\}$};
+	\path[use as bounding box] (-5.55,-3.25) rectangle (5.55,3.35);
 
-	\node[stage] (state) at (-4.6,.55) {\textbf{Distributed state}\\[5pt]
-		Persisted adjacency\\$+$\\frontier $\{B,C\}$};
-	\node[stage] (expand) at (-2.3,.55) {\textbf{Join + explode}\\[5pt]
-		$A,D,E$\\$B,E,F$\\[3pt]
-		{\scriptsize candidate rows}};
-	\node[stage] (filter) at (0,.55) {\textbf{Left-anti join}\\[5pt]
-		remove visited\\$A,B$\\[3pt]
-		$D,E,E,F$};
-	\node[stage] (group) at (2.3,.55) {\textbf{Group by artist}\\[5pt]
-		$D\leftarrow B$\\
-		$E\leftarrow B$\\
-		$F\leftarrow C$};
-	\node[stage] (next) at (4.6,.55) {\textbf{Checkpoint}\\[5pt]
-		next frontier\\$\{D,E,F\}$\\[3pt]
-		{\scriptsize extend visited}};
-	\draw[flow] (state) -- (expand);
-	\draw[flow] (expand) -- (filter);
-	\draw[flow] (filter) -- (group);
-	\draw[flow] (group) -- (next);
+	\node[df] (adj) at (-4.60,2.30) {\AdjacencyTable};
+	\node[df] (frontier) at (-4.60,-0.60) {\InitialFrontierTable};
+	\node[df] (visited) at (-4.60,-3.05) {\InitialVisitedTable};
+	\visible<2->{\node[df] (candidates) at (0,2.30) {\CandidatesTable};}
+	\visible<3->{\node[df] (unvisited) at (0,-1.15) {\UnvisitedTable};}
+	\visible<4->{\node[df] (next) at (4.50,2.00) {\NextFrontierTable};}
+	\visible<5>{\node[df] (nextvisited) at (4.50,-1.80) {\NextVisitedTable};}
 
-	\node[rounded corners=2pt,draw=structbgcolor,fill=structbgcolor!14,
-		minimum width=10.6cm,minimum height=1.05cm,align=center,font=\small]
-		at (0,-1.65) {\textbf{Adjacency remains in \texttt{MEMORY\_AND\_DISK}}\\
-		Only the distributed frontier and visited set evolve; local checkpoints truncate lineage.};
-	\node[font=\scriptsize\bfseries,text=black!60] at (0,-2.48)
-		{All levels execute inside one Spark application.};
+	\visible<2->{
+		\coordinate (joinbus) at (-2.35,2.30);
+		\draw[link] (frontier.east) -- (frontier.east -| joinbus) -- (joinbus);
+		\draw[flow] (adj.east) -- (candidates.west)
+			node[midway,above=0pt,sqllabel] {join $+$ explode};
+	}
+
+	\visible<3->{
+		\coordinate (antibus) at (-2.35,-1.15);
+		\draw[flow] (visited.east) -- (visited.east -| antibus)
+			-- (antibus) -- (unvisited.west);
+		\draw[flow] (candidates.south) -- (unvisited.north)
+			node[midway,right=1pt,sqllabel] {left\_anti join};
+	}
+
+	\visible<4->{
+		\coordinate (groupturn) at (2.45,-1.15);
+		\draw[flow] (unvisited.east) -- (groupturn)
+			-- (groupturn |- next.west) -- (next.west)
+			node[midway,above=0pt,xshift=-8pt,sqllabel] {groupBy\\$+$ min};
+	}
+
+	\visible<5>{
+		\coordinate (nextvisitedlower) at (nextvisited.west |- visited.east);
+		\draw[flow] (visited.east) -- (nextvisitedlower)
+			node[pos=.68,above=1pt,sqllabel] {unionByName};
+		\draw[flow] (next.south) -- (nextvisited.north);
+	}
 \end{tikzpicture}
 
 \end{frame}
 
-\begin{frame}[plain]
+\begin{frame}{Experiment results}
 \centering
-\vspace{.2cm}
+\vspace{-.15cm}
 \includegraphics[width=\textwidth]{artistdistance/artistdistance_performance}
 
-\vspace{-.15cm}
-{\large\bfseries\color{structbgcolor}
-Decision: Spark + Avro -- engine choice dominates storage format.}
+
+\medskip
+\medskip
+
+\begin{itemize}
+	\item \textbf{Protocol:} five runs per combination; verify all 20 outputs.
+	\item \textbf{Avro wins:} iterative BFS reads and rewrites complete rows, favoring low-overhead row serialization.
+	\item \textbf{Spark wins:} delivering a $14.1$--$14.4\times$ speedup.
+\end{itemize}
 \end{frame}
