@@ -132,7 +132,23 @@ class RankerFeatureComputer:
     schema_version: str = FEATURE_SCHEMA
 
     def compute(self, query_track_id: str, candidate: Candidate) -> Mapping[str, float]:
-        raw = self.compute_raw(query_track_id, candidate)
+        return self._materialize(self.compute_raw(query_track_id, candidate))
+
+    def compute_many(
+        self,
+        query_track_id: str,
+        candidates: Sequence[Candidate],
+    ) -> list[Mapping[str, float]]:
+        """Materialize a query batch while reusing batched signal lookups."""
+        return [
+            self._materialize(raw)
+            for raw in self.compute_raw_many(query_track_id, candidates)
+        ]
+
+    def _materialize(
+        self,
+        raw: Mapping[str, float | None],
+    ) -> Mapping[str, float]:
         audio = self._fill("cos_audio", raw["cos_audio"])
         graph = self._fill("cos_graph", raw["cos_graph"])
         bfs = self._fill("bfs_score", raw["bfs_score"])
