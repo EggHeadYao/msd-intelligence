@@ -30,35 +30,15 @@ def _group_means(
     return means
 
 
-def paired_difference_ci(
-    left: Sequence[float],
-    right: Sequence[float],
-    *,
-    samples: int = SELECTION_BOOTSTRAPS,
-    seed: int = SELECTION_SEED,
-) -> tuple[float, float]:
-    if len(left) != len(right) or not left:
-        raise ValueError("paired bootstrap inputs must be non-empty and aligned")
-    if samples <= 0:
-        raise ValueError("paired bootstrap sample count must be positive")
-    differences = np.asarray(left, dtype=np.float64) - np.asarray(
-        right, dtype=np.float64
-    )
-    if not np.all(np.isfinite(differences)):
-        raise ValueError("paired bootstrap inputs must be finite")
-    generator = np.random.default_rng(seed)
-    bootstrap = np.empty(samples, dtype=np.float64)
-    rows_per_chunk = max(1, min(samples, 1_000_000 // len(differences)))
-    for start in range(0, samples, rows_per_chunk):
-        end = min(start + rows_per_chunk, samples)
-        indexes = generator.integers(
-            0,
-            len(differences),
-            size=(end - start, len(differences)),
-            dtype=np.int32,
-        )
-        bootstrap[start:end] = differences[indexes].mean(axis=1)
-    return percentile(bootstrap, 0.025), percentile(bootstrap, 0.975)
+def _validated_group_means(
+    scores: Mapping[str, float],
+) -> dict[str, float]:
+    if set(scores) != set(SPECIALIZATION_GROUPS):
+        raise ValueError("validation must contain exactly the three frozen strata")
+    means = {group: float(scores[group]) for group in SPECIALIZATION_GROUPS}
+    if any(not math.isfinite(value) for value in means.values()):
+        raise ValueError("validation scores must be finite")
+    return means
 
 
 def select_reg_param(
