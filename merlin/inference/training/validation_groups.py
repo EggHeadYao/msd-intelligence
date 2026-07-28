@@ -12,8 +12,9 @@ from ..artifacts.integrity import artifact_size_bytes, sha256_path
 from ..artifacts.io import write_json_atomic
 
 
-VALIDATION_GROUP_VERSION = "merlin_validation_groups_v1"
-VALIDATION_PAIR_LAYOUT = "one_pair_nested_groups_v1"
+VALIDATION_GROUP_VERSION = "merlin_validation_groups_v2"
+VALIDATION_THRESHOLD_VERSION = "merlin_validation_groups_v1"
+VALIDATION_PAIR_LAYOUT = "one_pair_nested_groups_with_selection_fold_v2"
 VALIDATION_GROUP_SEED = 42
 VALIDATION_QUERY_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
 
@@ -23,9 +24,14 @@ def build_nested_validation_pairs(candidate_rows, positives):
     from pyspark.sql import functions as F
 
     pair_columns = ["query_track_id", "candidate_track_id"]
-    eligible = positives.groupBy("query_track_id", "query_group").agg(
+    eligible = positives.groupBy(
+        "query_track_id", "selection_fold", "query_group"
+    ).agg(
         F.count("*").cast("long").alias("eligible_positive_count")
     )
+    query_folds = eligible.select(
+        "query_track_id", "selection_fold"
+    ).distinct()
     eligible_groups = eligible.groupBy("query_track_id").agg(
         F.sort_array(F.collect_list(F.struct(
             "query_group", "eligible_positive_count"
@@ -42,6 +48,7 @@ def build_nested_validation_pairs(candidate_rows, positives):
     empty_groups = F.expr("cast(array() as array<string>)")
     validation_pairs = (
         candidate_rows.join(eligible_groups, "query_track_id", "inner")
+        .join(query_folds, "query_track_id", "inner")
         .join(positive_groups, pair_columns, "left")
         .withColumn(
             "validation_groups",
@@ -59,7 +66,13 @@ def build_nested_validation_pairs(candidate_rows, positives):
                 ),
             ),
         )
-        .select(*pair_columns, "recall_sources", "validation_groups")
+        .select(
+            *pair_columns,
+            "recall_sources",
+            "primary_recall_sources",
+            "selection_fold",
+            "validation_groups",
+        )
     )
     return validation_pairs, eligible, recalled
 
