@@ -319,15 +319,18 @@ def allowed_training_tracks(
     assignments: Mapping[str, str],
     stage: str,
 ) -> set[str]:
-    if stage == "tuning":
-        allowed_splits = {"set_a"}
-    elif stage == "final_retrain":
-        allowed_splits = {"set_a", "set_b", "remaining"}
-    else:
-        raise ValueError("training stage must be tuning or final_retrain")
+    allowed_splits = training_splits(stage)
     return {
         track_id for track_id, split in assignments.items() if split in allowed_splits
     }
+
+
+def training_splits(stage: str) -> frozenset[str]:
+    if stage == "tuning":
+        return frozenset(("set_a",))
+    if stage == "final_retrain":
+        return frozenset(("set_a", "set_b", "set_c", "remaining"))
+    raise ValueError("training stage must be tuning or final_retrain")
 
 
 def _pair_hash(query_id: str, candidate_id: str, source: str) -> str:
