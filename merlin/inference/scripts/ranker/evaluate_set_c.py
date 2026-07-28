@@ -464,18 +464,23 @@ def main() -> None:
         for cutoff in EVALUATION_CUTOFFS:
             top_counts[cutoff].update(rankings["full"][:cutoff])
         if index % 256 == 0:
-            print(f"set_c_evaluation_progress queries={index}", flush=True)
+            print(f"development_evaluation_progress queries={index}", flush=True)
     if len(query_ids) > int(candidate_manifest["query_count"]):
-        raise ValueError("Set-C evaluated queries exceed the candidate pool")
+        raise ValueError("development queries exceed the candidate pool")
     expected_scorers = set(SCORERS) | set(ROBUSTNESS_CONFIGS)
     if {str(row["scorer"]) for row in ranking_rows} != expected_scorers:
-        raise ValueError("Set-C evaluation did not run every frozen scorer")
+        raise ValueError("development evaluation did not run every scorer")
 
-    artists, years = _query_metadata(paths.songs_metadata, query_ids)
+    artists, years, coverage = _catalog_report(
+        paths.songs_metadata,
+        query_ids,
+        top_counts,
+    )
+    rows_by_scorer = defaultdict(list)
+    for row in ranking_rows:
+        rows_by_scorer[str(row["scorer"])].append(row)
     ranking_report = {
-        scorer: macro_metrics(
-            row for row in ranking_rows if row["scorer"] == scorer
-        )
+        scorer: macro_metrics(rows_by_scorer[scorer])
         for scorer in sorted(expected_scorers)
     }
     ranking_report["random_expectation"] = _aggregate_random_expectation(
