@@ -108,12 +108,37 @@ def select_guarded_ranker_means(
         key: _validated_group_means(scores)
         for key, scores in confirm_scores.items()
     }
-    reference = max(REG_PARAMS, key=lambda reg: (means[reg], reg))
-    selected = reference
-    comparisons = {}
-    for larger in (reg for reg in REG_PARAMS if reg > reference):
-        ci = paired_three_strata_difference_ci(
-            query_scores[reference], query_scores[larger]
+    c1_tune = _validated_group_means(c1_tune_scores)
+    c1_confirm = _validated_group_means(c1_confirm_scores)
+    tune_feasible = tuple(
+        key for key, values in tune.items()
+        if _passes_release_guards(values, c1_tune, macro_margin=0.0)
+    )
+    confirmed_feasible = tuple(
+        key for key in tune_feasible
+        if _passes_release_guards(
+            confirm[key], c1_confirm, macro_margin=CONFIRM_MACRO_MARGIN
+        )
+    )
+    fallback = max(
+        (key for key in tune if key[1] == key[2] == 20),
+        key=lambda key: (key[0], key[3], key[4]),
+    )
+    proposed = (
+        max(
+            confirmed_feasible,
+            key=lambda key: (
+                min(
+                    _macro(tune[key]) / _macro(c1_tune),
+                    _macro(confirm[key]) / _macro(c1_confirm),
+                ),
+                _macro(tune[key]) + _macro(confirm[key]),
+                key[0],
+                key[1],
+                key[2],
+                key[3],
+                key[4],
+            ),
         )
         comparisons[f"{reference:g}_minus_{larger:g}"] = list(ci)
         if ci[0] <= 0.0 <= ci[1]:
