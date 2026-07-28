@@ -1221,15 +1221,24 @@ def _run_random_only_derived(
         or totals["random_count"] != int(full_counts["negative_count"])
     ):
         raise ValueError("derived no-hard-neg budget differs from Full")
+    full_weighting = full_pairs.get("loss_weighting", {})
     stats = {
         "query_count": processed_queries,
         "pair_count": pair_writer.count,
         "feature_count": feature_writer.count,
+        "effective_pair_count": pair_count,
+        "stored_counts": Counter({"negative_count": pair_writer.count}),
         "pair_part_count": pair_writer.part_count,
         "feature_part_count": feature_writer.part_count,
         "totals": totals,
         "loss_weight_totals": Counter({
             "positive": float(totals["positive_count"]),
+            "positive_audio": float(
+                full_weighting.get("positive_audio_weight_sum", 0.0)
+            ),
+            "positive_relation": float(
+                full_weighting.get("positive_relation_weight_sum", 0.0)
+            ),
             "candidate_aware": 0.0,
             "random": float(totals["negative_count"]),
         }),
