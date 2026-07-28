@@ -1034,11 +1034,21 @@ def main() -> None:
             )
         else:
             selected_reg = float(args.fixed_reg_param)
+            selected_audio_quota = int(frozen_preprocessing[4])
+            selected_gate_threshold = float(frozen_preprocessing[5])
+            selected_high_audio_quota = int(frozen_preprocessing[6])
+            selected_high_gate_threshold = float(frozen_preprocessing[7])
+            publishable_fusion = bool(frozen_preprocessing[8])
             model = fit(selected_reg)
             selection = {
                 "selected_reg_param": selected_reg,
                 "selection_source": "frozen_from_set_b",
                 "warm_start": "tuning_ranker_coefficients",
+                "selected_audio_quota": selected_audio_quota,
+                "selected_relation_gate_threshold": selected_gate_threshold,
+                "selected_high_evidence_audio_quota": selected_high_audio_quota,
+                "selected_high_relation_gate_threshold": selected_high_gate_threshold,
+                "publishable_fusion": publishable_fusion,
             }
 
         fitted_coefficients = tuple(float(value) for value in model.coefficients)
@@ -1049,6 +1059,7 @@ def main() -> None:
             )
         else:
             coefficients = fitted_coefficients
+        intercept = float(model.intercept)
         constant_indexes = {
             index
             for index, name in enumerate(FEATURE_ORDER)
@@ -1064,6 +1075,7 @@ def main() -> None:
             "max_block_size_mb": float(args.max_block_size_mb),
             "rdd_compression_codec": RDD_COMPRESSION_CODEC,
             "class_weight": "none",
+            "sample_weight_column": SAMPLE_WEIGHT_COLUMN,
         }
 
         parent_paths = parse_parents(args.parent)
@@ -1076,6 +1088,11 @@ def main() -> None:
             parent_paths.setdefault("frozen_tuning_coefficients", frozen_coefficients_path)
         if args.training_variant == "no_hard_neg":
             parent_paths.setdefault("training_pairs_manifest", pair_manifest_path)
+            parent_paths.setdefault("base_train_features", base_features)
+            parent_paths.setdefault(
+                "base_train_features_manifest",
+                base_features_manifest,
+            )
 
         write_ranker_artifacts(
             args.output,
@@ -1083,7 +1100,7 @@ def main() -> None:
             means=means,
             stds=stds,
             coefficients=coefficients,
-            intercept=float(model.intercept),
+            intercept=intercept,
             reg_param=selected_reg,
             stage=args.stage,
             converged=True,
@@ -1092,6 +1109,10 @@ def main() -> None:
             parent_paths=parent_paths,
             scope=args.scope,
             constant_features=constant_features,
+            audio_quota=selected_audio_quota,
+            relation_gate_threshold=selected_gate_threshold,
+            high_evidence_audio_quota=selected_high_audio_quota,
+            high_relation_gate_threshold=selected_high_gate_threshold,
         )
         print(
             "ranker_training_ready "
