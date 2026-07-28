@@ -1,4 +1,4 @@
-"""Build frozen Audio/Relation/Mixed groups for Set B or Set C."""
+"""Build Audio/Relation/Mixed groups for Set-B or Set-C development data."""
 
 from __future__ import annotations
 
@@ -16,13 +16,14 @@ if __package__ in {None, ""}:
 from merlin.inference.artifacts.paths import InferenceArtifactPaths
 from merlin.inference.artifacts.integrity import sha256_path
 from merlin.inference.recall.pool import load_candidate_pool_manifest
-from merlin.inference.evaluation.protocol import load_set_c_protocol
+from merlin.inference.evaluation.protocol import load_development_protocol
 from merlin.inference.artifacts.io import write_json_atomic
 from merlin.inference.scripts.support.scratch import prepare_scratch_root
 from merlin.inference.training.split import load_split_manifest
 from merlin.inference.data.tags import load_tag_idf
 from merlin.inference.training.validation_groups import (
     VALIDATION_GROUP_SEED,
+    VALIDATION_THRESHOLD_VERSION,
     VALIDATION_QUERY_GROUPS,
     build_nested_validation_pairs,
     collect_normalized_vector_matrix,
@@ -63,7 +64,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-threshold-pairs", type=int, default=MAX_THRESHOLD_PAIRS)
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     parser.add_argument("--apply-split", choices=("set_b", "set_c"), default="set_b")
-    parser.add_argument("--evaluation-protocol", type=Path)
+    parser.add_argument("--development-protocol", type=Path)
     parser.add_argument("--shuffle-partitions", type=int, default=64)
     parser.add_argument("--audio-pair-engine", choices=("numpy", "spark"), default="numpy")
     parser.add_argument("--audio-block-size", type=int, default=256)
@@ -86,37 +87,56 @@ def _require_new_outputs(paths: tuple[Path, ...]) -> None:
 def main() -> None:
     args = parse_args()
     defaults = InferenceArtifactPaths()
-    is_set_c = args.apply_split == "set_c"
-    if is_set_c:
-        if args.evaluation_protocol is None:
-            raise ValueError("Set-C groups require a frozen evaluation protocol")
+    is_development = args.apply_split == "set_c"
+    if is_development:
+        if args.development_protocol is None:
+            raise ValueError("Set-C groups require a development protocol")
         replacements = (
-            ("candidate_pool", defaults.set_b_candidate_pool, defaults.set_c_candidate_pool),
+            (
+                "candidate_pool",
+                defaults.set_b_candidate_pool,
+                defaults.development_candidate_pool,
+            ),
             (
                 "candidate_pool_manifest",
                 defaults.set_b_candidate_pool_manifest,
-                defaults.set_c_candidate_pool_manifest,
+                defaults.development_candidate_pool_manifest,
             ),
-            ("positives", defaults.validation_group_positives, defaults.set_c_positives),
-            ("validation_pairs", defaults.validation_pairs, defaults.set_c_validation_pairs),
-            ("manifest", defaults.validation_groups_manifest, defaults.set_c_groups_manifest),
+            (
+                "positives",
+                defaults.validation_group_positives,
+                defaults.development_positives,
+            ),
+            (
+                "validation_pairs",
+                defaults.validation_pairs,
+                defaults.development_validation_pairs,
+            ),
+            (
+                "manifest",
+                defaults.validation_groups_manifest,
+                defaults.development_groups_manifest,
+            ),
         )
-        for name, old_default, set_c_default in replacements:
+        for name, old_default, development_default in replacements:
             if getattr(args, name) == old_default:
-                setattr(args, name, set_c_default)
+                setattr(args, name, development_default)
     if args.max_threshold_pairs <= 0 or args.max_threshold_pairs > MAX_THRESHOLD_PAIRS:
         raise ValueError("max-threshold-pairs must be in [1, 1000000]")
     if args.shuffle_partitions <= 0 or args.audio_block_size <= 0:
         raise ValueError("shuffle partitions and audio block size must be positive")
     new_outputs = (args.positives, args.validation_pairs, args.manifest)
-    _require_new_outputs(new_outputs if is_set_c else (args.thresholds, *new_outputs))
+    _require_new_outputs(
+        new_outputs if is_development else (args.thresholds, *new_outputs)
+    )
     split_manifest = load_split_manifest(args.split_manifest, args.split_assignments)
     if args.scope == "formal" and split_manifest.get("scope") != "formal":
         raise ValueError("formal validation groups require a formal split artifact")
-    if is_set_c:
-        load_set_c_protocol(
-            args.evaluation_protocol,
+    if is_development:
+        load_development_protocol(
+            args.development_protocol,
             expected_scope=args.scope,
+            expected_split="set_c",
             expected_parent_hashes={
                 "split_manifest": sha256_path(args.split_manifest),
                 "split_assignments": sha256_path(args.split_assignments),
@@ -148,15 +168,15 @@ def main() -> None:
     if not math.isfinite(tag_positive_threshold):
         raise ValueError("tag positive threshold must be finite")
     frozen_thresholds = None
-    if is_set_c:
+    if is_development:
         with args.thresholds.open("r", encoding="utf-8") as stream:
             frozen_thresholds = json.load(stream)
         if (
             frozen_thresholds.get("artifact_type") != "set_b_validation_thresholds"
-            or frozen_thresholds.get("artifact_version") != "merlin_validation_groups_v1"
+            or frozen_thresholds.get("artifact_version") != VALIDATION_THRESHOLD_VERSION
             or frozen_thresholds.get("fit_split") != "set_a"
         ):
-            raise ValueError("Set-C requires frozen Set-A validation thresholds")
+            raise ValueError("Set-C development requires Set-A validation thresholds")
         acoustic_p50 = float(frozen_thresholds["pre_pca_acoustic_cosine_p50"])
         acoustic_p90 = float(frozen_thresholds["pre_pca_acoustic_cosine_p90"])
         threshold_sample_count = int(frozen_thresholds["sampled_cross_artist_pairs"])
