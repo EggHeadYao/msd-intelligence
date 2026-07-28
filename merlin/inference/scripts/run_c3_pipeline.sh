@@ -193,3 +193,54 @@ run_step() {
   fi
   printf 'c3_pipeline_done step=%s\n' "$name"
 }
+
+spark_common=(
+  --conf spark.eventLog.enabled=false
+  --conf spark.ui.enabled=false
+  --conf "spark.sql.shuffle.partitions=$SHUFFLE_PARTITIONS"
+  --conf spark.hadoop.fs.defaultFS=file:///
+  --conf spark.driver.bindAddress=127.0.0.1
+)
+
+split_assignments=$MERLIN_RANKER_ROOT/split_assignments.parquet
+split_manifest=$MERLIN_RANKER_ROOT/split_manifest.json
+candidate_policy=$MERLIN_RANKER_ROOT/candidate_policy_manifest.json
+tag_idf=$MERLIN_RANKER_ROOT/tag_idf.json
+weak_thresholds=$MERLIN_RANKER_ROOT/weak_label_thresholds.json
+weak_positives=$MERLIN_RANKER_ROOT/weak_positives.parquet
+weak_manifest=$MERLIN_RANKER_ROOT/weak_positives_manifest.json
+set_a_pool=$MERLIN_RANKER_ROOT/candidate_pool.parquet
+set_a_pool_manifest=$MERLIN_RANKER_ROOT/candidate_pool_manifest.json
+set_b_pool=$MERLIN_RANKER_ROOT/set_b_candidate_pool.parquet
+set_b_pool_manifest=$MERLIN_RANKER_ROOT/set_b_candidate_pool_manifest.json
+tuning_root=$MERLIN_RANKER_ROOT/tuning
+tuning_pairs=$tuning_root/training_pairs.parquet
+tuning_pairs_manifest=$tuning_root/training_pairs_manifest.json
+tuning_features=$tuning_root/raw_pair_features.parquet
+tuning_features_manifest=$tuning_root/raw_pair_features_manifest.json
+validation_thresholds=$MERLIN_RANKER_ROOT/validation_group_thresholds.json
+validation_positives=$MERLIN_RANKER_ROOT/validation_group_positives.parquet
+validation_pairs=$MERLIN_RANKER_ROOT/validation_pairs.parquet
+validation_groups_manifest=$MERLIN_RANKER_ROOT/validation_groups_manifest.json
+validation_features=$MERLIN_RANKER_ROOT/validation_raw_features.parquet
+validation_features_manifest=$MERLIN_RANKER_ROOT/validation_raw_features_manifest.json
+tuning_model=$MERLIN_RANKER_ROOT/tuning_model
+training_pairs=$MERLIN_RANKER_ROOT/training_pairs.parquet
+training_pairs_manifest=$MERLIN_RANKER_ROOT/training_pairs_manifest.json
+training_features=$MERLIN_RANKER_ROOT/raw_pair_features.parquet
+training_features_manifest=$MERLIN_RANKER_ROOT/raw_pair_features_manifest.json
+ablation_pairs=$MERLIN_RANKER_ROOT/no_hard_neg_training_pairs.parquet
+ablation_pairs_manifest=$MERLIN_RANKER_ROOT/no_hard_neg_training_pairs_manifest.json
+ablation_features=$MERLIN_RANKER_ROOT/no_hard_neg_raw_pair_features.parquet
+ablation_features_manifest=$MERLIN_RANKER_ROOT/no_hard_neg_raw_pair_features_manifest.json
+ablation_model=$MERLIN_RANKER_ROOT/no_hard_neg_model
+development_root=$MERLIN_RANKER_ROOT/development_evaluation
+development_protocol=$development_root/protocol.json
+development_pool=$development_root/candidate_pool.parquet
+development_pool_manifest=$development_root/candidate_pool_manifest.json
+development_positives=$development_root/validation_group_positives.parquet
+development_pairs=$development_root/validation_pairs.parquet
+development_groups_manifest=$development_root/validation_groups_manifest.json
+development_features=$development_root/raw_pair_features.parquet
+development_features_manifest=$development_root/raw_pair_features_manifest.json
+development_report=$development_root/evaluation_report.json
