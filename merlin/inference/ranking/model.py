@@ -14,7 +14,56 @@ from ..artifacts.io import write_json_atomic
 from .features import FEATURE_ORDER, FEATURE_SCHEMA
 
 
-RANKER_TRAINING_VERSION = "merlin_ranker_training_v1"
+RANKER_TRAINING_VERSION = "merlin_ranker_training_v4"
+RANKING_LIMIT = 20
+RELATION_GATE_POLICY = "c1_fallback_below_mean_relation_evidence_threshold"
+
+
+def _query_signals(
+    features: Sequence[Mapping[str, float]],
+    *,
+    include_audio: bool,
+) -> tuple[tuple[float, ...], float]:
+    if not features:
+        return (), 0.0
+    audio: list[float] = []
+    bfs_total = 0.0
+    tag_total = 0.0
+    release_total = 0.0
+    required = (
+        "bfs_score",
+        "has_bfs",
+        "tag_tfidf_cosine",
+        "has_tags",
+        "same_release",
+    )
+    for row in features:
+        missing = [name for name in required if name not in row]
+        if include_audio and "cos_audio" not in row:
+            missing.append("cos_audio")
+        if missing:
+            raise ValueError(f"ranker features missing: {missing}")
+        values = tuple(float(row[name]) for name in required)
+        if include_audio:
+            audio_value = float(row["cos_audio"])
+            if not math.isfinite(audio_value):
+                raise ValueError("ranker feature cos_audio is not finite")
+            audio.append(audio_value)
+        if any(not math.isfinite(value) for value in values):
+            raise ValueError("query relation evidence must be finite")
+        bfs_total += max(0.0, values[0]) if values[1] > 0.0 else 0.0
+        tag_total += max(0.0, values[2]) if values[3] > 0.0 else 0.0
+        release_total += max(0.0, values[4])
+    count = len(features)
+    evidence = max(bfs_total, tag_total, release_total) / count
+    return tuple(audio), evidence
+
+
+def query_relation_evidence(
+    features: Sequence[Mapping[str, float]],
+) -> float:
+    """Return mean relation-signal density for one recalled candidate list."""
+    return _query_signals(features, include_audio=False)[1]
 
 
 @dataclass(frozen=True, slots=True)
