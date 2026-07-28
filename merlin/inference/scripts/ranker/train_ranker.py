@@ -8,7 +8,7 @@ import json
 import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ...artifacts.integrity import sha256_path
 from ...artifacts.paths import InferenceArtifactPaths
@@ -18,11 +18,14 @@ from ...ranking.features import (
     FEATURE_SCHEMA,
     FILL_FEATURES,
     RAW_BASE_FEATURES,
+    SAMPLE_WEIGHT_COLUMN,
     load_raw_feature_manifest,
 )
 from ...ranking.selection import (
+    ADAPTIVE_AUDIO_QUOTAS,
+    AUDIO_QUOTAS,
     REG_PARAMS,
-    select_grouped_reg_param,
+    select_guarded_ranker_means,
 )
 from ..support.scratch import estimate_ranker_scratch_gb, prepare_scratch_root
 
@@ -37,9 +40,11 @@ RDD_STORAGE_RATIO = 0.60
 class ValidationScoreTable:
     query_ids: tuple[str, ...]
     query_groups: tuple[str, ...]
-    columns: Mapping[object, tuple[float, ...]]
+    selection_folds: tuple[str, ...]
+    relation_evidence: tuple[float, ...]
+    columns: Mapping[object, Sequence[float]]
 
-    def column(self, key: object) -> tuple[float, ...]:
+    def column(self, key: object) -> Sequence[float]:
         values = self.columns[key]
         if len(values) != len(self.query_ids):
             raise ValueError("Set-B score column length mismatch")
@@ -51,6 +56,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-features", type=Path, required=True)
     parser.add_argument("--train-features-manifest", type=Path, required=True)
     parser.add_argument("--training-pairs-manifest", type=Path)
+    parser.add_argument("--base-train-features", type=Path)
+    parser.add_argument("--base-train-features-manifest", type=Path)
     parser.add_argument("--validation-features", type=Path)
     parser.add_argument("--validation-features-manifest", type=Path)
     parser.add_argument("--output", type=Path, required=True)
