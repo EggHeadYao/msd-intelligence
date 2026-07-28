@@ -12,6 +12,7 @@ import numpy as np
 from ..data.catalog import SameSongFilter
 from ..retrieval.faiss import FaissTrackIndex
 from ..retrieval import BfsRetriever, TagRetriever
+from ..retrieval.retrievers import seeded_artist_track_offset
 from ..types import RecallAudit
 
 
@@ -176,10 +177,11 @@ class BfsTemplate:
 
 @dataclass(frozen=True, slots=True)
 class TagTemplate:
-    recall_codes: np.ndarray
-    recall_scores: np.ndarray
-    positive_codes: np.ndarray
-    positive_scores: np.ndarray
+    artist_ids: tuple[str, ...]
+    artist_offsets: np.ndarray
+    artist_scores: np.ndarray
+    track_codes: np.ndarray
+    track_scores: np.ndarray
 
 
 @dataclass(slots=True)
@@ -596,25 +598,35 @@ class StreamingRecallEngine:
         self,
         artist_neighbors: Sequence[tuple[str, float]],
     ) -> TagTemplate:
-        recall: list[tuple[int, float]] = []
-        positives: list[tuple[int, float]] = []
+        artist_ids: list[str] = []
+        offsets = [0]
+        scores: list[float] = []
+        codes: list[int] = []
+        artist_code_cache = getattr(self, "bfs_artist_codes", None)
         for artist, score in artist_neighbors:
-            tracks = self.tag.artist_tracks.get(artist, ())
-            recall.extend(
-                (self.codec.code(track_id), float(score))
-                for track_id in tracks[: self.tag.per_artist_cap]
-            )
-            positives.extend(
-                (self.codec.code(track_id), float(score))
-                for track_id in sorted(tracks)
-            )
-        recall = [row for row in recall if row[0] >= 0]
-        positives = [row for row in positives if row[0] >= 0]
+            if artist_code_cache is None:
+                track_codes = np.asarray([
+                    code
+                    for track_id in sorted(self.tag.artist_tracks.get(artist, ()))
+                    if (code := self.codec.code(track_id)) >= 0
+                ], dtype=np.int32)
+            else:
+                track_codes = artist_code_cache.get(
+                    artist,
+                    np.empty(0, dtype=np.int32),
+                )
+            artist_ids.append(artist)
+            scores.append(float(score))
+            codes.extend(track_codes)
+            offsets.append(len(codes))
+        artist_scores = np.asarray(scores, dtype=np.float32)
+        track_scores = np.repeat(artist_scores, np.diff(offsets))
         return TagTemplate(
-            np.asarray([row[0] for row in recall], dtype=np.int32),
-            np.asarray([row[1] for row in recall], dtype=np.float32),
-            np.asarray([row[0] for row in positives], dtype=np.int32),
-            np.asarray([row[1] for row in positives], dtype=np.float32),
+            tuple(artist_ids),
+            np.asarray(offsets, dtype=np.int32),
+            artist_scores,
+            np.asarray(codes, dtype=np.int32),
+            track_scores,
         )
 
     def _tag_group(
