@@ -10,7 +10,45 @@ from typing import Iterable, Iterator, Mapping, Sequence
 
 from ..retrieval import merge_candidates
 from ..types import Candidate, CandidateRetriever, RecallAudit
-from .policy import validate_canonical_policy
+from .policy import validate_canonical_backfill, validate_canonical_policy
+
+
+def allocate_backfill_groups(
+    groups: Mapping[str, Sequence[Candidate]],
+    primary_limits: Mapping[str, int],
+    backfill_limits: Mapping[str, int],
+    backfill_order: Sequence[str],
+    candidate_limit: int,
+) -> dict[str, list[Candidate]]:
+    """Keep every primary nomination, then fill unused union capacity."""
+    selected = {
+        source: list(groups[source][: primary_limits[source]])
+        for source in groups
+    }
+    used = {
+        candidate.track_id
+        for candidates in selected.values()
+        for candidate in candidates
+    }
+    cursors = {source: primary_limits[source] for source in groups}
+    while len(used) < candidate_limit:
+        progressed = False
+        for source in backfill_order:
+            candidates = groups[source]
+            boundary = min(len(candidates), backfill_limits[source])
+            while cursors[source] < boundary:
+                candidate = candidates[cursors[source]]
+                cursors[source] += 1
+                selected[source].append(candidate)
+                if candidate.track_id not in used:
+                    used.add(candidate.track_id)
+                    progressed = True
+                    break
+            if len(used) >= candidate_limit:
+                break
+        if not progressed:
+            break
+    return selected
 
 
 def validate_recall_configuration(
