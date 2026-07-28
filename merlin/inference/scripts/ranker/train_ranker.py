@@ -905,11 +905,13 @@ def main() -> None:
             ))
             transformed_train = materialized_train.select(
                 F.col("label").cast("double").alias("label"),
+                F.col(SAMPLE_WEIGHT_COLUMN).cast("double"),
                 array_to_vector(scaled).alias("features"),
             )
         if args.stage == "tuning":
             scaled_train = transformed_train.select(
                 F.col("label").cast("double").alias("label"),
+                F.col(SAMPLE_WEIGHT_COLUMN).cast("double"),
                 "features",
             ).persist(StorageLevel.MEMORY_AND_DISK)
             cached.append(scaled_train)
@@ -918,10 +920,11 @@ def main() -> None:
         else:
             scaled_train = transformed_train
 
-        def fit(reg_param: float) -> Any:
+        def fit(reg_param: float, initial_model: Any | None = None) -> Any:
             estimator = LogisticRegression(
                 featuresCol="features",
                 labelCol="label",
+                weightCol=SAMPLE_WEIGHT_COLUMN,
                 elasticNetParam=0.0,
                 regParam=reg_param,
                 maxIter=100,
@@ -944,6 +947,13 @@ def main() -> None:
                     active_initial,
                     initial_intercept,
                 )
+            elif initial_model is not None:
+                set_initial_lr_model(
+                    estimator,
+                    spark,
+                    tuple(float(value) for value in initial_model.coefficients),
+                    float(initial_model.intercept),
+                )
             model = estimator.fit(scaled_train)
             if int(model.summary.totalIterations) >= 100:
                 raise ValueError(f"LR did not converge for regParam={reg_param}")
@@ -951,13 +961,18 @@ def main() -> None:
 
         selection: dict[str, object]
         if args.stage == "tuning":
-            models = {reg_param: fit(reg_param) for reg_param in REG_PARAMS}
+            models = {}
+            previous_model = None
+            for reg_param in sorted(REG_PARAMS, reverse=True):
+                previous_model = fit(reg_param, previous_model)
+                models[reg_param] = previous_model
             release(scaled_train)
             validation = (
                 read_rows(args.validation_features)
                 .select(
                     "query_track_id",
                     "candidate_track_id",
+                    "selection_fold",
                     "validation_groups",
                     *RAW_BASE_FEATURES,
                 )
@@ -967,17 +982,23 @@ def main() -> None:
             ).select(
                 "query_track_id",
                 "candidate_track_id",
+                "selection_fold",
                 "validation_groups",
                 "cos_audio",
                 "cos_graph",
                 "has_graph",
                 "bfs_score",
                 "has_bfs",
+                "tag_tfidf_cosine",
+                "has_tags",
+                "same_release",
                 vector_to_array("features").alias("feature_array"),
             ).persist(StorageLevel.MEMORY_AND_DISK)
             cached.append(scaled_validation)
             invalid_groups = scaled_validation.where(
-                F.col("validation_groups").isNull()
+                F.col("selection_fold").isNull()
+                | ~F.col("selection_fold").isin("tune", "confirm")
+                | F.col("validation_groups").isNull()
                 | (F.size("validation_groups") == 0)
                 | F.exists(
                     "validation_groups",
@@ -994,7 +1015,16 @@ def main() -> None:
             if invalid_groups:
                 raise ValueError("Set-B validation contains an invalid group or denominator")
             validation_scores = _collect_validation_scores(scaled_validation, models)
-            selected_reg, selection = _select_reg_configuration(validation_scores)
+            (
+                selected_reg,
+                selected_audio_quota,
+                selected_high_audio_quota,
+                selected_gate_threshold,
+                selected_high_gate_threshold,
+                selection,
+            ) = (
+                _select_ranker_configuration(validation_scores)
+            )
             model = models[selected_reg]
             release(scaled_validation)
             print(
