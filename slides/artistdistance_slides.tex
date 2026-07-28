@@ -172,193 +172,409 @@
 
 \end{frame}
 
-\begin{frame}{From artist similarities to shortest paths}
+\begin{frame}{Parallel execution}
 
 \centering
-\makebox[\textwidth][c]{%
 \begin{tikzpicture}[
 	>=stealth,
-	stage/.style={rounded corners=2pt,minimum width=3cm,minimum height=2.25cm,
-		align=center,line width=1.2pt,inner sep=8pt},
-	flow/.style={->,line width=1.25pt,draw=black!45}
+	artist/.style={circle,minimum size=.58cm,inner sep=0pt,draw=projectteal,
+		line width=1.05pt,fill=projectteal!48},
+	frontierartist/.style={artist,draw=frontierpurple,line width=1.7pt,
+		fill=frontierfill},
+	partitionone/.style={artist,draw=audioblue,fill=audiofill},
+	partitiontwo/.style={artist,draw=distancegold,fill=distancegoldfill},
+	partitionthree/.style={artist,draw=summaryred,fill=summaryfill},
+	partitiononefrontier/.style={partitionone,draw=frontierpurple,line width=1.7pt},
+	partitiontwofrontier/.style={partitiontwo,draw=frontierpurple,line width=1.7pt},
+	partitionthreefrontier/.style={partitionthree,draw=frontierpurple,line width=1.7pt},
+	futureartist/.style={artist,draw=black!22,fill=white},
+	edge/.style={->,line width=1.05pt,draw=black!38},
+	partitiononeedge/.style={->,line width=1.25pt,draw=audioblue},
+	partitiontwoedge/.style={->,line width=1.25pt,draw=distancegold},
+	partitionthreeedge/.style={->,line width=1.25pt,draw=summaryred},
+	futureedge/.style={->,line width=.9pt,draw=black!20}
 ]
-	\node[stage,draw=summaryred,fill=summaryfill] (db) at (-4.05,.45) {
-		\textbf{Artist similarity DB}\\[5pt]
-		{\Large\bfseries 44,745}\\[-1pt]
-		{\small artists}\\[2pt]
-		{\large\bfseries 2,201,916}\\[-1pt]
-		{\small directed edges}
-	};
-	\node[stage,draw=audioblue,fill=audiofill] (adj) at (0,.45) {
-		\textbf{Adjacency graph}\\[1pt]
-		{\scriptsize Avro / Parquet}\\[4pt]
-		\texttt{id}\\
-		\texttt{neighbors[]}\\
-		\texttt{degree}
-	};
-	\node[stage,draw=structbgcolor,fill=structbgcolor!14] (out) at (3.9,.45) {
-		\textbf{BFS output}\\[5pt]
-		\texttt{id}\\
-		\texttt{distance}\\
-		\texttt{parent}
-	};
+	\only<1-3>{
+		\path[use as bounding box] (-5.15,-2.05) rectangle (5.15,3.65);
+	}
+	\begin{scope}[yshift=-2mm]
+	\only<1>{
+		\node[artist] (p1l1) at (-4.5,1.70) {};
+		\node[artist] (p1l2) at (-4.5,.95) {};
+		\node[artist] (p1l3) at (-4.5,.20) {};
+		\node[frontierartist] (p1n1) at (-1.5,2.825) {};
+		\node[frontierartist] (p1n2) at (-1.5,2.075) {};
+		\node[frontierartist] (p1n3) at (-1.5,1.325) {};
+		\node[frontierartist] (p1n4) at (-1.5,.575) {};
+		\node[frontierartist] (p1n5) at (-1.5,-.175) {};
+		\node[frontierartist] (p1n6) at (-1.5,-.925) {};
+		\node[futureartist] (p1f1) at (1.5,2.45) {};
+		\node[futureartist] (p1f2) at (1.5,1.70) {};
+		\node[futureartist] (p1f3) at (1.5,.95) {};
+		\node[futureartist] (p1f4) at (1.5,.20) {};
+		\node[futureartist] (p1f5) at (1.5,-.55) {};
+		\node[futureartist] (p1r1) at (4.5,1.325) {};
+		\node[futureartist] (p1r2) at (4.5,.575) {};
+		\draw[edge] (p1l1) -- (p1n2);
+		\draw[edge] (p1l1) -- (p1n5);
+		\draw[edge] (p1l2) -- (p1n1);
+		\draw[edge] (p1l2) -- (p1n4);
+		\draw[edge] (p1l3) -- (p1n3);
+		\draw[edge] (p1l3) -- (p1n6);
+		\draw[futureedge] (p1n1) -- (p1f2);
+		\draw[futureedge] (p1n2) -- (p1f5);
+		\draw[futureedge] (p1n3) -- (p1f1);
+		\draw[futureedge] (p1n3) -- (p1f4);
+		\draw[futureedge] (p1n4) -- (p1f3);
+		\draw[futureedge] (p1n5) -- (p1f4);
+		\draw[futureedge] (p1n6) -- (p1f2);
+		\draw[futureedge] (p1f3) -- (p1r1);
+		\draw[futureedge] (p1f3) -- (p1r2);
+	}
 
-	\draw[flow] (db) -- (adj);
-	\draw[flow] (adj) -- node[above,font=\scriptsize\bfseries] {BFS} (out);
+	\only<2>{
+		\node[artist] (p2l1) at (-4.5,1.70) {};
+		\node[artist] (p2l2) at (-4.5,.95) {};
+		\node[artist] (p2l3) at (-4.5,.20) {};
+		\node[partitiononefrontier] (p2n1) at (-1.5,2.825) {};
+		\node[partitiononefrontier] (p2n2) at (-1.5,2.075) {};
+		\node[partitiontwofrontier] (p2n3) at (-1.5,1.325) {};
+		\node[partitiontwofrontier] (p2n4) at (-1.5,.575) {};
+		\node[partitionthreefrontier] (p2n5) at (-1.5,-.175) {};
+		\node[partitionthreefrontier] (p2n6) at (-1.5,-.925) {};
+		\node[futureartist] (p2f1) at (1.5,2.45) {};
+		\node[futureartist] (p2f2) at (1.5,1.70) {};
+		\node[futureartist] (p2f3) at (1.5,.95) {};
+		\node[futureartist] (p2f4) at (1.5,.20) {};
+		\node[futureartist] (p2f5) at (1.5,-.55) {};
+		\node[futureartist] (p2r1) at (4.5,1.325) {};
+		\node[futureartist] (p2r2) at (4.5,.575) {};
+		\draw[edge] (p2l1) -- (p2n2);
+		\draw[edge] (p2l1) -- (p2n5);
+		\draw[edge] (p2l2) -- (p2n1);
+		\draw[edge] (p2l2) -- (p2n4);
+		\draw[edge] (p2l3) -- (p2n3);
+		\draw[edge] (p2l3) -- (p2n6);
+		\draw[futureedge] (p2n1) -- (p2f2);
+		\draw[futureedge] (p2n2) -- (p2f5);
+		\draw[futureedge] (p2n3) -- (p2f1);
+		\draw[futureedge] (p2n3) -- (p2f4);
+		\draw[futureedge] (p2n4) -- (p2f3);
+		\draw[futureedge] (p2n5) -- (p2f4);
+		\draw[futureedge] (p2n6) -- (p2f2);
+		\draw[futureedge] (p2f3) -- (p2r1);
+		\draw[futureedge] (p2f3) -- (p2r2);
+	}
 
-	\node[anchor=north,align=center,text width=3.05cm,font=\small] at (-4.05,-1.05) {
-		Keep the database direction;\\never synthesize reverse edges.
-	};
-	\node[anchor=north,align=center,text width=3.05cm,font=\small] at (0,-1.05) {
-		Every artist appears, including\\zero-out-degree vertices.
-	};
-	\node[anchor=north,align=center,text width=3.05cm,font=\small] at (3.9,-1.05) {
-		\texttt{null} distance means\\unreachable from the source.
-	};
+	\only<3>{
+		\node[artist] (p3l1) at (-4.5,1.70) {};
+		\node[artist] (p3l2) at (-4.5,.95) {};
+		\node[artist] (p3l3) at (-4.5,.20) {};
+		\node[partitiononefrontier] (n1) at (-1.5,2.825) {};
+		\node[partitiononefrontier] (n2) at (-1.5,2.075) {};
+		\node[partitiontwofrontier] (n3) at (-1.5,1.325) {};
+		\node[partitiontwofrontier] (n4) at (-1.5,.575) {};
+		\node[partitionthreefrontier] (n5) at (-1.5,-.175) {};
+		\node[partitionthreefrontier] (n6) at (-1.5,-.925) {};
+		\node[futureartist] (f1) at (1.5,2.45) {};
+		\node[futureartist] (f2) at (1.5,1.70) {};
+		\node[futureartist] (f3) at (1.5,.95) {};
+		\node[futureartist] (f4) at (1.5,.20) {};
+		\node[futureartist] (f5) at (1.5,-.55) {};
+		\node[futureartist] (p3r1) at (4.5,1.325) {};
+		\node[futureartist] (p3r2) at (4.5,.575) {};
+		\draw[edge] (p3l1) -- (n2);
+		\draw[edge] (p3l1) -- (n5);
+		\draw[edge] (p3l2) -- (n1);
+		\draw[edge] (p3l2) -- (n4);
+		\draw[edge] (p3l3) -- (n3);
+		\draw[edge] (p3l3) -- (n6);
+		\draw[partitiononeedge] (n1) -- (f2);
+		\draw[partitiononeedge] (n2) -- (f5);
+		\draw[partitiontwoedge] (n3) -- (f1);
+		\draw[partitiontwoedge] (n3) -- (f4);
+		\draw[partitiontwoedge] (n4) -- (f3);
+		\draw[partitionthreeedge] (n5) -- (f4);
+		\draw[partitionthreeedge] (n6) -- (f2);
+		\draw[futureedge] (f3) -- (p3r1);
+		\draw[futureedge] (f3) -- (p3r2);
+	}
+
+	\only<4>{
+		\node[artist] (l1a) at (-4.5,1.70) {};
+		\node[artist] (l1b) at (-4.5,.95) {};
+		\node[artist] (l1c) at (-4.5,.20) {};
+		\node[partitionone] (n1) at (-1.5,2.825) {};
+		\node[partitionone] (n2) at (-1.5,2.075) {};
+		\node[partitiontwo] (n3) at (-1.5,1.325) {};
+		\node[partitiontwo] (n4) at (-1.5,.575) {};
+		\node[partitionthree] (n5) at (-1.5,-.175) {};
+		\node[partitionthree] (n6) at (-1.5,-.925) {};
+		\node[frontierartist] (f1) at (1.5,2.45) {};
+		\node[frontierartist] (f2) at (1.5,1.70) {};
+		\node[frontierartist] (f3) at (1.5,.95) {};
+		\node[frontierartist] (f4) at (1.5,.20) {};
+		\node[frontierartist] (f5) at (1.5,-.55) {};
+		\node[futureartist] (r1) at (4.5,1.325) {};
+		\node[futureartist] (r2) at (4.5,.575) {};
+		\draw[edge] (l1a) -- (n2);
+		\draw[edge] (l1a) -- (n5);
+		\draw[edge] (l1b) -- (n1);
+		\draw[edge] (l1b) -- (n4);
+		\draw[edge] (l1c) -- (n3);
+		\draw[edge] (l1c) -- (n6);
+		\draw[partitiononeedge] (n1) -- (f2);
+		\draw[partitiononeedge] (n2) -- (f5);
+		\draw[partitiontwoedge] (n3) -- (f1);
+		\draw[partitiontwoedge] (n3) -- (f4);
+		\draw[partitiontwoedge] (n4) -- (f3);
+		\draw[partitionthreeedge] (n5) -- (f4);
+		\draw[partitionthreeedge] (n6) -- (f2);
+		\draw[futureedge] (f3) -- (r1);
+		\draw[futureedge] (f3) -- (r2);
+	}
+	\end{scope}
+
+	\only<1-3>{
+		\node[font=\scriptsize\bfseries,text=black!52] at (-4.5,3.35) {LEVEL $d-1$};
+		\node[rounded corners=2pt,draw=frontierpurple,fill=frontierfill,
+			font=\scriptsize\bfseries,text=frontierpurple,inner xsep=7pt,inner ysep=3pt]
+			at (-1.5,3.35) {FRONTIER $d$};
+		\node[font=\scriptsize\bfseries,text=black!52] at (1.5,3.35) {LEVEL $d+1$};
+		\node[font=\scriptsize\bfseries,text=black!52] at (4.5,3.35) {LEVEL $d+2$};
+	}
+	\only<4>{
+		\node[font=\scriptsize\bfseries,text=black!52] at (-4.5,3.35) {LEVEL $d-2$};
+		\node[font=\scriptsize\bfseries,text=black!52] at (-1.5,3.35) {LEVEL $d-1$};
+		\node[rounded corners=2pt,draw=frontierpurple,fill=frontierfill,
+			font=\scriptsize\bfseries,text=frontierpurple,inner xsep=7pt,inner ysep=3pt]
+			at (1.5,3.35) {FRONTIER $d$};
+		\node[font=\scriptsize\bfseries,text=black!52] at (4.5,3.35) {LEVEL $d+1$};
+	}
+	\only<2->{
+		\node[circle,minimum size=.16cm,inner sep=0pt,draw=audioblue,fill=audiofill]
+			at (-2.55,-1.80) {};
+		\node[font=\scriptsize\bfseries,text=black!58,anchor=west] at (-2.38,-1.80)
+			{Partition 1};
+		\node[circle,minimum size=.16cm,inner sep=0pt,draw=distancegold,fill=distancegoldfill]
+			at (-.55,-1.80) {};
+		\node[font=\scriptsize\bfseries,text=black!58,anchor=west] at (-.38,-1.80)
+			{Partition 2};
+		\node[circle,minimum size=.16cm,inner sep=0pt,draw=summaryred,fill=summaryfill]
+			at (1.45,-1.80) {};
+		\node[font=\scriptsize\bfseries,text=black!58,anchor=west] at (1.62,-1.80)
+			{Partition 3};
+	}
 \end{tikzpicture}
-}
 
-\medskip
-\begin{block}{Distance contract}
-The distance is the minimum number of directed, unit-weight similarity edges; the parent reconstructs one deterministic shortest path.
-\end{block}
+\vspace{.2cm}
+\begin{itemize}
+	\setlength{\itemsep}{5pt}
+	\item \textbf{Parallel inside a level:} partitions expand their assigned frontier vertices independently.
+	\item \textbf{Ordered across levels:} level $d+1$ starts only after level $d$ has completed.
+\end{itemize}
 
 \end{frame}
 
-\begin{frame}{Parallel BFS expands one frontier at a time}
+\begin{frame}{MapReduce}
 
 \centering
 \begin{tikzpicture}[
 	>=stealth,
-	phase/.style={rounded corners=2pt,minimum width=2.25cm,minimum height=1.25cm,
-		align=center,draw=structbgcolor,line width=1.1pt,fill=structbgcolor!12,
-		font=\small\bfseries},
-	flow/.style={->,line width=1.2pt,draw=black!48}
+	inputone/.style={circle,minimum size=.63cm,inner sep=0pt,
+		draw=audioblue,line width=1.05pt,fill=audiofill,font=\small\bfseries},
+	inputtwo/.style={circle,minimum size=.63cm,inner sep=0pt,
+		draw=distancegold,line width=1.05pt,fill=distancegoldfill,font=\small\bfseries},
+	statusvisited/.style={circle,minimum size=.63cm,inner sep=0pt,
+		draw=projectteal,line width=1.05pt,fill=projectteal!48,font=\small\bfseries},
+	statusunvisited/.style={circle,minimum size=.63cm,inner sep=0pt,
+		draw=black!22,line width=1.05pt,fill=white,font=\small\bfseries},
+	statusfrontier/.style={circle,minimum size=.63cm,inner sep=0pt,
+		draw=frontierpurple,line width=1.65pt,fill=frontierfill,font=\small\bfseries},
+	unvisitedone/.style={inputone,fill=white},
+	unvisitedtwo/.style={inputtwo,fill=white},
+	frontierone/.style={inputone,draw=frontierpurple,line width=1.65pt,fill=audiofill},
+	frontiertwo/.style={inputtwo,draw=frontierpurple,line width=1.65pt,fill=distancegoldfill},
+	mapone/.style={rounded corners=1.5pt,minimum width=.90cm,minimum height=.40cm,
+		inner sep=1.2pt,draw=audioblue,line width=1pt,fill=audiofill,font=\scriptsize\bfseries},
+	maptwo/.style={rounded corners=1.5pt,minimum width=.90cm,minimum height=.40cm,
+		inner sep=1.2pt,draw=distancegold,line width=1pt,fill=distancegoldfill,font=\scriptsize\bfseries},
+	mapunvisitedone/.style={mapone,fill=white},
+	mapunvisitedtwo/.style={maptwo,fill=white},
+	shuffleone/.style={rounded corners=1.5pt,minimum width=.90cm,minimum height=.40cm,
+		inner sep=1.2pt,draw=summaryred,line width=1pt,fill=summaryfill,font=\scriptsize\bfseries},
+	shuffletwo/.style={rounded corners=1.5pt,minimum width=.90cm,minimum height=.40cm,
+		inner sep=1.2pt,draw=projectteal,line width=1pt,fill=projectteal!12,font=\scriptsize\bfseries},
+	shuffleunvisitedtwo/.style={shuffletwo,fill=white},
+	outone/.style={circle,minimum size=.63cm,inner sep=0pt,
+		draw=summaryred,line width=1.05pt,fill=summaryfill,font=\small\bfseries},
+	nexttwo/.style={circle,minimum size=.63cm,inner sep=0pt,
+		draw=frontierpurple,line width=1.65pt,fill=projectteal!18,font=\small\bfseries},
+	oneedge/.style={->,line width=.9pt,draw=audioblue},
+	twoedge/.style={->,line width=.9pt,draw=distancegold},
+	shuffleedge/.style={->,line width=.7pt,draw=black!55},
+	reduceone/.style={->,line width=.75pt,draw=summaryred!68},
+	reducetwo/.style={->,line width=.75pt,draw=projectteal!68}
 ]
-	\node[phase] (frontier) at (-4.15,1.25) {Frontier\\at distance $d$};
-	\node[phase] (expand) at (-1.38,1.25) {Join and explode\\neighbors in parallel};
-	\node[phase] (filter) at (1.38,1.25) {Remove\\visited artists};
-	\node[phase] (reduce) at (4.15,1.25) {Choose best parent\\for each artist};
-	\draw[flow] (frontier) -- (expand);
+	\path[use as bounding box] (-5.55,-3.80) rectangle (5.55,3.55);
+	\only<3->{
+		\node[font=\small\bfseries,text=black!48] at (-3.20,3.38) {MAP};
+	}
+	\only<4->{
+		\node[font=\small\bfseries,text=black!48] at (0,3.38) {SHUFFLE};
+	}
+	\only<5>{
+		\node[font=\small\bfseries,text=black!48] at (3.20,3.38) {REDUCE};
+	}
+
+	% Input snapshot: each mapper partition remains contiguous.
+	\only<1>{
+		\node[statusvisited] at (-4.80,2.70) {A};
+		\node[statusfrontier] at (-4.80,1.50) {B};
+		\node[statusunvisited] at (-4.80,.30) {D};
+		\node[statusfrontier] at (-4.80,-.90) {C};
+		\node[statusunvisited] at (-4.80,-2.10) {E};
+		\node[statusunvisited] at (-4.80,-3.30) {F};
+	}
+	\only<2->{
+		\node[inputone] (inA) at (-4.80,2.70) {A};
+		\node[frontierone] (inB) at (-4.80,1.50) {B};
+		\node[unvisitedone] (inD) at (-4.80,.30) {D};
+		\node[frontiertwo] (inC) at (-4.80,-.90) {C};
+		\node[unvisitedtwo] (inE) at (-4.80,-2.10) {E};
+		\node[unvisitedtwo] (inF) at (-4.80,-3.30) {F};
+		\node[anchor=east,font=\small\bfseries,text=audioblue] at (-5.18,1.50) {P1};
+		\node[anchor=east,font=\small\bfseries,text=distancegold] at (-5.18,-2.10) {P2};
+	}
+
+	% Mapper output preserves input order; each frontier emits itself before candidates.
+	\only<3->{
+		\node[mapone] (mVA) at (-1.60,2.85) {$V(A)$};
+		\node[mapone] (mVB) at (-1.60,2.27) {$V(B)$};
+		\node[mapone] (mBA) at (-1.60,1.69) {$A\gets B$};
+		\node[mapone] (mBD) at (-1.60,1.11) {$D\gets B$};
+		\node[mapone] (mBE) at (-1.60,.53) {$E\gets B$};
+		\node[mapunvisitedone] (mVD) at (-1.60,-.05) {$V(D)$};
+		\node[maptwo] (mVC) at (-1.60,-.63) {$V(C)$};
+		\node[maptwo] (mCB) at (-1.60,-1.21) {$B\gets C$};
+		\node[maptwo] (mCE) at (-1.60,-1.79) {$E\gets C$};
+		\node[maptwo] (mCF) at (-1.60,-2.37) {$F\gets C$};
+		\node[mapunvisitedtwo] (mVE) at (-1.60,-2.95) {$V(E)$};
+		\node[mapunvisitedtwo] (mVF) at (-1.60,-3.53) {$V(F)$};
+
+		\draw[oneedge] (inA.east) -- (mVA.west);
+		\draw[oneedge] (inB.east) -- (mVB.west);
+		\draw[oneedge] (inB.east) -- (mBA.west);
+		\draw[oneedge] (inB.east) -- (mBD.west);
+		\draw[oneedge] (inB.east) -- (mBE.west);
+		\draw[oneedge] (inD.east) -- (mVD.west);
+		\draw[twoedge] (inC.east) -- (mVC.west);
+		\draw[twoedge] (inC.east) -- (mCB.west);
+		\draw[twoedge] (inC.east) -- (mCE.west);
+		\draw[twoedge] (inC.east) -- (mCF.west);
+		\draw[twoedge] (inE.east) -- (mVE.west);
+		\draw[twoedge] (inF.east) -- (mVF.west);
+	}
+
+	% Shuffle preserves all records, sorting them by artist key for reducers.
+	\only<4->{
+		\node[shuffleone] (sVA) at (1.60,2.85) {$V(A)$};
+		\node[shuffleone] (sBA) at (1.60,2.27) {$A\gets B$};
+		\node[shuffleone] (sVB) at (1.60,1.69) {$V(B)$};
+		\node[shuffleone] (sCB) at (1.60,1.11) {$B\gets C$};
+		\node[shuffleone] (sVC) at (1.60,.53) {$V(C)$};
+		\node[shuffleunvisitedtwo] (sVD) at (1.60,-.05) {$V(D)$};
+		\node[shuffletwo] (sBD) at (1.60,-.63) {$D\gets B$};
+		\node[shuffleunvisitedtwo] (sVE) at (1.60,-1.21) {$V(E)$};
+		\node[shuffletwo] (sBE) at (1.60,-1.79) {$E\gets B$};
+		\node[shuffletwo] (sCE) at (1.60,-2.37) {$E\gets C$};
+		\node[shuffleunvisitedtwo] (sVF) at (1.60,-2.95) {$V(F)$};
+		\node[shuffletwo] (sCF) at (1.60,-3.53) {$F\gets C$};
+
+		\draw[shuffleedge] (mVA.east) -- (sVA.west);
+		\draw[shuffleedge] (mVB.east) -- (sVB.west);
+		\draw[shuffleedge] (mBA.east) -- (sBA.west);
+		\draw[shuffleedge] (mBD.east) -- (sBD.west);
+		\draw[shuffleedge] (mBE.east) -- (sBE.west);
+		\draw[shuffleedge] (mVD.east) -- (sVD.west);
+		\draw[shuffleedge] (mVC.east) -- (sVC.west);
+		\draw[shuffleedge] (mCB.east) -- (sCB.west);
+		\draw[shuffleedge] (mCE.east) -- (sCE.west);
+		\draw[shuffleedge] (mCF.east) -- (sCF.west);
+		\draw[shuffleedge] (mVE.east) -- (sVE.west);
+		\draw[shuffleedge] (mVF.east) -- (sVF.west);
+	}
+
+	% Reducers merge records with the same key into the next complete snapshot.
+	\only<5>{
+		\node[outone] (outA) at (4.80,2.70) {A};
+		\node[outone] (outB) at (4.80,1.50) {B};
+		\node[outone] (outC) at (4.80,.30) {C};
+		\node[nexttwo] (outD) at (4.80,-.90) {D};
+		\node[nexttwo] (outE) at (4.80,-2.10) {E};
+		\node[nexttwo] (outF) at (4.80,-3.30) {F};
+		\node[anchor=west,font=\small\bfseries,text=summaryred] at (5.18,1.50) {P1};
+		\node[anchor=west,font=\small\bfseries,text=projectteal] at (5.18,-2.10) {P2};
+
+		\draw[reduceone] (sVA.east) -- (outA.west);
+		\draw[reduceone] (sBA.east) -- (outA.west);
+		\draw[reduceone] (sVB.east) -- (outB.west);
+		\draw[reduceone] (sCB.east) -- (outB.west);
+		\draw[reduceone] (sVC.east) -- (outC.west);
+		\draw[reducetwo] (sVD.east) -- (outD.west);
+		\draw[reducetwo] (sBD.east) -- (outD.west);
+		\draw[reducetwo] (sVE.east) -- (outE.west);
+		\draw[reducetwo] (sBE.east) -- (outE.west);
+		\draw[reducetwo] (sCE.east) -- (outE.west);
+		\draw[reducetwo] (sVF.east) -- (outF.west);
+		\draw[reducetwo] (sCF.east) -- (outF.west);
+	}
+\end{tikzpicture}
+
+\end{frame}
+
+
+\begin{frame}{Spark: keep the graph, move the frontier}
+
+\centering
+\begin{tikzpicture}[
+	>=stealth,
+	stage/.style={rounded corners=2pt,minimum width=1.95cm,minimum height=2.15cm,
+		align=center,draw=structbgcolor,line width=1.05pt,fill=structbgcolor!12,
+		font=\small},
+	flow/.style={->,line width=1.1pt,draw=black!48}
+]
+	\node[rounded corners=2pt,draw=black!25,fill=black!3,minimum width=8.8cm,
+		minimum height=.58cm,font=\small\bfseries] at (0,2.5)
+		{Same level: visited $=\{A,B,C\}$, frontier $=\{B,C\}$};
+
+	\node[stage] (state) at (-4.6,.55) {\textbf{Distributed state}\\[5pt]
+		Persisted adjacency\\$+$\\frontier $\{B,C\}$};
+	\node[stage] (expand) at (-2.3,.55) {\textbf{Join + explode}\\[5pt]
+		$A,D,E$\\$B,E,F$\\[3pt]
+		{\scriptsize candidate rows}};
+	\node[stage] (filter) at (0,.55) {\textbf{Left-anti join}\\[5pt]
+		remove visited\\$A,B$\\[3pt]
+		$D,E,E,F$};
+	\node[stage] (group) at (2.3,.55) {\textbf{Group by artist}\\[5pt]
+		$D\leftarrow B$\\
+		$E\leftarrow B$\\
+		$F\leftarrow C$};
+	\node[stage] (next) at (4.6,.55) {\textbf{Checkpoint}\\[5pt]
+		next frontier\\$\{D,E,F\}$\\[3pt]
+		{\scriptsize extend visited}};
+	\draw[flow] (state) -- (expand);
 	\draw[flow] (expand) -- (filter);
-	\draw[flow] (filter) -- (reduce);
-	\draw[flow,rounded corners=5pt] (reduce.south) |- node[below,pos=.58,font=\scriptsize\bfseries] {next frontier at $d+1$} (frontier.south);
+	\draw[flow] (filter) -- (group);
+	\draw[flow] (group) -- (next);
 
-	\node[circle,draw=summaryred,fill=summaryfill,minimum size=.72cm,font=\bfseries] (l0) at (-3.6,-1.45) {A};
-	\node[circle,draw=audioblue,fill=audiofill,minimum size=.72cm,font=\bfseries] (l1a) at (-.9,-1.05) {B};
-	\node[circle,draw=audioblue,fill=audiofill,minimum size=.72cm,font=\bfseries] (l1b) at (-.9,-1.85) {C};
-	\node[circle,draw=structbgcolor,fill=structbgcolor!14,minimum size=.72cm,font=\bfseries] (l2a) at (2.2,-.75) {D};
-	\node[circle,draw=structbgcolor,fill=structbgcolor!14,minimum size=.72cm,font=\bfseries] (l2b) at (2.2,-1.45) {E};
-	\node[circle,draw=structbgcolor,fill=structbgcolor!14,minimum size=.72cm,font=\bfseries] (l2c) at (2.2,-2.15) {F};
-	\draw[flow] (l0) -- (l1a);
-	\draw[flow] (l0) -- (l1b);
-	\draw[flow] (l1a) -- (l2a);
-	\draw[flow] (l1a) -- (l2b);
-	\draw[flow] (l1b) -- (l2c);
-	\node[font=\scriptsize\bfseries,text=black!55] at (-3.6,-2.35) {LEVEL 0};
-	\node[font=\scriptsize\bfseries,text=black!55] at (-.9,-2.35) {LEVEL 1};
-	\node[font=\scriptsize\bfseries,text=black!55] at (2.2,-2.65) {LEVEL 2};
+	\node[rounded corners=2pt,draw=structbgcolor,fill=structbgcolor!14,
+		minimum width=10.6cm,minimum height=1.05cm,align=center,font=\small]
+		at (0,-1.65) {\textbf{Adjacency remains in \texttt{MEMORY\_AND\_DISK}}\\
+		Only the distributed frontier and visited set evolve; local checkpoints truncate lineage.};
+	\node[font=\scriptsize\bfseries,text=black!60] at (0,-2.48)
+		{All levels execute inside one Spark application.};
 \end{tikzpicture}
-
-\smallskip
-\begin{columns}[T,onlytextwidth]
-	\column{.48\textwidth}
-	\centering\textbf{Parallel inside a level}\par
-	{\small Every frontier vertex and outgoing edge can be processed independently.}
-	\column{.48\textwidth}
-	\centering\textbf{Ordered across levels}\par
-	{\small Distance $d+1$ depends on completion of distance $d$.}
-\end{columns}
-
-\end{frame}
-
-\begin{frame}{One BFS, four distributed implementations}
-
-\centering
-\begin{tikzpicture}[
-	box/.style={rounded corners=2pt,minimum width=4.35cm,minimum height=.72cm,
-		align=center,line width=1.05pt,font=\small\bfseries},
-	flow/.style={->,>=stealth,line width=1.1pt,draw=black!45}
-]
-	\draw[black!18,line width=.8pt] (0,-2.65) -- (0,2.55);
-	\node[font=\large\bfseries,text=summaryred] at (-3.1,2.45) {MapReduce};
-	\node[font=\large\bfseries,text=structbgcolor] at (3.1,2.45) {Spark};
-
-	\node[box,draw=summaryred,fill=summaryfill] (mi) at (-3.1,1.45) {Initialization job};
-	\node[box,draw=summaryred,fill=summaryfill] (ml) at (-3.1,.35) {One MapReduce job per level};
-	\node[box,draw=summaryred,fill=summaryfill] (mf) at (-3.1,-.75) {Final output job};
-	\draw[flow] (mi) -- (ml);
-	\draw[flow] (ml) -- node[right,font=\scriptsize\bfseries] {HDFS state} (mf);
-	\node[font=\Large\bfseries,text=summaryred] at (-3.1,-1.65) {13 applications};
-
-	\node[box,draw=structbgcolor,fill=structbgcolor!14] (sr) at (3.1,1.45) {Read and persist adjacency};
-	\node[box,draw=structbgcolor,fill=structbgcolor!14] (sl) at (3.1,.35) {Frontier joins and checkpoints};
-	\node[box,draw=structbgcolor,fill=structbgcolor!14] (sw) at (3.1,-.75) {Write final distances};
-	\draw[flow] (sr) -- (sl);
-	\draw[flow] (sl) -- node[right,font=\scriptsize\bfseries] {cached state} (sw);
-	\node[font=\Large\bfseries,text=structbgcolor] at (3.1,-1.65) {1 application};
-
-	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
-		minimum height=.55cm,font=\small\bfseries] at (-4.25,-2.5) {Avro};
-	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
-		minimum height=.55cm,font=\small\bfseries] at (-1.95,-2.5) {Parquet};
-	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
-		minimum height=.55cm,font=\small\bfseries] at (1.95,-2.5) {Avro};
-	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
-		minimum height=.55cm,font=\small\bfseries] at (4.25,-2.5) {Parquet};
-\end{tikzpicture}
-
-\end{frame}
-
-\begin{frame}{A controlled full-graph experiment}
-
-\begin{center}
-{\Large\bfseries 4 combinations $\times$ 5 repetitions $=$ 20 verified outputs}
-\end{center}
-
-\smallskip
-\begin{columns}[T,onlytextwidth]
-	\small
-	\column{.31\textwidth}
-	\textbf{Same graph}
-	\begin{itemize}
-		\setlength{\itemsep}{1pt}
-		\item Full directed graph
-		\item Fixed source artist
-		\item Identical adjacency
-	\end{itemize}
-
-	\column{.34\textwidth}
-	\textbf{Controlled execution}
-	\begin{itemize}
-		\setlength{\itemsep}{1pt}
-		\item Restart HDFS/YARN
-		\item Rotate run order
-		\item Fixed parallelism
-	\end{itemize}
-
-	\column{.31\textwidth}
-	\textbf{Independent checks}
-	\begin{itemize}
-		\setlength{\itemsep}{1pt}
-		\item Reference BFS
-		\item Distance and parent
-		\item Same graph outcome
-	\end{itemize}
-\end{columns}
-
-\smallskip
-\begin{block}{Primary measurement}
-Wall time covers every BFS level and framework orchestration; YARN time and allocated resources explain the cost.
-\end{block}
-
-\smallskip
-\begin{center}
-\small
-\begin{tabular}{r@{\hspace{5pt}}l@{\qquad}r@{\hspace{5pt}}l@{\qquad}r@{\hspace{5pt}}l}
-	$43{,}228$ & reachable & $1{,}517$ & unreachable & $10$ & max distance
-\end{tabular}
-\end{center}
 
 \end{frame}
 
