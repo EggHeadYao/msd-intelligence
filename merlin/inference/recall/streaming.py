@@ -26,6 +26,8 @@ class TrackCodec:
     track_to_code: Mapping[str, int]
     allowed: np.ndarray
     song_codes: np.ndarray
+    artist_codes: np.ndarray | None = None
+    artists: tuple[str, ...] = ()
 
     @classmethod
     def build(
@@ -33,6 +35,7 @@ class TrackCodec:
         assignments: Mapping[str, str],
         allowed_splits: frozenset[str],
         same_song: SameSongFilter,
+        track_to_artist: Mapping[str, str] | None = None,
     ) -> TrackCodec:
         tracks = tuple(sorted(assignments))
         track_to_code = {track_id: code for code, track_id in enumerate(tracks)}
@@ -48,9 +51,29 @@ class TrackCodec:
             if track_code is None:
                 continue
             song_codes[track_code] = song_to_code.setdefault(song_id, len(song_to_code))
+        artist_to_code: dict[str, int] = {}
+        artists: list[str] = []
+        artist_codes = np.full(len(tracks), -1, dtype=np.int32)
+        for track_id, artist_id in (track_to_artist or {}).items():
+            track_code = track_to_code.get(track_id)
+            if track_code is not None:
+                artist_code = artist_to_code.get(artist_id)
+                if artist_code is None:
+                    artist_code = len(artists)
+                    artist_to_code[artist_id] = artist_code
+                    artists.append(artist_id)
+                artist_codes[track_code] = artist_code
         allowed.setflags(write=False)
         song_codes.setflags(write=False)
-        return cls(tracks, track_to_code, allowed, song_codes)
+        artist_codes.setflags(write=False)
+        return cls(
+            tracks,
+            track_to_code,
+            allowed,
+            song_codes,
+            artist_codes,
+            tuple(artists),
+        )
 
     def code(self, track_id: str) -> int:
         return int(self.track_to_code.get(track_id, -1))
@@ -60,6 +83,18 @@ class TrackCodec:
         if query_song < 0:
             return np.zeros(len(candidate_codes), dtype=np.bool_)
         return self.song_codes[candidate_codes] == query_song
+
+    def same_artist_mask(
+        self,
+        query_code: int,
+        candidate_codes: np.ndarray,
+    ) -> np.ndarray:
+        if self.artist_codes is None:
+            return np.zeros(len(candidate_codes), dtype=np.bool_)
+        query_artist = int(self.artist_codes[query_code])
+        if query_artist < 0:
+            return np.zeros(len(candidate_codes), dtype=np.bool_)
+        return self.artist_codes[candidate_codes] == query_artist
 
 
 @dataclass(slots=True)
