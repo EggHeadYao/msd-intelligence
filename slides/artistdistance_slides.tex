@@ -39,12 +39,14 @@
 		afour/afourone,afour/afourtwo}
 		\draw[artistedge] (\from) -- (\to);
 	\foreach \from/\to in {
-		aone/atwo,
 		atwoone/aone,
-		aonetwo/afourone,
-		atwotwo/athreeone,
-		athreetwo/afourtwo}
+		atwotwo/athreeone}
 		\draw[artistedge] (\from) -- (\to);
+	\foreach \from/\to in {
+		aone/atwo,
+		aonetwo/afourone,
+		athreetwo/afourtwo}
+		\draw[artistedge,<->] (\from) -- (\to);
 
 	\node[targetsong] (query) at (-.58,-.38) {};
 	\node[dzero] (rzeroone) at (.52,.42) {};
