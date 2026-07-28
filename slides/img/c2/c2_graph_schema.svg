@@ -25,7 +25,7 @@ L 427.32 274.968
 L 427.32 0 
 L 0 0 
 z
-" style="fill: #ffffff"/>
+" style="fill: #e9f0ef"/>
   </g>
   <g id="axes_1">
    <g id="patch_2">
@@ -90,7 +90,7 @@ L 166.238228 114.697883
 L 166.238228 100.206985 
 L 89.87104 100.206985 
 z
-" style="fill: #ffffff"/>
+" style="fill: #e9f0ef"/>
     </g>
     <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #236b65" x="128.054634" y="110.440188" transform="rotate(-0 128.054634 110.440188)">track-artist</text>
    </g>
@@ -101,7 +101,7 @@ L 155.824427 185.581212
 L 155.824427 171.090313 
 L 67.049817 171.090313 
 z
-" style="fill: #ffffff"/>
+" style="fill: #e9f0ef"/>
     </g>
     <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #c98b38" x="111.437122" y="181.323517" transform="rotate(-0 111.437122 181.323517)">track-release</text>
    </g>
@@ -112,7 +112,7 @@ L 306.014325 195.297307
 L 306.014325 180.806408 
 L 232.08909 180.806408 
 z
-" style="fill: #ffffff"/>
+" style="fill: #e9f0ef"/>
     </g>
     <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #76689a" x="269.051707" y="191.039612" transform="rotate(-0 269.051707 191.039612)">artist-term</text>
    </g>
@@ -123,7 +123,7 @@ L 309.912276 91.732568
 L 309.912276 77.241669 
 L 187.90626 77.241669 
 z
-" style="fill: #ffffff"/>
+" style="fill: #e9f0ef"/>
     </g>
     <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #3e7198" x="248.909268" y="87.474873" transform="rotate(-0 248.909268 87.474873)">directed similarity</text>
    </g>

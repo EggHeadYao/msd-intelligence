@@ -112,7 +112,7 @@
     Filter, merge, and deduplicate while preserving which sources recalled each track.
   \end{column}
   \begin{column}{.40\textwidth}
-    \textbf{Stage 2: one canonical Ranker}
+    \textbf{Stage 2: R --- Learned Ranker}
 
     \vspace{.1cm}
     \begin{enumerate}
@@ -219,7 +219,7 @@ Matched-random controls use exact year and feature-coverage keys; 2K bootstrap s
 \end{columns}
 
 \vfill
-{\small\color{projectteal!80!black}\textbf{Claim boundary:}
+{\small\textbf{Claim boundary:}
 PCA-128 preserves metadata-correlated acoustic structure---not user preference or perceptual similarity.}
 
 \end{frame}
@@ -355,311 +355,91 @@ Walk generation batches roots with \texttt{repartition(track\_id)} and \texttt{m
 \end{columns}
 
 \vfill
-{\small\color{projectteal!80!black}\textbf{Claim boundary:}
+{\small\textbf{Claim boundary:}
 Evidence supports transductive metadata reconstruction only---not user relevance or inductive cold-start generalization.}
 
 \end{frame}
-\begin{frame}{Multi-View Candidate Generation}
+\begin{frame}{Multi-View Candidate Pool}
 
-\vspace{-.22cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[rounded corners=2pt,fill=projectpurple,text=white,
-    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (1.03,7.18) {FROZEN PROTOCOL};
+\begin{center}
+  \includegraphics[width=.98\textwidth]{img/c3/c3_candidate_pipeline.pdf}
+\end{center}
 
-  % Four non-substitutable sources
-  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=2.18cm,
-    minimum height=1.02cm] (ca) at (1.48,6.28)
-    {\color{projectblue!75!black}\bfseries Audio / C1\\[-2pt]
-     \mdseries\tiny cosine $\cdot$ acoustic similarity\\[-1pt]
-     \bfseries max 250};
-  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=2.18cm,
-    minimum height=1.02cm] (cg) at (4.30,6.28)
-    {\color{projectteal!80!black}\bfseries Graph / C2\\[-2pt]
-     \mdseries\tiny cosine $\cdot$ smooth relation space\\[-1pt]
-     \bfseries max 250};
-  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=2.18cm,
-    minimum height=1.02cm] (cb) at (7.12,6.28)
-    {\color{projectpurple!80!black}\bfseries BFS\\[-2pt]
-     \mdseries\tiny directed artist distance\\[-1pt]
-     \bfseries max 250};
-  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=2.18cm,
-    minimum height=1.02cm] (ct) at (9.94,6.28)
-    {\color{projectgold!60!black}\bfseries Tag\\[-2pt]
-     \mdseries\tiny artist--term TF--IDF cosine\\[-1pt]
-     \bfseries max 250};
+\vspace{.10cm}
+\begin{columns}[T,onlytextwidth]
+  \column{.48\textwidth}
+  \textbf{Recall first}
 
-  % Canonicalization lane
-  \node[merlin card,text width=1.52cm,minimum height=.58cm,font=\tiny] (cr)
-    at (.92,4.88) {source retrieval + caps};
-  \node[merlin card,text width=1.23cm,minimum height=.58cm,font=\tiny] (co)
-    at (2.90,4.88) {overfetch where required};
-  \node[merlin card,text width=1.56cm,minimum height=.58cm,font=\tiny] (cf)
-    at (5.03,4.88) {remove query / same song / invalid};
-  \node[merlin card,text width=1.20cm,minimum height=.58cm,font=\tiny] (cm)
-    at (7.03,4.88) {merge + deduplicate};
-  \node[merlin card,text width=1.42cm,minimum height=.58cm,font=\tiny] (cp)
-    at (9.03,4.88) {keep source scores + provenance};
-  \draw[merlin arrow] (cr)--(co);
-  \draw[merlin arrow] (co)--(cf);
-  \draw[merlin arrow] (cf)--(cm);
-  \draw[merlin arrow] (cm)--(cp);
-  \node[merlin card,draw=projectteal,fill=projectteal!12,text width=1.25cm,
-    minimum height=.62cm,font=\scriptsize\bfseries] (cup) at (10.70,4.88)
-    {pool $\leq 1000$};
-  \draw[merlin arrow] (cp)--(cup);
+  \small Four complementary views provide bounded candidate lists; short sources are never randomly padded.
 
-  % Source policies
-  \draw[rounded corners=4pt,draw=projectblue!55,fill=projectblue!4]
-    (.10,1.12) rectangle (6.18,4.20);
-  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
-    at (.38,3.91) {Source-specific retrieval policy};
-  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=5.50cm]
-    at (.42,3.38) {$\bullet$ \textbf{Audio / Graph:} fetch $3\times\text{quota}+1$; filter query, same song and duplicate tracks; keep at most 250.};
-  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=5.50cm]
-    at (.42,2.67) {$\bullet$ \textbf{BFS:} directed artist distance $\leq 2$; at most 10 tracks from each artist.};
-  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=5.50cm]
-    at (.42,2.10) {$\bullet$ \textbf{Tag:} retrieve top TF--IDF artists; at most 5 tracks from each artist.};
-  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont\bfseries,
-    text=projectblue!80!black,text width=5.50cm] at (.42,1.48)
-    {$\bullet$ A short source returns its true count---never random padding.};
+  \column{.48\textwidth}
+  \textbf{One serving contract}
 
-  % Evaluation contract
-  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
-    (6.43,1.12) rectangle (11.30,4.20);
-  \node[anchor=west,font=\small\bfseries,text=projectgold!60!black]
-    at (6.70,3.91) {Evaluate recall before ranking};
-  \node[font=\fontsize{7}{8}\selectfont\bfseries,text width=4.22cm,align=center]
-    at (8.86,3.33) {A ranker cannot recover a positive that never enters the canonical pool.};
-  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=4.22cm,align=left]
-    at (8.86,2.43) {Reserve: source Recall@250; union Recall@$\leq$1000; all-minus-one delta; raw/unique counts and dedup rate; exclusive positives; missing signals and shortages.};
-  \node[font=\fontsize{6.1}{7}\selectfont\bfseries,text=projectgold!60!black,
-    text width=4.22cm,align=center] at (8.86,1.48)
-    {Single-source @250 vs union @1000 attributes coverage; it is not a same-budget model comparison.};
+  \small Filter, merge, and deduplicate before ranking; preserve source evidence for auditing.
+\end{columns}
 
-  \node[anchor=south east,font=\tiny\itshape,text=projectteal!80!black]
-    at (11.20,.55) {provenance is preserved, but is not a default Ranker feature};
-\end{tikzpicture}
+\vfill
+{\small\textbf{Design principle:}
+R cannot recover a track missing from the candidate pool.}
 
 \end{frame}
 
-\begin{frame}{Ranker Training Pair Construction}
+\begin{frame}{R: Learned Ranker}
 
-\vspace{-.22cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[rounded corners=2pt,fill=projectpurple,text=white,
-    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (1.03,7.18) {FROZEN PROTOCOL};
+\begin{center}
+  \includegraphics[width=1.0\textwidth]{img/c3/c3_pair_construction.pdf}
+\end{center}
 
-  % Split-before-pair discipline
-  \draw[rounded corners=4pt,draw=projectteal!60,fill=projectteal!4]
-    (.10,4.34) rectangle (11.30,6.86);
-  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
-    at (.38,6.57) {Split first; construct pairs only inside each split universe};
-  \node[merlin card,draw=projectink,fill=projectink,text=white,text width=1.34cm,
-    minimum height=.72cm,font=\fontsize{5.8}{6.6}\selectfont\bfseries] (gkey) at (1.05,5.50)
-    {group key:\\valid song ID\\else track ID};
-  \node[merlin card,draw=projectblue,fill=projectblue!10,text width=1.62cm,
-    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sa) at (3.20,5.50)
-    {\bfseries Set A\\[-2pt] train + weak thresholds\\imputation/scaler stats};
-  \node[merlin card,draw=projectpurple,fill=projectpurple!10,text width=1.42cm,
-    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sb) at (5.42,5.50)
-    {\bfseries Set B\\[-2pt] \texttt{regParam} selection\\diagnostics};
-  \node[merlin card,draw=projectgold,fill=projectgold!11,text width=1.37cm,
-    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sc) at (7.53,5.50)
-    {\bfseries Set C\\[-2pt] one final evaluation};
-  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=1.62cm,
-    minimum height=.82cm,font=\fontsize{5.8}{6.6}\selectfont] (sr) at (9.85,5.50)
-    {\bfseries Remaining\\[-2pt] final retraining only};
-  \draw[merlin arrow] (gkey)--(sa);
-  \draw[merlin arrow] (sa)--(sb);
-  \draw[merlin arrow] (sb)--(sc);
-  \draw[merlin arrow] (sc)--(sr);
-  \node[font=\fontsize{6.2}{7}\selectfont\bfseries,text=projectteal!80!black,
-    text width=9.95cm,align=center] at (5.70,4.58)
-    {Set C isolates supervised labels and pair endpoints; C1/C2 remain explicitly full-catalog transductive representations.};
+\vspace{.20cm}
+\begin{columns}[T,onlytextwidth]
+  \column{.31\textwidth}
+  \textbf{1. Split first}
 
-  % Positive and negative construction
-  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
-    (.10,1.05) rectangle (5.45,4.08);
-  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
-    at (.38,3.78) {Weak-positive predicate};
-  \node[merlin card,draw=projectblue,fill=white,text width=4.50cm,
-    minimum height=.66cm,font=\scriptsize\bfseries] at (2.78,3.08)
-    {\fontsize{7}{8}\selectfont same artist \quad OR \quad high Audio cosine \quad OR \quad high Tag cosine};
-  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=4.70cm]
-    at (.43,2.34) {$\bullet$ Audio and Tag thresholds are fitted on Set A only.};
-  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=4.70cm]
-    at (.43,1.84) {$\bullet$ Same release is a Ranker feature, not a positive rule.};
-  \node[anchor=west,font=\fontsize{6.4}{7.35}\selectfont,text width=4.70cm]
-    at (.43,1.34) {$\bullet$ Same-song pairs are excluded, never labeled positive.};
+  \small Same-song variants remain in one fold.
 
-  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
-    (5.70,1.05) rectangle (11.30,4.08);
-  \node[anchor=west,font=\small\bfseries,text=projectgold!60!black]
-    at (5.98,3.78) {Negatives: 1 positive : 3 negatives};
-  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=2.00cm,
-    minimum height=.72cm,font=\scriptsize] at (7.20,3.02)
-    {\bfseries $\sim75\%$\\[-2pt]\tiny candidate-aware negatives};
-  \node[merlin card,draw=projectink!55,fill=white,text width=1.76cm,
-    minimum height=.72cm,font=\scriptsize] at (9.70,3.02)
-    {\bfseries $\sim25\%$\\[-2pt]\tiny random negatives};
-  \node[font=\fontsize{6.4}{7.35}\selectfont,text width=4.88cm,align=left]
-    at (8.50,2.00) {Before writing: exclude self, same song, known positives and duplicate pairs; keep both endpoints inside the allowed split universe.};
-  \node[font=\fontsize{6.2}{7.1}\selectfont\bfseries,text=projectgold!60!black,
-    text width=4.85cm,align=center] at (8.50,1.30)
-    {Candidate-aware negatives teach local discrimination inside the serving pool.};
+  \column{.31\textwidth}
+  \textbf{2. Sample pairs}
 
-  \node[rounded corners=3pt,fill=projectteal,text=white,text width=9.85cm,
-    align=center,minimum height=.50cm,font=\fontsize{7}{8}\selectfont\bfseries] at (5.70,.48)
-    {The supervision target is multi-view weak-label consistency---not observed user relevance.};
-\end{tikzpicture}
+  \small Weak positives plus candidate-aware and random negatives.
+
+  \column{.31\textwidth}
+  \textbf{3. Fit the scorer}
+
+  \small Thirteen pair features train a weighted Logistic Regression model \autocite{cox1958regression}.
+\end{columns}
+
+\vfill
+{\small\textbf{Output:}
+a learned score for ordering candidates; final serving details remain under optimization.}
 
 \end{frame}
 
-\begin{frame}{Learned Ranker (R)}
+\begin{frame}{R: Selection and Evaluation}
 
-\vspace{-.22cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[rounded corners=2pt,fill=projectpurple,text=white,
-    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (1.03,7.18) {FROZEN PROTOCOL};
+\begin{center}
+  \includegraphics[width=1.0\textwidth]{img/c3/c3_selection_policy.pdf}
+\end{center}
 
-  % Feature accounting
-  \draw[rounded corners=4pt,draw=projectteal!60,fill=projectteal!4]
-    (.10,.95) rectangle (4.25,6.88);
-  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
-    at (.38,6.57) {13 pair features};
-  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=3.40cm,
-    minimum height=.63cm,font=\scriptsize] at (2.18,5.84)
-    {Audio cosine \hfill \textbf{1}};
-  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=3.40cm,
-    minimum height=.63cm,font=\scriptsize] at (2.18,5.08)
-    {Graph cosine + mask \hfill \textbf{2}};
-  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=3.40cm,
-    minimum height=.63cm,font=\scriptsize] at (2.18,4.32)
-    {BFS score + mask \hfill \textbf{2}};
-  \node[merlin card,draw=projectgold,fill=projectgold!9,text width=3.40cm,
-    minimum height=.63cm,font=\scriptsize] at (2.18,3.56)
-    {Tag cosine + mask \hfill \textbf{2}};
-  \node[merlin card,text width=3.40cm,minimum height=.63cm,font=\scriptsize]
-    at (2.18,2.80) {same release + mask \hfill \textbf{2}};
-  \node[merlin card,text width=3.40cm,minimum height=.63cm,font=\scriptsize]
-    at (2.18,2.04) {year gap + mask \hfill \textbf{2}};
-  \node[merlin card,draw=projectink!55,fill=white,text width=3.40cm,
-    minimum height=.72cm,font=\fontsize{7}{8}\selectfont] at (2.18,1.25)
-    {Audio$\times$Tag + Graph$\times$BFS \hfill \textbf{2}};
+\vspace{.10cm}
+\begin{columns}[T,onlytextwidth]
+  \column{.48\textwidth}
+  \textbf{Two evaluation views}
 
-  % Frozen preprocessing and model boundary
-  \draw[rounded corners=4pt,draw=projectblue!60,fill=projectblue!4]
-    (4.50,3.43) rectangle (11.30,6.88);
-  \node[anchor=west,font=\small\bfseries,text=projectblue!75!black]
-    at (4.78,6.57) {Frozen preprocessing vs optimizer};
-  \node[merlin card,text width=1.12cm,minimum height=.58cm,font=\tiny] (rf)
-    at (5.18,5.58) {raw pair features};
-  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=1.70cm,
-    minimum height=.66cm,font=\tiny] (ri) at (7.05,5.58)
-    {Set-A median imputation + feature construction};
-  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=1.52cm,
-    minimum height=.66cm,font=\tiny] (rscl) at (9.25,5.58)
-    {serialized external Set-A StandardScaler};
-  \draw[merlin arrow] (rf)--(ri);
-  \draw[merlin arrow] (ri)--(rscl);
-  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=2.12cm,
-    minimum height=.72cm,font=\tiny] at (9.83,4.48)
-    {Spark LR, L2\\\texttt{standardization=true}};
-  \draw[merlin arrow] (rscl) -- (9.25,4.72);
-  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=4.05cm,align=left]
-    at (6.63,4.37) {External scaler: explicit, serialized, fitted on Set A, and shared by train, B, final retrain, and Python serving.};
-  \node[font=\fontsize{6.2}{7.1}\selectfont\bfseries,text=projectblue!80!black,
-    text width=6.10cm,align=center] at (7.90,3.75)
-    {LR \texttt{standardization=true} is an optimizer/L2 configuration---not a second serving-time transform.};
+  \small Candidate recall audits Stage 1; end-to-end nDCG@20 evaluates the complete pipeline.
 
-  % Model selection and online contract
-  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
-    (4.50,.95) rectangle (11.30,3.18);
-  \node[anchor=west,font=\small\bfseries,text=projectgold!60!black]
-    at (4.78,2.88) {Selection, freezing, and serving};
-  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=6.10cm,align=left]
-    at (7.90,2.35) {Train $\texttt{regParam}\in\{0.001,0.01,0.1\}$ on A $\rightarrow$ compare Audio / Relation / Mixed nDCG@20 on B $\rightarrow$ freeze $\rightarrow$ retrain on A+B+Remaining $\rightarrow$ evaluate C once.};
-  \node[font=\fontsize{6.2}{7.1}\selectfont,text width=6.10cm,align=left]
-    at (7.90,1.55) {Python applies the frozen external mean/std exactly once, then the frozen coefficients and intercept. Rank by raw LR margin; sigmoid is not a calibrated probability; MMR is off by default.};
+  \column{.48\textwidth}
+  \textbf{Fair comparison}
 
-  \node[anchor=south east,font=\tiny\itshape,text=projectteal!80!black]
-    at (11.18,.45) {availability masks preserve the distinction between zero and missing};
-\end{tikzpicture}
+  \small Baselines share queries, candidate pools, filters, budgets, and metrics. Results are stratified into Audio, Mixed, and Relation queries.
+\end{columns}
 
-\end{frame}
+\vspace{.22cm}
+{\small\textbf{Optimization target:}
+R maximizes three-strata macro nDCG@20 under per-stratum guards \autocite{jarvelin2002cumulated}.}
 
-\begin{frame}{Evaluation Protocol, Baselines, and Limitations}
-
-\vspace{-.24cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  \node[rounded corners=2pt,fill=projectpurple,text=white,
-    font=\tiny\bfseries,inner xsep=5pt,inner ysep=3pt] at (10.30,7.18) {FROZEN PROTOCOL};
-
-  % Three layers answer three different questions
-  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=3.18cm,
-    minimum height=.88cm,font=\scriptsize] at (1.88,6.25)
-    {\color{projectblue!75!black}\bfseries 1. Candidate recall\\[-2pt]
-     \mdseries\tiny Did Stage 1 bring positives into the pool?};
-  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=3.18cm,
-    minimum height=.88cm,font=\scriptsize] at (5.70,6.25)
-    {\color{projectteal!80!black}\bfseries 2. Conditional ranking\\[-2pt]
-     \mdseries\tiny How well are recalled positives ordered?};
-  \node[merlin card,draw=projectgold,fill=projectgold!10,text width=3.18cm,
-    minimum height=.88cm,font=\scriptsize] at (9.52,6.25)
-    {\color{projectgold!60!black}\bfseries 3. End-to-end\\[-2pt]
-     \mdseries\tiny What does the complete system return?};
-  \node[font=\fontsize{6.5}{7.4}\selectfont\bfseries,text=projectteal!80!black]
-    at (5.00,5.47) {Macro Recall / Hit Rate / MRR / nDCG \quad + \quad paired bootstrap confidence intervals};
-
-  % Frozen baselines
-  \draw[rounded corners=4pt,draw=projectteal!60,fill=white]
-    (.10,1.02) rectangle (6.42,5.27);
-  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
-    at (.38,4.98) {Frozen scorer baselines};
-  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
-    at (.40,4.45) {\textbf{Random} --- fixed-seed random order};
-  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
-    at (.40,4.02) {\textbf{C1-only} --- Audio cosine};
-  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
-    at (.40,3.59) {\textbf{C2-only} --- Graph cosine; missing Graph ranks lowest};
-  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
-    at (.40,3.16) {\textbf{Handcrafted} --- $0.5\,$Audio $+0.5\,$Graph; fallback to Audio};
-  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
-    at (.40,2.73) {\textbf{BFS heuristic} --- directed $1/(1+d)$};
-  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
-    at (.40,2.30) {\textbf{No-hard-neg} --- LR trained with random negatives only};
-  \node[anchor=west,font=\fontsize{6.15}{7.0}\selectfont,text width=5.75cm]
-    at (.40,1.87) {\textbf{Full MERLIN} --- LR with candidate-aware negatives};
-  \node[font=\fontsize{5.8}{6.7}\selectfont\bfseries,text=projectteal!80!black,
-    text width=5.72cm,align=center] at (3.26,1.32)
-    {Same queries, pool, budget, filters, metrics, and bootstrap---only the scorer changes.};
-
-  % Strata and limits
-  \draw[rounded corners=4pt,draw=projectpurple!60,fill=projectpurple!4]
-    (6.67,3.13) rectangle (11.30,5.27);
-  \node[font=\small\bfseries,text=projectpurple!75!black] at (8.98,4.94)
-    {Weak-label source strata};
-  \node[font=\fontsize{6.3}{7.2}\selectfont,text width=4.05cm,align=center]
-    at (8.98,4.21) {same-artist \quad $\vert$ \quad audio-derived\\[2pt]
-    tag-derived \quad $\vert$ \quad source-exclusive positives};
-  \node[font=\fontsize{5.9}{6.8}\selectfont\bfseries,text=projectpurple!80!black,
-    text width=4.08cm,align=center] at (8.98,3.44)
-    {This separates direct label-rule reproduction from cross-view gains.};
-
-  \draw[rounded corners=4pt,draw=projectgold!70,fill=projectgold!5]
-    (6.67,1.02) rectangle (11.30,2.88);
-  \node[font=\small\bfseries,text=projectgold!60!black] at (8.98,2.62)
-    {Scope and limitations};
-  \node[font=\fontsize{6}{6.9}\selectfont,text width=4.05cm,align=left]
-    at (8.98,1.68) {$\bullet$ Weak labels are not user preference.\\
-    $\bullet$ C1/C2 are transductive representations.\\
-    $\bullet$ C1 depends on precomputed audio summaries.\\
-    $\bullet$ Evidence supports multi-view task consistency, not commercial recommendation effect.};
-
-  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.45cm,
-    align=center,minimum height=.42cm,font=\fontsize{6.2}{7}\selectfont\bfseries]
-    at (5.70,.47) {Candidate ablations report each source @250, union @$\leq$1000, all-minus-one deltas, exclusives, missing signals, and shortages.};
-\end{tikzpicture}
+\vfill
+{\footnotesize\textbf{Current status:}
+Selection is ongoing; Set C supports development comparison, not unbiased generalization.}
 
 \end{frame}
 
