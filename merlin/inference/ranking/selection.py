@@ -1,27 +1,33 @@
-"""Frozen three-point LR selection with deterministic paired bootstrap ties."""
+"""Frozen Set-B selection for LR regularization and the Audio quota."""
 
 from __future__ import annotations
 
+import math
 from statistics import fmean
-from typing import Mapping, Sequence
-
-import numpy as np
-
+from typing import Mapping
 
 REG_PARAMS = (0.001, 0.01, 0.1)
-SELECTION_BOOTSTRAPS = 2_000
-SELECTION_SEED = 42
+AUDIO_QUOTAS = tuple(range(21))
+ADAPTIVE_AUDIO_QUOTAS = tuple(range(16, 21))
+SPECIALIZATION_GROUPS = ("audio_dominant", "relation_dominant", "mixed")
+AUDIO_RETENTION = 0.90
+CONFIRM_MACRO_MARGIN = 0.01
 
 
-def percentile(values: Sequence[float], probability: float) -> float:
-    ordered = sorted(values)
-    if not ordered:
-        raise ValueError("percentile values must not be empty")
-    position = probability * (len(ordered) - 1)
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    fraction = position - lower
-    return ordered[lower] * (1.0 - fraction) + ordered[upper] * fraction
+def _group_means(
+    grouped_scores: Mapping[str, Mapping[str, float]],
+) -> dict[str, float]:
+    if set(grouped_scores) != set(SPECIALIZATION_GROUPS) or any(
+        not scores for scores in grouped_scores.values()
+    ):
+        raise ValueError("validation must contain exactly the three frozen strata")
+    means = {
+        group: fmean(float(value) for value in scores.values())
+        for group, scores in grouped_scores.items()
+    }
+    if any(not math.isfinite(value) for value in means.values()):
+        raise ValueError("validation scores must be finite")
+    return means
 
 
 def paired_difference_ci(
