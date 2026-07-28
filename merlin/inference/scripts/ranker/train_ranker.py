@@ -460,30 +460,35 @@ def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTa
 
 def _score_summary(by_group: Mapping[str, float]) -> dict[str, object]:
     return {
-        "by_group": by_group,
+        "by_group": dict(by_group),
         "three_strata_macro": sum(by_group.values()) / len(QUERY_GROUPS),
     }
 
 
-def _grouped_query_scores(
-    table: ValidationScoreTable,
-    key: object,
-) -> dict[str, dict[str, float]]:
-    grouped = {group: {} for group in QUERY_GROUPS}
-    for query_id, group, value in zip(
+def _validate_score_rows(table: ValidationScoreTable) -> None:
+    lengths = {
+        len(table.query_ids),
+        len(table.query_groups),
+        len(table.selection_folds),
+        len(table.relation_evidence),
+    }
+    if len(lengths) != 1:
+        raise ValueError("Set-B score row lengths differ")
+    seen = set()
+    for query_id, group, fold in zip(
         table.query_ids,
         table.query_groups,
-        table.column(key),
+        table.selection_folds,
         strict=True,
     ):
-        if group not in grouped:
+        if group not in QUERY_GROUPS:
             raise ValueError(f"unknown Set-B query group: {group}")
-        if query_id in grouped[group]:
+        if fold not in {"tune", "confirm"}:
+            raise ValueError(f"unknown Set-B selection fold: {fold}")
+        key = (query_id, group)
+        if key in seen:
             raise ValueError("duplicate Set-B query-group score")
-        grouped[group][query_id] = value
-    if any(not scores for scores in grouped.values()):
-        raise ValueError("Set-B validation is missing a frozen query group")
-    return grouped
+        seen.add(key)
 
 
 def _select_reg_configuration(
