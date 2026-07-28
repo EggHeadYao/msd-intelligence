@@ -290,9 +290,31 @@ def paired_bootstrap_ci(
     clusters: Mapping[str, str] | None = None,
 ) -> dict[str, float | int]:
     """Bootstrap Full-minus-baseline with equal validation-stratum weight."""
+    return paired_bootstrap_cis(
+        rows,
+        baselines=(baseline,),
+        metric=metric,
+        samples=samples,
+        seed=seed,
+        clusters=clusters,
+    )[baseline]
+
+
+def paired_bootstrap_cis(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    baselines: Sequence[str],
+    metric: str,
+    samples: int,
+    seed: int = EVALUATION_SEED,
+    clusters: Mapping[str, str] | None = None,
+) -> dict[str, dict[str, float | int]]:
+    """Bootstrap all baselines with one shared set of resamples."""
     import numpy as np
 
-    baseline_tuple = (baseline,)
+    baseline_tuple = tuple(baselines)
+    if not baseline_tuple or len(set(baseline_tuple)) != len(baseline_tuple):
+        raise ValueError("paired bootstrap baselines must be unique and non-empty")
     values = {
         (str(row["query_track_id"]), str(row["query_group"]), str(row["scorer"])):
         float(row[metric])
@@ -370,35 +392,12 @@ def paired_bootstrap_ci(
     )), axis=0)
     intervals = np.quantile(estimates, (0.025, 0.975), axis=0, method="linear")
     return {
-        "samples": samples,
-        "seed": seed,
-        "point_difference": float(points[0]),
-        "ci95_low": float(intervals[0, 0]),
-        "ci95_high": float(intervals[1, 0]),
-    }
-
-
-def paired_bootstrap_cis(
-    rows: Sequence[Mapping[str, object]],
-    *,
-    baselines: Sequence[str],
-    metric: str,
-    samples: int,
-    seed: int = EVALUATION_SEED,
-    clusters: Mapping[str, str] | None = None,
-) -> dict[str, dict[str, float | int]]:
-    """Bootstrap multiple baselines through the established paired routine."""
-    baseline_tuple = tuple(baselines)
-    if not baseline_tuple or len(set(baseline_tuple)) != len(baseline_tuple):
-        raise ValueError("paired bootstrap baselines must be unique and non-empty")
-    return {
-        baseline: paired_bootstrap_ci(
-            rows,
-            baseline=baseline,
-            metric=metric,
-            samples=samples,
-            seed=seed,
-            clusters=clusters,
-        )
-        for baseline in baseline_tuple
+        baseline: {
+            "samples": samples,
+            "seed": seed,
+            "point_difference": float(points[index]),
+            "ci95_low": float(intervals[0, index]),
+            "ci95_high": float(intervals[1, index]),
+        }
+        for index, baseline in enumerate(baseline_tuple)
     }
