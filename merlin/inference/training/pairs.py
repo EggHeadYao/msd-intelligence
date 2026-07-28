@@ -339,6 +339,24 @@ def _pair_hash(query_id: str, candidate_id: str, source: str) -> str:
     ).hexdigest()
 
 
+_UINT64_MASK = (1 << 64) - 1
+
+
+def _random_query_seed(query_id: str) -> int:
+    digest = hashlib.sha256(
+        f"{PAIR_SEED}\0{query_id}\0random".encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
+def _random_universe_index(seed: int, attempt: int, size: int) -> int:
+    """Map a query-local counter to a stable pseudo-random universe index."""
+    value = (seed + attempt + 0x9E3779B97F4A7C15) & _UINT64_MASK
+    value = ((value ^ (value >> 30)) * 0xBF58476D1CE4E5B9) & _UINT64_MASK
+    value = ((value ^ (value >> 27)) * 0x94D049BB133111EB) & _UINT64_MASK
+    return (value ^ (value >> 31)) % size
+
+
 def _random_negatives(
     query_id: str,
     universe: Sequence[str],
@@ -355,14 +373,14 @@ def _random_negatives(
     selected_set: set[str] = set()
     attempts = 0
     maximum_attempts = max(len(universe) * 4, count * 100)
+    random_seed = _random_query_seed(query_id)
     while len(selected) < count and attempts < maximum_attempts:
         batch_end = min(attempts + max(64, count * 4), maximum_attempts)
         proposals = []
         for attempt in range(attempts, batch_end):
-            digest = hashlib.sha256(
-                f"{PAIR_SEED}\0{query_id}\0random\0{attempt}".encode("utf-8")
-            ).digest()
-            proposals.append(universe[int.from_bytes(digest[:8], "big") % len(universe)])
+            proposals.append(
+                universe[_random_universe_index(random_seed, attempt, len(universe))]
+            )
         predicate_ids = list(dict.fromkeys(
             candidate_id
             for candidate_id in proposals
@@ -463,6 +481,7 @@ def sample_random_negatives_many_by_query(
             "selected_set": set(),
             "attempts": 0,
             "maximum_attempts": max(len(universe) * 4, count * 100),
+            "random_seed": _random_query_seed(query_id),
         }
     rejection_counts: dict[str, Counter[str]] = {
         query_id: Counter() for query_id in states
@@ -479,11 +498,12 @@ def sample_random_negatives_many_by_query(
             batch_end = min(attempts + max(64, target * 4), maximum)
             proposals = []
             for attempt in range(attempts, batch_end):
-                digest = hashlib.sha256(
-                    f"{PAIR_SEED}\0{query_id}\0random\0{attempt}".encode("utf-8")
-                ).digest()
                 proposals.append(
-                    universe[int.from_bytes(digest[:8], "big") % len(universe)]
+                    universe[_random_universe_index(
+                        int(state["random_seed"]),
+                        attempt,
+                        len(universe),
+                    )]
                 )
             proposals_by_query[query_id] = proposals
             rejected = state["rejected"]
