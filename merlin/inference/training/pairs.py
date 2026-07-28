@@ -570,6 +570,21 @@ class PreparedQueryPairs:
     rejection_counts: Counter[str]
 
 
+def _candidate_sources(
+    candidates: CandidateCollection,
+    recall_evidence: object,
+) -> frozenset[str]:
+    if isinstance(candidates, EncodedCandidates):
+        mask = int(candidates.source_masks[int(recall_evidence)])
+        return frozenset(
+            source
+            for index, source in enumerate(SOURCE_NAMES)
+            if mask & (1 << index)
+        )
+    sources, _scores = recall_evidence  # type: ignore[misc]
+    return frozenset(str(source) for source in sources)
+
+
 def _empty_pair_audit() -> dict[str, object]:
     return {
         "positive_count": 0,
