@@ -425,47 +425,40 @@ def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTa
         frame.groupBy("query_track_id")
         .applyInPandas(
             score_query,
-            "query_track_id string, query_group string, score_values array<double>",
+            "query_track_id string, query_group string, selection_fold string, "
+            "relation_evidence double, score_values array<double>",
         )
         .collect()
     )
-    keys = tuple(reg_by_scorer.get(name, name) for name in scorer_names)
-    collected = {key: [] for key in keys}
+    keys = tuple(config_by_scorer.get(name, name) for name in scorer_names)
     query_ids = []
     query_groups = []
+    selection_folds = []
+    relation_evidence = []
+    score_rows = []
     for row in rows:
         values = row["score_values"]
         if len(values) != len(keys):
             raise ValueError("Set-B wide score vector length mismatch")
         query_ids.append(str(row["query_track_id"]))
         query_groups.append(str(row["query_group"]))
-        for key, value in zip(keys, values, strict=True):
-            collected[key].append(float(value))
+        selection_folds.append(str(row["selection_fold"]))
+        relation_evidence.append(float(row["relation_evidence"]))
+        score_rows.append(values)
+    score_matrix = np.asarray(score_rows, dtype=np.float64)
     return ValidationScoreTable(
         query_ids=tuple(query_ids),
         query_groups=tuple(query_groups),
-        columns={key: tuple(values) for key, values in collected.items()},
+        selection_folds=tuple(selection_folds),
+        relation_evidence=tuple(relation_evidence),
+        columns={
+            key: score_matrix[:, index]
+            for index, key in enumerate(keys)
+        },
     )
 
 
-def _validation_summary(
-    table: ValidationScoreTable,
-    key: object,
-) -> dict[str, object]:
-    values = table.column(key)
-    grouped = {
-        group: [
-            value
-            for value, query_group in zip(values, table.query_groups, strict=True)
-            if query_group == group
-        ]
-        for group in QUERY_GROUPS
-    }
-    if any(not values for values in grouped.values()):
-        raise ValueError("Set-B validation is missing a frozen query group")
-    by_group = {
-        group: sum(values) / len(values) for group, values in grouped.items()
-    }
+def _score_summary(by_group: Mapping[str, float]) -> dict[str, object]:
     return {
         "by_group": by_group,
         "three_strata_macro": sum(by_group.values()) / len(QUERY_GROUPS),
