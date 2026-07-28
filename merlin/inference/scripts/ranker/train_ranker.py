@@ -88,18 +88,21 @@ def parse_parents(values: list[str]) -> dict[str, Path]:
     return parents
 
 
-def _idcg20(positive_count: int) -> float:
-    return sum(
-        1.0 / math.log2(rank + 1.0)
-        for rank in range(1, min(int(positive_count), 20) + 1)
-    )
-
-
 def load_frozen_preprocessing(
     scaler_path: Path,
     tuning_manifest_path: Path,
     fixed_reg_param: float,
-) -> tuple[dict[str, float], tuple[float, ...], tuple[float, ...], tuple[str, ...]]:
+) -> tuple[
+    dict[str, float],
+    tuple[float, ...],
+    tuple[float, ...],
+    tuple[str, ...],
+    int,
+    float,
+    int,
+    float,
+    bool,
+]:
     with scaler_path.open("r", encoding="utf-8") as stream:
         scaler = json.load(stream)
     with tuning_manifest_path.open("r", encoding="utf-8") as stream:
@@ -130,7 +133,39 @@ def load_frozen_preprocessing(
     constant_features = tuple(str(name) for name in scaler.get("constant_features", ()))
     if tuple(tuning.get("constant_features", ())) != constant_features:
         raise ValueError("frozen constant-feature contract mismatch")
-    return fill_values, means, stds, constant_features
+    selection = tuning.get("selection")
+    if not isinstance(selection, dict):
+        raise ValueError("frozen tuning manifest is missing selection metadata")
+    audio_quota = int(selection.get("selected_audio_quota", -1))
+    if audio_quota not in AUDIO_QUOTAS:
+        raise ValueError("frozen tuning audio quota is outside the selection grid")
+    gate_threshold = float(
+        selection.get("selected_relation_gate_threshold", -1.0)
+    )
+    if not math.isfinite(gate_threshold) or gate_threshold < 0.0:
+        raise ValueError("frozen tuning relation gate threshold is invalid")
+    high_audio_quota = int(
+        selection.get("selected_high_evidence_audio_quota", audio_quota)
+    )
+    high_gate_threshold = float(
+        selection.get("selected_high_relation_gate_threshold", gate_threshold)
+    )
+    if high_audio_quota not in AUDIO_QUOTAS or high_audio_quota > audio_quota:
+        raise ValueError("frozen high-evidence Audio quota is invalid")
+    if not math.isfinite(high_gate_threshold) or high_gate_threshold < gate_threshold:
+        raise ValueError("frozen high relation gate threshold is invalid")
+    publishable_fusion = selection.get("publishable_fusion") is True
+    return (
+        fill_values,
+        means,
+        stds,
+        constant_features,
+        audio_quota,
+        gate_threshold,
+        high_audio_quota,
+        high_gate_threshold,
+        publishable_fusion,
+    )
 
 
 def load_frozen_initial_parameters(
