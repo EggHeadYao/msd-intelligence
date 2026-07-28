@@ -93,9 +93,16 @@ class PairFeatureComputer(Protocol):
 
 
 class Ranker(Protocol):
-    """Turn named pair features into one comparable relevance score."""
+    """Score pairs and apply the frozen query-local ranking policy."""
 
     @property
     def feature_schema_version(self) -> str: ...
 
     def score(self, features: Mapping[str, float]) -> float: ...
+
+    def rank(
+        self,
+        features: Sequence[Mapping[str, float]],
+        candidate_ids: Sequence[str],
+        limit: int,
+    ) -> Sequence[tuple[int, float]]: ...
