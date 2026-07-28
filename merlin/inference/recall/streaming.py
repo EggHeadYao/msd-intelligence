@@ -519,9 +519,7 @@ class StreamingRecallEngine:
     ) -> tuple[np.ndarray, np.ndarray]:
         if template is None:
             return self._empty_group()
-        groups: list[np.ndarray] = []
-        distances: list[np.ndarray] = []
-        similarities: list[np.ndarray] = []
+        artist_groups: list[tuple[int, float, np.ndarray]] = []
         query_song = int(self.codec.song_codes[query_code])
         for index, (distance, similarity) in enumerate(
             zip(template.distances, template.similarities, strict=True)
@@ -533,22 +531,40 @@ class StreamingRecallEngine:
                 else codes[self.codec.song_codes[codes] != query_song]
             )[: self.bfs.per_artist_cap]
             if len(selected):
-                groups.append(selected)
-                distances.append(
-                    np.full(len(selected), int(distance), dtype=np.uint8)
-                )
-                similarities.append(
-                    np.full(len(selected), float(similarity), dtype=np.float32)
-                )
-        if not groups:
+                artist_groups.append((int(distance), float(similarity), selected))
+        if not artist_groups:
             return self._empty_group()
-        codes = np.concatenate(groups)
-        hops = np.concatenate(distances)
-        tag_scores = np.concatenate(similarities)
-        order = np.lexsort((codes, -tag_scores, hops))[: self.limits["bfs"]]
+        code_groups: list[np.ndarray] = []
+        score_groups: list[np.ndarray] = []
+        selected_count = 0
+        for distance in sorted({group[0] for group in artist_groups}):
+            same_depth = sorted(
+                (group for group in artist_groups if group[0] == distance),
+                key=lambda group: (-group[1], int(group[2][0])),
+            )
+            matrix = np.full(
+                (len(same_depth), self.bfs.per_artist_cap),
+                -1,
+                dtype=np.int32,
+            )
+            for row, (_distance, _similarity, codes) in enumerate(same_depth):
+                matrix[row, : len(codes)] = codes
+            flattened = matrix.T.reshape(-1)
+            flattened = flattened[flattened >= 0]
+            remaining = self.backfill_limits["bfs"] - selected_count
+            flattened = flattened[:remaining]
+            code_groups.append(flattened)
+            score_groups.append(np.full(
+                len(flattened),
+                1.0 / (1.0 + distance),
+                dtype=np.float32,
+            ))
+            selected_count += len(flattened)
+            if selected_count >= self.backfill_limits["bfs"]:
+                break
         return (
-            codes[order].astype(np.int32, copy=False),
-            (1.0 / (1.0 + hops[order])).astype(np.float32, copy=False),
+            np.concatenate(code_groups),
+            np.concatenate(score_groups),
         )
 
     def _prepare_tag_templates(
