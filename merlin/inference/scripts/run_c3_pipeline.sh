@@ -309,3 +309,64 @@ run_step set-b-candidates "$set_b_pool" "$set_b_pool_manifest" -- \
   --output "$set_b_pool" \
   --manifest "$set_b_pool_manifest" \
   --min-free-gb "$MIN_FREE_GB"
+
+run_step validation-groups \
+  "$validation_thresholds" "$validation_positives" "$validation_pairs" \
+  "$validation_groups_manifest" -- \
+  "$MERLIN_SPARK_SUBMIT" \
+  --master "local[$VALIDATION_SPARK_CORES]" \
+  --driver-memory "$VALIDATION_DRIVER_MEMORY" \
+  "${spark_common[@]}" \
+  "$MERLIN_ROOT/merlin/inference/scripts/ranker/build_validation_groups.py" \
+  --candidate-pool "$set_b_pool" \
+  --candidate-pool-manifest "$set_b_pool_manifest" \
+  --thresholds "$validation_thresholds" \
+  --positives "$validation_positives" \
+  --validation-pairs "$validation_pairs" \
+  --manifest "$validation_groups_manifest" \
+  --apply-split set_b \
+  --scope formal \
+  --audio-pair-engine numpy \
+  --audio-block-size 256 \
+  --shuffle-partitions "$SHUFFLE_PARTITIONS" \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb "$VALIDATION_MIN_FREE_GB"
+
+run_step validation-features "$validation_features" "$validation_features_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.export_ranker_features \
+  --pair-kind validation \
+  --pairs "$validation_pairs" \
+  --pairs-manifest "$validation_groups_manifest" \
+  --validation-positives "$validation_positives" \
+  --validation-thresholds "$validation_thresholds" \
+  --output "$validation_features" \
+  --manifest "$validation_features_manifest" \
+  --stage tuning \
+  --scope formal \
+  --min-free-gb "$MIN_FREE_GB"
+
+run_step tune-model \
+  "$tuning_model/training_manifest.json" \
+  "$tuning_model/ranker_coefficients.json" \
+  "$tuning_model/ranker_scaler.json" -- \
+  "$MERLIN_SPARK_SUBMIT" \
+  --master "local[$MODEL_SPARK_CORES]" \
+  --driver-memory "$MODEL_DRIVER_MEMORY" \
+  "${spark_common[@]}" \
+  --conf spark.memory.fraction=0.40 \
+  "$MERLIN_SPARK_ENTRY" \
+  --train-features "$tuning_features" \
+  --train-features-manifest "$tuning_features_manifest" \
+  --validation-features "$validation_features" \
+  --validation-features-manifest "$validation_features_manifest" \
+  --output "$tuning_model" \
+  --stage tuning \
+  --scope formal \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb "$VALIDATION_MIN_FREE_GB" \
+  --max-block-size-mb "$MAX_BLOCK_SIZE_MB" \
+  --parent "audio_index_manifest=$MERLIN_ROOT/parquets_new/merlin/audio/index_audio_manifest.json" \
+  --parent "graph_index_manifest=$MERLIN_ROOT/parquets_new/merlin/graph/index_graph_manifest.json" \
+  --parent "candidate_policy_manifest=$candidate_policy" \
+  --parent "tag_idf=$tag_idf" \
+  --parent "validation_features_manifest=$validation_features_manifest"
