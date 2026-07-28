@@ -370,3 +370,62 @@ run_step tune-model \
   --parent "candidate_policy_manifest=$candidate_policy" \
   --parent "tag_idf=$tag_idf" \
   --parent "validation_features_manifest=$validation_features_manifest"
+
+run_step retrain-data \
+  "$training_pairs" "$training_pairs_manifest" \
+  "$training_features" "$training_features_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
+  --stage final_retrain \
+  --scope formal \
+  --split-assignments "$split_assignments" \
+  --split-manifest "$split_manifest" \
+  --thresholds "$weak_thresholds" \
+  --output "$training_pairs" \
+  --manifest "$training_pairs_manifest" \
+  --features-output "$training_features" \
+  --features-manifest "$training_features_manifest" \
+  --batch-size 256 \
+  --rows-per-file 250000 \
+  --positive-neighbor-limit 1001 \
+  --min-free-gb "$MIN_FREE_GB"
+
+run_step ablation-data \
+  "$ablation_pairs" "$ablation_pairs_manifest" \
+  "$ablation_features" "$ablation_features_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
+  --stage final_retrain \
+  --negative-mode random_only \
+  --scope formal \
+  --split-assignments "$split_assignments" \
+  --split-manifest "$split_manifest" \
+  --thresholds "$weak_thresholds" \
+  --full-training-pairs "$training_pairs" \
+  --full-training-pairs-manifest "$training_pairs_manifest" \
+  --full-features "$training_features" \
+  --full-features-manifest "$training_features_manifest" \
+  --output "$ablation_pairs" \
+  --manifest "$ablation_pairs_manifest" \
+  --features-output "$ablation_features" \
+  --features-manifest "$ablation_features_manifest" \
+  --rows-per-file 250000 \
+  --min-free-gb "$MIN_FREE_GB"
+
+selected_reg() {
+  local manifest=$tuning_model/training_manifest.json
+  if ((DRY_RUN)); then
+    printf '<selected_reg_param>'
+    return 0
+  fi
+  [[ -f $manifest ]] || die "missing tuning manifest: $manifest"
+  "$MERLIN_PYTHON" -c \
+    'import json, sys; print(json.load(open(sys.argv[1]))["selected_reg_param"])' \
+    "$manifest"
+}
+
+FULL_MODEL_INDEX=$(step_index full-model)
+ABLATION_MODEL_INDEX=$(step_index ablation-model)
+if ((FROM_INDEX <= ABLATION_MODEL_INDEX && TO_INDEX >= FULL_MODEL_INDEX)); then
+  MERLIN_REG=$(selected_reg)
+else
+  MERLIN_REG=unused
+fi
