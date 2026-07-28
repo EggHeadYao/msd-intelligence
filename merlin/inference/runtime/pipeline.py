@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
-from ..recall.policy import validate_canonical_policy
+from ..recall.policy import validate_canonical_backfill, validate_canonical_policy
 from ..retrieval.faiss import FaissTrackIndex
 from ..recall import recall_candidates
 from ..types import (
@@ -95,6 +95,8 @@ class MerlinPipeline:
     limit: int = 20
     candidate_limit: int = 1_000
     canonical: bool = False
+    backfill_limits: Mapping[str, int] | None = None
+    backfill_order: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         names = [retriever.name for retriever in self.retrievers]
@@ -108,6 +110,16 @@ class MerlinPipeline:
             raise ValueError("retriever limits must be positive")
         if self.candidate_limit <= 0 or sum(limits) > self.candidate_limit:
             raise ValueError("retriever limits exceed candidate union cap")
+        if self.backfill_limits is not None:
+            if set(self.backfill_limits) != set(self.retriever_limits):
+                raise ValueError("runtime backfill limits must cover all retrievers")
+            if any(
+                int(self.backfill_limits[name]) < int(limit)
+                for name, limit in self.retriever_limits.items()
+            ):
+                raise ValueError("runtime backfill cannot reduce a primary quota")
+            if set(self.backfill_order) - set(self.retriever_limits):
+                raise ValueError("runtime backfill order contains an unknown source")
         if self.feature_computer.schema_version != self.ranker.feature_schema_version:
             raise ValueError("feature computer and ranker schema versions differ")
         if self.limit <= 0:
@@ -120,6 +132,12 @@ class MerlinPipeline:
                 self.candidate_limit,
                 self.limit,
             )
+            if self.backfill_limits is None:
+                raise ValueError("canonical runtime requires a backfill policy")
+            validate_canonical_backfill(
+                self.backfill_limits,
+                self.backfill_order,
+            )
 
     def recommend(self, query_track_id: str, k: int | None = None) -> list[Recommendation]:
         """Recall candidates and rank tracks with the frozen query-local scorer."""
@@ -130,34 +148,32 @@ class MerlinPipeline:
             raise ValueError("k must be between 1 and limit")
 
         candidates, _audit = self.recall(query_track_id)
+        compute_many = getattr(self.feature_computer, "compute_many", None)
         candidate_features = [
-            dict(self.feature_computer.compute(query_track_id, candidate))
-            for candidate in candidates
+            dict(features)
+            for features in (
+                compute_many(query_track_id, candidates)
+                if compute_many is not None
+                else [
+                    self.feature_computer.compute(query_track_id, candidate)
+                    for candidate in candidates
+                ]
+            )
         ]
-        relevance_scores = tuple(
-            self.ranker.score(features) for features in candidate_features
-        )
-        if len(relevance_scores) != len(candidates):
-            raise ValueError("ranker returned the wrong number of query scores")
-        scored = list(zip(
-            candidates,
-            relevance_scores,
+        ranked = self.ranker.rank(
             candidate_features,
-            strict=True,
-        ))
-        ranked = sorted(
-            scored,
-            key=lambda item: (-item[1], item[0].track_id),
+            [candidate.track_id for candidate in candidates],
+            self.limit,
         )[:limit]
         return [
             Recommendation(
-                track_id=candidate.track_id,
+                track_id=candidates[index].track_id,
                 relevance_score=relevance_score,
                 rank=rank,
-                sources=candidate.sources,
-                features=features,
+                sources=candidates[index].sources,
+                features=candidate_features[index],
             )
-            for rank, (candidate, relevance_score, features) in enumerate(ranked, start=1)
+            for rank, (index, relevance_score) in enumerate(ranked, start=1)
         ]
 
     def recall(self, query_track_id: str) -> tuple[list[Candidate], RecallAudit]:
@@ -167,4 +183,6 @@ class MerlinPipeline:
             self.retriever_limits,
             self.candidate_limit,
             query_track_id,
+            self.backfill_limits,
+            self.backfill_order,
         )
