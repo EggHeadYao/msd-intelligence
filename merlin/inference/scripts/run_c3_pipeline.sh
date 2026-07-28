@@ -429,3 +429,61 @@ if ((FROM_INDEX <= ABLATION_MODEL_INDEX && TO_INDEX >= FULL_MODEL_INDEX)); then
 else
   MERLIN_REG=unused
 fi
+
+run_step full-model \
+  "$MERLIN_RANKER_ROOT/training_manifest.json" \
+  "$MERLIN_RANKER_ROOT/ranker_coefficients.json" \
+  "$MERLIN_RANKER_ROOT/ranker_scaler.json" -- \
+  "$MERLIN_SPARK_SUBMIT" \
+  --master "local[$MODEL_SPARK_CORES]" \
+  --driver-memory "$MODEL_DRIVER_MEMORY" \
+  "${spark_common[@]}" \
+  --conf spark.memory.fraction=0.40 \
+  "$MERLIN_SPARK_ENTRY" \
+  --train-features "$training_features" \
+  --train-features-manifest "$training_features_manifest" \
+  --output "$MERLIN_RANKER_ROOT" \
+  --stage final_retrain \
+  --training-variant full \
+  --fixed-reg-param "$MERLIN_REG" \
+  --frozen-scaler "$tuning_model/ranker_scaler.json" \
+  --frozen-tuning-manifest "$tuning_model/training_manifest.json" \
+  --scope formal \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb "$MODEL_MIN_FREE_GB" \
+  --max-block-size-mb "$MAX_BLOCK_SIZE_MB" \
+  --parent "audio_index_manifest=$MERLIN_ROOT/parquets_new/merlin/audio/index_audio_manifest.json" \
+  --parent "graph_index_manifest=$MERLIN_ROOT/parquets_new/merlin/graph/index_graph_manifest.json" \
+  --parent "candidate_policy_manifest=$candidate_policy" \
+  --parent "tag_idf=$tag_idf" \
+  --parent "training_pairs_manifest=$training_pairs_manifest"
+
+run_step ablation-model \
+  "$ablation_model/training_manifest.json" \
+  "$ablation_model/ranker_coefficients.json" \
+  "$ablation_model/ranker_scaler.json" -- \
+  "$MERLIN_SPARK_SUBMIT" \
+  --master "local[$MODEL_SPARK_CORES]" \
+  --driver-memory "$MODEL_DRIVER_MEMORY" \
+  "${spark_common[@]}" \
+  --conf spark.memory.fraction=0.40 \
+  "$MERLIN_SPARK_ENTRY" \
+  --train-features "$ablation_features" \
+  --train-features-manifest "$ablation_features_manifest" \
+  --training-pairs-manifest "$ablation_pairs_manifest" \
+  --base-train-features "$training_features" \
+  --base-train-features-manifest "$training_features_manifest" \
+  --output "$ablation_model" \
+  --stage final_retrain \
+  --training-variant no_hard_neg \
+  --fixed-reg-param "$MERLIN_REG" \
+  --frozen-scaler "$tuning_model/ranker_scaler.json" \
+  --frozen-tuning-manifest "$tuning_model/training_manifest.json" \
+  --scope formal \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb "$MODEL_MIN_FREE_GB" \
+  --max-block-size-mb "$MAX_BLOCK_SIZE_MB" \
+  --parent "audio_index_manifest=$MERLIN_ROOT/parquets_new/merlin/audio/index_audio_manifest.json" \
+  --parent "graph_index_manifest=$MERLIN_ROOT/parquets_new/merlin/graph/index_graph_manifest.json" \
+  --parent "candidate_policy_manifest=$candidate_policy" \
+  --parent "tag_idf=$tag_idf"
