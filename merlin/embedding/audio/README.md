@@ -353,7 +353,7 @@ can run `--mode artifact`, but cannot run formal `l1` or `all` validation becaus
 the frozen L1-1 contract compares pre-PCA with PCA-128.
 
 The same frozen preprocessing contract is reused by C3 when it reconstructs
-cleaned pre-PCA vectors for Set-B and Set-C validation groups. Changing C1
+cleaned pre-PCA vectors for Set-B tune/confirm and Set-C development groups. Changing C1
 feature order, medians, clipping, time-signature encoding, scaler statistics, or
 dimension metadata therefore requires the corresponding manifest contract to
 change; downstream code must never silently refit these values.
