@@ -155,7 +155,7 @@ z
     <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans'; fill: #173a38" transform="translate(569.327403 62.606479)">Dev</text>
    </g>
    <g id="text_6">
-    <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #236b65" x="320.94" y="114.116359" transform="rotate(-0 320.94 114.116359)">Same queries  •  same pool  •  same budget</text>
+    <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #236b65" x="320.94" y="114.116359" transform="rotate(-0 320.94 114.116359)">Same queries / same pool / same budget</text>
    </g>
   </g>
  </g>

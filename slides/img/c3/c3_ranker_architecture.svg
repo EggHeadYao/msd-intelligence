@@ -159,7 +159,7 @@ z
     <text style="font-weight: 700; font-size: 10.5px; font-family: 'DejaVu Sans'; fill: #173a38" transform="translate(585.868622 89.471654)">Top-20</text>
    </g>
    <g id="text_6">
-    <text style="font-size: 10.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #7b8584" x="200.0772" y="140.829184" transform="rotate(-0 200.0772 140.829184)">Audio  •  Graph  •  BFS  •  Tag  •  Release  •  Year</text>
+    <text style="font-size: 10.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #7b8584" x="200.0772" y="140.829184" transform="rotate(-0 200.0772 140.829184)">Audio / Graph / BFS / Tag / Release / Year</text>
    </g>
   </g>
  </g>
