@@ -45,15 +45,17 @@ def _macro(values: Mapping[str, float]) -> float:
     return fmean(values[group] for group in SPECIALIZATION_GROUPS)
 
 
-def _three_strata_mean(
-    grouped_scores: Mapping[str, Mapping[str, float]],
-) -> float:
-    if not grouped_scores or any(not scores for scores in grouped_scores.values()):
-        raise ValueError("three-strata scores must be non-empty")
-    values = tuple(
-        float(value)
-        for scores in grouped_scores.values()
-        for value in scores.values()
+def _passes_release_guards(
+    values: Mapping[str, float],
+    c1: Mapping[str, float],
+    *,
+    macro_margin: float,
+) -> bool:
+    return (
+        values["audio_dominant"] >= AUDIO_RETENTION * c1["audio_dominant"]
+        and values["relation_dominant"] > c1["relation_dominant"]
+        and values["mixed"] >= c1["mixed"]
+        and _macro(values) >= (1.0 + macro_margin) * _macro(c1)
     )
     if not all(np.isfinite(value) for value in values):
         raise ValueError("three-strata scores must be finite")
