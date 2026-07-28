@@ -66,6 +66,53 @@ def query_relation_evidence(
     return _query_signals(features, include_audio=False)[1]
 
 
+def quota_interleave_indices(
+    candidate_ids: Sequence[str],
+    learned_scores: Sequence[float],
+    audio_scores: Sequence[float],
+    audio_quota: int,
+    *,
+    limit: int = RANKING_LIMIT,
+) -> tuple[int, ...]:
+    """Merge learned and C1 orders with a deterministic Top-20 quota."""
+    size = len(candidate_ids)
+    if len(learned_scores) != size or len(audio_scores) != size:
+        raise ValueError("ranking vector lengths differ")
+    if len(set(candidate_ids)) != size:
+        raise ValueError("ranking candidate IDs must be unique")
+    if not 0 <= audio_quota <= RANKING_LIMIT:
+        raise ValueError("audio quota must be between 0 and 20")
+    if not 1 <= limit <= RANKING_LIMIT:
+        raise ValueError("ranking limit must be between 1 and 20")
+    if any(
+        not math.isfinite(float(value))
+        for value in (*learned_scores, *audio_scores)
+    ):
+        raise ValueError("ranking scores must be finite")
+    if audio_quota == RANKING_LIMIT:
+        return tuple(sorted(
+            range(size),
+            key=lambda index: (-audio_scores[index], candidate_ids[index]),
+        )[:limit])
+    if audio_quota == 0:
+        return tuple(sorted(
+            range(size),
+            key=lambda index: (-learned_scores[index], candidate_ids[index]),
+        )[:limit])
+    learned_order = tuple(sorted(
+        range(size), key=lambda index: (-learned_scores[index], candidate_ids[index])
+    ))
+    audio_order = tuple(sorted(
+        range(size), key=lambda index: (-audio_scores[index], candidate_ids[index])
+    ))
+    return quota_interleave_ordered_indices(
+        learned_order,
+        audio_order,
+        audio_quota,
+        limit=limit,
+    )
+
+
 def quota_interleave_ordered_indices(
     learned_order: Sequence[int],
     audio_order: Sequence[int],
