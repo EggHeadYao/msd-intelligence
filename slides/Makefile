@@ -3,6 +3,10 @@ OUTPUT_ROOT ?= ../../docs_output
 OUTDIR ?= $(OUTPUT_ROOT)/build
 TARGET := slides
 OUTPUT_PDF := $(OUTPUT_ROOT)/$(TARGET).pdf
+C1_FIGURES := img/c1/c1_audio_pipeline.pdf \
+	img/c1/c1_audio_pipeline.svg \
+	img/c1/c1_similarity_intervals.pdf \
+	img/c1/c1_similarity_intervals.svg
 C2_FIGURES := img/c2/c2_graph_schema.pdf \
 	img/c2/c2_walk_policy.pdf \
 	img/c2/c2_masked_results.pdf \
@@ -15,7 +19,7 @@ all: $(OUTPUT_PDF)
 $(OUTPUT_PDF): $(OUTDIR)/$(TARGET).pdf | $(OUTPUT_ROOT)
 	cp $(OUTDIR)/$(TARGET).pdf $(OUTPUT_PDF)
 
-$(OUTDIR)/$(TARGET).pdf: $(TARGET).tex $(TARGET).bib focs-slides.sty $(C2_FIGURES) | $(OUTDIR)
+$(OUTDIR)/$(TARGET).pdf: $(TARGET).tex $(TARGET).bib focs-slides.sty $(C1_FIGURES) $(C2_FIGURES) | $(OUTDIR)
 	$(LATEXMK) -pdf -interaction=nonstopmode -halt-on-error -outdir=$(OUTDIR) $(TARGET).tex
 
 $(OUTDIR):

@@ -160,152 +160,61 @@
 
 \end{frame}
 
-\begin{frame}{C1: Input, Processing, Output, and Role}
+\begin{frame}{C1: Audio to 128D Retrieval}
 
-\vspace{-.18cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  % C1 transformation pipeline
-  \node[merlin card,draw=projectink,fill=projectink,text=white,
-    text width=1.08cm,inner xsep=2pt,minimum height=1.04cm] (c1raw) at (.72,6.12)
-    {\bfseries 563D\\[-2pt]\scriptsize nullable raw view};
-  \node[merlin card,draw=projectblue,fill=projectblue!11,
-    text width=1.72cm,inner xsep=2pt,minimum height=1.04cm] (prep) at (2.40,6.12)
-    {\color{projectblue!70!black}\bfseries Preprocess\\[-2pt]
-     \mdseries\tiny median fill + masks\\[-1pt] encodings + clip/log};
-  \node[merlin card,draw=projectblue!70,fill=white,
-    text width=1.52cm,inner xsep=2pt,minimum height=1.04cm,
-    font=\fontsize{7}{8}\selectfont] (matrix) at (4.42,6.12)
-    {\bfseries 577 candidates\\[-2pt]\mdseries\tiny after engineering\\[-1pt]
-     $-14$ constants\\[-1pt]\bfseries 563 selected};
-  \node[merlin card,draw=projectteal,fill=projectteal!12,
-    text width=1.78cm,inner xsep=2pt,minimum height=1.04cm] (pca) at (6.52,6.12)
-    {\color{projectteal!80!black}\bfseries Spark ML\\[-2pt]
-     \mdseries\tiny StandardScaler\\[-1pt] center + unit std\\[-1pt] PCA-128};
-  \node[merlin card,draw=projectteal!75,fill=white,
-    text width=1.20cm,inner xsep=2pt,minimum height=1.04cm] (embed) at (8.55,6.12)
-    {\bfseries Audio vector\\[-2pt]\mdseries\scriptsize 128D + L2 norm};
-  \node[merlin card,draw=projectgold,fill=projectgold!14,
-    text width=1.36cm,inner xsep=2pt,minimum height=1.04cm] (c1faiss) at (10.45,6.12)
-    {\color{projectgold!60!black}\bfseries Retrieval role\\[-2pt]\mdseries\tiny IndexFlatIP\\[-1pt] cap $\leq 250$};
+\begin{center}
+  \includegraphics[width=.98\textwidth]{img/c1/c1_audio_pipeline.pdf}
+\end{center}
 
-  \draw[merlin arrow] (c1raw) -- (prep);
-  \draw[merlin arrow] (prep) -- (matrix);
-  \draw[merlin arrow] (matrix) -- (pca);
-  \draw[merlin arrow] (pca) -- (embed);
-  \draw[merlin arrow] (embed) -- (c1faiss);
+\vspace{.12cm}
+\begin{columns}[T,onlytextwidth]
+  \column{.48\textwidth}
+  \textbf{What C1 learns from}
 
-  \node[merlin note,text width=10.2cm,font=\fontsize{7}{8}\selectfont] at (5.70,4.64)
-    {The formal artifact starts and ends at \textbf{563 dimensions}, but the columns change after engineering and constant removal.};
+  \small Timbre and pitch; rhythm, tempo, and duration; loudness, confidence, and temporal segment summaries.
 
-  % Inputs, independence boundary, and produced artifacts
-  \node[merlin card,draw=projectblue,fill=projectblue!7,
-    minimum width=3.42cm,minimum height=2.30cm,text width=3.02cm] at (1.80,2.55)
-    {\color{projectblue!70!black}\bfseries Audio input\\[3pt]
-     \mdseries\scriptsize Timbre + pitch summaries\\
-     rhythm + tempo + duration\\
-     loudness + confidence\\
-     segment-level statistics\\
-     availability information};
+  \column{.48\textwidth}
+  \textbf{What C1 publishes}
 
-  \node[merlin card,draw=projectpurple,fill=projectpurple!7,
-    minimum width=3.42cm,minimum height=2.30cm,text width=3.02cm] at (5.70,2.55)
-    {\color{projectpurple!75!black}\bfseries Acoustic independence\\[3pt]
-     \mdseries\scriptsize C1 does \textbf{not} use\\[2pt]
-     artist \quad release\\
-     year \quad popularity\\[4pt]
-     \color{projectink}\scriptsize Metadata-independent audio retrieval.};
+  \small One million finite unit vectors, a frozen preprocessing/scaler/PCA bundle, and an exact FAISS index with explicit track mapping.
+\end{columns}
 
-  \node[merlin card,draw=projectteal,fill=projectteal!7,
-    minimum width=3.42cm,minimum height=2.30cm,text width=3.02cm] at (9.60,2.55)
-    {\color{projectteal!80!black}\bfseries Output vs retrieval\\[3pt]
-     \mdseries\fontsize{7}{8}\selectfont C1: $1$M $\times 128$D normalized embeddings\\
-     frozen metadata + scaler + PCA\\[2pt]
-     FAISS: exact IP index + ID mapping\\
-     \color{projectink}Audio cap: $\leq 250$/query};
+\vspace{.30cm}
+{\small\textbf{Evidence boundary.} Artist, release, year, and popularity never enter C1; each query contributes at most 250 audio candidates.}
 
-  \node[rounded corners=3pt,fill=projectteal,text=white,
-    minimum width=8.1cm,minimum height=.60cm,font=\small\bfseries]
-    at (5.70,.06) {C1 maps nullable audio features into a compact retrieval space.};
-\end{tikzpicture}
+\vfill
+{\footnotesize PCA provides a fixed linear projection of the standardized acoustic view \autocite{jolliffe2016pca}.}
 
 \end{frame}
 
-\begin{frame}{C1: PCA Compression and Verified Semantic Results}
+\begin{frame}{C1: PCA Retains Acoustic Structure}
 
-\vspace{-.24cm}
-\begin{tikzpicture}[x=1cm,y=1cm]
-  % Frozen C1 transformation
-  \node[merlin card,text width=1.45cm,inner xsep=2pt,minimum height=.68cm,
-    font=\scriptsize] (p5m) at (1.20,6.48) {Model-ready matrix};
-  \node[merlin card,draw=projectblue,fill=projectblue!10,text width=1.82cm,
-    inner xsep=1pt,minimum height=.68cm,font=\fontsize{7}{8}\selectfont] (p5s) at (3.35,6.48)
-    {StandardScaler\\[-2pt]\tiny mean + std};
-  \node[merlin card,draw=projectteal,fill=projectteal!10,text width=1.62cm,
-    inner xsep=2pt,minimum height=.68cm,font=\scriptsize] (p5p) at (5.65,6.48)
-    {PCA-128\\[-2pt]\tiny no whitening};
-  \node[merlin card,text width=1.26cm,inner xsep=2pt,minimum height=.68cm,
-    font=\scriptsize] (p5l) at (7.82,6.48) {L2 normalize};
-  \node[merlin card,draw=projectgold,fill=projectgold!12,text width=1.48cm,
-    inner xsep=2pt,minimum height=.68cm,font=\scriptsize] (p5c) at (10.02,6.48)
-    {cosine retrieval};
-  \draw[merlin arrow] (p5m) -- (p5s);
-  \draw[merlin arrow] (p5s) -- (p5p);
-  \draw[merlin arrow] (p5p) -- (p5l);
-  \draw[merlin arrow] (p5l) -- (p5c);
+{\small 10K pairs per cohort; whiskers = P5--P95, boxes = IQR, dots = mean.\\
+Matched-random controls use exact year and feature-coverage keys; 2K bootstrap samples.}
 
-  \node[merlin note,text width=2.35cm] at (3.35,5.72) {prevents scale-dominant features};
-  \node[merlin note,text width=2.55cm,font=\fontsize{6}{7}\selectfont] at (5.65,5.72)
-    {Spark PCA projection; no whitening step};
-  \node[merlin note,text width=2.15cm] at (7.82,5.72) {inner product $=$ cosine};
+\vspace{.05cm}
+\begin{columns}[c,onlytextwidth]
+  \column{.67\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{img/c1/c1_similarity_intervals.pdf}
 
-  % Qualitative semantic-sanity distribution view
-  \draw[rounded corners=4pt,draw=projectteal!55,fill=white,line width=.8pt]
-    (.12,.92) rectangle (7.20,5.28);
-  \node[anchor=west,font=\small\bfseries,text=projectteal!85!black]
-    at (.42,4.98) {Semantic sanity --- schematic densities};
-  \draw[->,draw=projectink!75,line width=.8pt] (.75,1.55) -- (6.75,1.55);
-  \draw[draw=projectink!25] (.75,1.55) -- (.75,4.50);
+  \column{.29\textwidth}
+  {\fontsize{22}{24}\selectfont\bfseries\color{projectteal}90.80\%}\par
+  {\small cumulative variance at 128D}
 
-  \path[fill=black!18,draw=black!45,line width=.8pt]
-    (.88,1.55) -- (1.15,1.72) -- (1.45,2.22) -- (1.78,3.25) --
-    (2.08,3.62) -- (2.38,3.05) -- (2.72,2.18) -- (3.08,1.72) -- (3.42,1.55) -- cycle;
-  \path[fill=projectblue!24,draw=projectblue,line width=.9pt]
-    (2.15,1.55) -- (2.52,1.70) -- (2.92,2.18) -- (3.34,3.22) --
-    (3.72,3.85) -- (4.08,3.24) -- (4.47,2.20) -- (4.86,1.72) -- (5.18,1.55) -- cycle;
-  \path[fill=projectteal!25,draw=projectteal,line width=.9pt]
-    (3.35,1.55) -- (3.72,1.73) -- (4.12,2.20) -- (4.58,3.30) --
-    (5.00,4.12) -- (5.42,3.38) -- (5.82,2.25) -- (6.20,1.72) -- (6.52,1.55) -- cycle;
+  \vspace{.28cm}
+  {\large\bfseries\color{projectpurple}$r=0.9981$--$0.9988$}\par
+  {\small pre/post-PCA cosine correlation}
 
-  \node[font=\fontsize{5.8}{6.6}\selectfont\bfseries,text=projectteal!80!black,
-    text width=6.25cm,align=center] at (3.65,4.43)
-    {10K pairs/type $\cdot$ matched random (year + coverage)\\[-1pt]
-     frozen transform replay $\cdot$ 2K bootstrap};
-  \node[font=\tiny,fill=black!18,inner sep=2pt,align=center] at (1.62,1.18)
-    {matched random\\mean .0246};
-  \node[font=\tiny,fill=projectblue!20,inner sep=2pt,align=center] at (3.62,1.18)
-    {same artist\\mean .2670};
-  \node[font=\tiny,fill=projectteal!20,inner sep=2pt,align=center] at (5.45,1.18)
-    {same release\\mean .3319};
+  \vspace{.28cm}
+  {\large\bfseries\color{projectgold}$g=1.06$ artist}\par
+  {\large\bfseries\color{projectgold}$g=1.35$ release}\par
+  {\small vs. matched random}
+\end{columns}
 
-  % Exact verified summaries
-  \node[merlin card,draw=projectteal,fill=projectteal!8,text width=3.48cm,
-    minimum height=.67cm,font=\scriptsize] at (9.25,4.68)
-    {\bfseries $1{,}000{,}000 \times 128$D\\[-2pt]\mdseries\tiny normalized C1 embeddings};
-  \node[merlin card,draw=projectblue,fill=projectblue!8,text width=3.48cm,
-    minimum height=.67cm,font=\scriptsize] at (9.25,3.66)
-    {\bfseries $\approx 90.80\%$\\[-2pt]\mdseries\tiny cumulative explained variance};
-  \node[merlin card,draw=projectpurple,fill=projectpurple!8,text width=3.48cm,
-    minimum height=.67cm,font=\scriptsize] at (9.25,2.64)
-    {\bfseries Pearson $r=0.9981$--$0.9988$\\[-2pt]\mdseries\tiny across the three pair cohorts};
-  \node[merlin card,draw=projectgold,fill=projectgold!9,text width=3.48cm,
-    minimum height=.78cm,font=\scriptsize] at (9.25,1.50)
-    {\bfseries $g=1.06$ artist; $1.35$ release\\[-2pt]
-     \mdseries\tiny each against random pairs};
-
-  \node[rounded corners=3pt,fill=projectteal,text=white,text width=10.55cm,
-    align=center,minimum height=.48cm,font=\fontsize{7}{8}\selectfont\bfseries] at (5.70,.28)
-    {Formal L1-1: PASS. PCA-128 preserves metadata-correlated acoustic structure---not user preference or perceptual similarity.};
-\end{tikzpicture}
+\vfill
+{\small\color{projectteal!80!black}\textbf{Claim boundary:}
+PCA-128 preserves metadata-correlated acoustic structure---not user preference or perceptual similarity.}
 
 \end{frame}
 
