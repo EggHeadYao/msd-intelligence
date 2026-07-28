@@ -487,3 +487,54 @@ run_step ablation-model \
   --parent "graph_index_manifest=$MERLIN_ROOT/parquets_new/merlin/graph/index_graph_manifest.json" \
   --parent "candidate_policy_manifest=$candidate_policy" \
   --parent "tag_idf=$tag_idf"
+
+run_step development-protocol "$development_protocol" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.prepare_development_protocol \
+  --output "$development_protocol" \
+  --scope formal
+
+run_step development-candidates "$development_pool" "$development_pool_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.recall.export_candidates \
+  --split-assignments "$split_assignments" \
+  --split-manifest "$split_manifest" \
+  --query-split set_c \
+  --development-protocol "$development_protocol" \
+  --output "$development_pool" \
+  --manifest "$development_pool_manifest" \
+  --min-free-gb "$MIN_FREE_GB"
+
+run_step development-groups \
+  "$development_positives" "$development_pairs" "$development_groups_manifest" -- \
+  "$MERLIN_SPARK_SUBMIT" \
+  --master "local[$VALIDATION_SPARK_CORES]" \
+  --driver-memory "$VALIDATION_DRIVER_MEMORY" \
+  "${spark_common[@]}" \
+  "$MERLIN_ROOT/merlin/inference/scripts/ranker/build_validation_groups.py" \
+  --candidate-pool "$development_pool" \
+  --candidate-pool-manifest "$development_pool_manifest" \
+  --thresholds "$validation_thresholds" \
+  --positives "$development_positives" \
+  --validation-pairs "$development_pairs" \
+  --manifest "$development_groups_manifest" \
+  --apply-split set_c \
+  --development-protocol "$development_protocol" \
+  --scope formal \
+  --audio-pair-engine numpy \
+  --audio-block-size 256 \
+  --shuffle-partitions "$SHUFFLE_PARTITIONS" \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb "$VALIDATION_MIN_FREE_GB"
+
+run_step development-features "$development_features" "$development_features_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.export_ranker_features \
+  --pair-kind validation \
+  --pairs "$development_pairs" \
+  --pairs-manifest "$development_groups_manifest" \
+  --validation-positives "$development_positives" \
+  --validation-thresholds "$validation_thresholds" \
+  --output "$development_features" \
+  --manifest "$development_features_manifest" \
+  --stage development_evaluation \
+  --development-protocol "$development_protocol" \
+  --scope formal \
+  --min-free-gb "$MIN_FREE_GB"
