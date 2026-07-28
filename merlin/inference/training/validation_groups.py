@@ -539,6 +539,7 @@ def write_validation_group_manifest(
     pair_count: int,
     group_row_count: int,
     group_stats: Mapping[str, Mapping[str, int | float]],
+    selection_fold_stats: Mapping[str, Mapping[str, int]],
     apply_split: str = "set_b",
 ) -> dict[str, object]:
     if scope not in {"formal", "smoke"}:
@@ -551,6 +552,13 @@ def write_validation_group_manifest(
         raise ValueError("validation-pair layout counts are invalid")
     if apply_split not in {"set_b", "set_c"}:
         raise ValueError("validation groups may only be applied to Set B or Set C")
+    expected_folds = {"tune", "confirm"} if apply_split == "set_b" else {"none"}
+    if set(selection_fold_stats) != expected_folds or any(
+        int(values.get("query_count", 0)) <= 0
+        or int(values.get("pair_count", 0)) <= 0
+        for values in selection_fold_stats.values()
+    ):
+        raise ValueError("validation selection-fold statistics are invalid")
     manifest = {
         "artifact_type": f"{apply_split}_validation_groups",
         "artifact_version": VALIDATION_GROUP_VERSION,
@@ -566,6 +574,10 @@ def write_validation_group_manifest(
         "validation_group_row_count": int(group_row_count),
         "query_groups": list(VALIDATION_QUERY_GROUPS),
         "group_stats": {name: dict(group_stats[name]) for name in VALIDATION_QUERY_GROUPS},
+        "selection_fold_stats": {
+            name: dict(selection_fold_stats[name])
+            for name in sorted(selection_fold_stats)
+        },
         "thresholds_file": Path(thresholds_path).name,
         "thresholds_sha256": sha256_path(thresholds_path),
         "positives_path": Path(positives_path).name,
@@ -611,6 +623,19 @@ def load_validation_group_manifest(
         raise ValueError("validation-group names or order mismatch")
     if manifest.get("validation_pair_layout") != VALIDATION_PAIR_LAYOUT:
         raise ValueError("validation-pair row layout mismatch")
+    expected_folds = (
+        {"tune", "confirm"} if expected_apply_split == "set_b" else {"none"}
+    )
+    fold_stats = manifest.get("selection_fold_stats")
+    if not isinstance(fold_stats, dict) or set(fold_stats) != expected_folds:
+        raise ValueError("validation selection-fold manifest is invalid")
+    if any(
+        int(values.get("query_count", 0)) <= 0
+        or int(values.get("pair_count", 0)) <= 0
+        for values in fold_stats.values()
+        if isinstance(values, dict)
+    ) or any(not isinstance(values, dict) for values in fold_stats.values()):
+        raise ValueError("validation selection-fold counts are invalid")
     if manifest.get("validation_pair_ordering") != [
         "query_track_id", "candidate_track_id"
     ]:
@@ -623,7 +648,7 @@ def load_validation_group_manifest(
         thresholds = json.load(stream)
     if thresholds.get("artifact_type") != "set_b_validation_thresholds":
         raise ValueError("validation-group threshold artifact type mismatch")
-    if thresholds.get("artifact_version") != VALIDATION_GROUP_VERSION:
+    if thresholds.get("artifact_version") != VALIDATION_THRESHOLD_VERSION:
         raise ValueError("validation-group threshold artifact version mismatch")
     if thresholds.get("fit_split") != "set_a":
         raise ValueError("validation-group threshold fit split mismatch")
