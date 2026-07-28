@@ -474,19 +474,38 @@ def main() -> None:
             release(threshold_pair_ids)
             release(indexed)
 
-        set_b = vectors.where(F.col("split") == args.apply_split).drop("split").persist(
-            StorageLevel.MEMORY_AND_DISK
-        )
-        cached.append(set_b)
+        set_b = vectors.where(F.col("split") == args.apply_split).drop("split")
+        if not is_development:
+            set_b = set_b.persist(StorageLevel.MEMORY_AND_DISK)
+            cached.append(set_b)
         if set_b.count() == 0:
             raise ValueError(f"split has no {args.apply_split} C1 vectors")
-        release(vectors)
+        if not is_development:
+            release(vectors)
         release(assignments)
         query_b = set_b.join(F.broadcast(pool_queries), TRACK_ID_COLUMN, "inner")
-        if query_b.limit(1).count() == 0:
+        query_folds = query_b.select(
+            F.col(TRACK_ID_COLUMN).alias("query_track_id"),
+            "selection_fold",
+        ).distinct().persist(StorageLevel.MEMORY_AND_DISK)
+        cached.append(query_folds)
+        expected_folds = ("tune", "confirm") if args.apply_split == "set_b" else ("none",)
+        invalid_fold = (
+            F.col("selection_fold").isNull()
+            | ~F.col("selection_fold").isin(*expected_folds)
+        )
+        query_fold_state = query_folds.agg(
+            F.count("*").alias("query_count"),
+            F.max(F.when(invalid_fold, F.lit(1)).otherwise(F.lit(0))).alias(
+                "has_invalid_fold"
+            ),
+        ).first()
+        if int(query_fold_state["query_count"]) == 0:
             raise ValueError(
                 f"candidate pool has no {args.apply_split} query with a C1 vector"
             )
+        if int(query_fold_state["has_invalid_fold"] or 0):
+            raise ValueError("validation query has an invalid selection fold")
 
         b_artists = set_b.where(
             F.col("artist_id").isNotNull() & (F.length("artist_id") > 0)
