@@ -66,6 +66,44 @@ def query_relation_evidence(
     return _query_signals(features, include_audio=False)[1]
 
 
+def quota_interleave_ordered_indices(
+    learned_order: Sequence[int],
+    audio_order: Sequence[int],
+    audio_quota: int,
+    *,
+    limit: int = RANKING_LIMIT,
+) -> tuple[int, ...]:
+    """Merge pre-sorted learned and Audio orders without sorting again."""
+    size = len(learned_order)
+    if len(audio_order) != size:
+        raise ValueError("ranking order lengths differ")
+    if not 0 <= audio_quota <= RANKING_LIMIT:
+        raise ValueError("audio quota must be between 0 and 20")
+    if not 1 <= limit <= RANKING_LIMIT:
+        raise ValueError("ranking limit must be between 1 and 20")
+    if audio_quota == RANKING_LIMIT:
+        return tuple(int(index) for index in audio_order[:limit])
+    if audio_quota == 0:
+        return tuple(int(index) for index in learned_order[:limit])
+    orders = (learned_order, audio_order)
+    pointers = [0, 0]
+    selected: list[int] = []
+    used: set[int] = set()
+    for rank in range(1, min(limit, size) + 1):
+        audio_due = (
+            rank * audio_quota // RANKING_LIMIT
+            > (rank - 1) * audio_quota // RANKING_LIMIT
+        )
+        source = int(audio_due)
+        while orders[source][pointers[source]] in used:
+            pointers[source] += 1
+        index = orders[source][pointers[source]]
+        pointers[source] += 1
+        selected.append(index)
+        used.add(index)
+    return tuple(selected)
+
+
 @dataclass(frozen=True, slots=True)
 class LogisticRanker:
     feature_schema_version: str
