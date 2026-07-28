@@ -105,15 +105,24 @@ class EncodedCandidates:
     codec: TrackCodec
     codes: np.ndarray
     source_masks: np.ndarray
+    primary_masks: np.ndarray
     scores: np.ndarray
-    _positions: dict[int, int] = field(init=False, repr=False)
+    _positions: dict[int, int] | None = field(
+        init=False,
+        repr=False,
+        default=None,
+    )
 
     def __post_init__(self) -> None:
         if self.scores.shape != (len(self.codes), len(SOURCE_NAMES)):
             raise ValueError("compact candidate score matrix has an invalid shape")
-        self._positions = {
-            int(code): position for position, code in enumerate(self.codes)
-        }
+        if (
+            self.source_masks.shape != self.codes.shape
+            or self.primary_masks.shape != self.codes.shape
+        ):
+            raise ValueError("compact candidate mask vectors have invalid shapes")
+        if np.any(self.primary_masks & ~self.source_masks):
+            raise ValueError("primary source mask is not a subset of all sources")
 
     def __len__(self) -> int:
         return len(self.codes)
@@ -122,6 +131,10 @@ class EncodedCandidates:
         return self.codec.tracks[int(self.codes[position])]
 
     def position(self, track_code: int) -> int | None:
+        if self._positions is None:
+            self._positions = {
+                int(code): position for position, code in enumerate(self.codes)
+            }
         return self._positions.get(track_code)
 
     def evidence(self, position: int) -> tuple[frozenset[str], dict[str, float]]:
@@ -135,6 +148,12 @@ class EncodedCandidates:
             if np.isfinite(self.scores[position, index])
         }
         return sources, scores
+
+    def primary_sources(self, position: int) -> frozenset[str]:
+        mask = int(self.primary_masks[position])
+        return frozenset(
+            name for index, name in enumerate(SOURCE_NAMES) if mask & (1 << index)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -686,9 +705,12 @@ class StreamingRecallEngine:
         positions: dict[int, int] = {}
         codes: list[int] = []
         masks: list[int] = []
+        primary_masks: list[int] = []
         score_rows: list[list[float]] = []
         for source_index, (group_codes, group_scores) in enumerate(groups):
-            for code, score in zip(group_codes, group_scores, strict=True):
+            for source_position, (code, score) in enumerate(
+                zip(group_codes, group_scores, strict=True)
+            ):
                 value = int(code)
                 position = positions.get(value)
                 if position is None:
@@ -696,13 +718,17 @@ class StreamingRecallEngine:
                     positions[value] = position
                     codes.append(value)
                     masks.append(0)
+                    primary_masks.append(0)
                     score_rows.append([float("nan")] * len(SOURCE_NAMES))
                 masks[position] |= 1 << source_index
+                if source_position < self.limits[SOURCE_NAMES[source_index]]:
+                    primary_masks[position] |= 1 << source_index
                 score_rows[position][source_index] = float(score)
         return EncodedCandidates(
             self.codec,
             np.asarray(codes, dtype=np.int32),
             np.asarray(masks, dtype=np.uint8),
+            np.asarray(primary_masks, dtype=np.uint8),
             np.asarray(score_rows, dtype=np.float32).reshape((-1, len(SOURCE_NAMES))),
         )
 
