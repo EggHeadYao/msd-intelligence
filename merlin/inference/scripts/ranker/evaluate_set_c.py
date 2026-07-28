@@ -486,28 +486,30 @@ def main() -> None:
     ranking_report["random_expectation"] = _aggregate_random_expectation(
         candidate_rows
     )
-    inference = {}
-    for baseline in SCORERS:
-        if baseline == "full":
-            continue
-        inference[baseline] = {
-            "query_bootstrap": paired_bootstrap_ci(
-                ranking_rows,
-                baseline=baseline,
-                metric=f"ndcg@{PRIMARY_CUTOFF}",
-                samples=QUERY_BOOTSTRAP_SAMPLES,
-            ),
-            "artist_cluster_bootstrap": paired_bootstrap_ci(
-                ranking_rows,
-                baseline=baseline,
-                metric=f"ndcg@{PRIMARY_CUTOFF}",
-                samples=ARTIST_BOOTSTRAP_SAMPLES,
-                clusters=artists,
-            ),
+    baselines = tuple(scorer for scorer in SCORERS if scorer != "full")
+    query_bootstraps = paired_bootstrap_cis(
+        ranking_rows,
+        baselines=baselines,
+        metric=f"ndcg@{PRIMARY_CUTOFF}",
+        samples=QUERY_BOOTSTRAP_SAMPLES,
+    )
+    artist_bootstraps = paired_bootstrap_cis(
+        ranking_rows,
+        baselines=baselines,
+        metric=f"ndcg@{PRIMARY_CUTOFF}",
+        samples=ARTIST_BOOTSTRAP_SAMPLES,
+        clusters=artists,
+    )
+    inference = {
+        baseline: {
+            "query_bootstrap": query_bootstraps[baseline],
+            "artist_cluster_bootstrap": artist_bootstraps[baseline],
         }
+        for baseline in baselines
+    }
     split_count = int(json.loads(paths.split_manifest.read_text())["track_counts"]["set_c"])
     report = {
-        "artifact_type": "set_c_final_evaluation",
+        "artifact_type": "development_evaluation",
         "artifact_version": protocol["artifact_version"],
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "scope": args.scope,
