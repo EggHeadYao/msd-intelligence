@@ -254,17 +254,31 @@ class BfsRetriever(CandidateRetriever):
             return []
         distances = self._distances(root)
 
-        ordered: list[tuple[int, float, str]] = []
+        artist_groups: list[tuple[int, float, tuple[str, ...]]] = []
         for artist, distance in distances.items():
             if distance == 0:
                 continue
             similarity = float(self.tag_similarity(root, artist))
-            tracks = sorted(
+            tracks = tuple(sorted(
                 track_id for track_id in self.artist_tracks.get(artist, ())
                 if track_id != query_track_id and not self.same_song(query_track_id, track_id)
-            )[: self.per_artist_cap]
-            ordered.extend((distance, similarity, track_id) for track_id in tracks)
-        ordered.sort(key=lambda item: (item[0], -item[1], item[2]))
+            )[: self.per_artist_cap])
+            if tracks:
+                artist_groups.append((distance, similarity, tracks))
+        ordered: list[tuple[int, str]] = []
+        for distance in sorted({group[0] for group in artist_groups}):
+            same_depth = sorted(
+                (group for group in artist_groups if group[0] == distance),
+                key=lambda group: (-group[1], group[2][0]),
+            )
+            ordered.extend(
+                (distance, tracks[artist_rank])
+                for artist_rank in range(self.per_artist_cap)
+                for _distance, _similarity, tracks in same_depth
+                if artist_rank < len(tracks)
+            )
+            if len(ordered) >= limit:
+                break
         return [
             Candidate(
                 track_id=track_id,
@@ -272,7 +286,7 @@ class BfsRetriever(CandidateRetriever):
                 recall_scores={self.name: 1.0 / (1.0 + distance)},
                 source_ranks={self.name: rank},
             )
-            for rank, (distance, _similarity, track_id) in enumerate(
+            for rank, (distance, track_id) in enumerate(
                 ordered[:limit], start=1
             )
         ]
