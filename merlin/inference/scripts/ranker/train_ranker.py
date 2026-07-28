@@ -534,18 +534,61 @@ def _configuration_group_means(
     grid = tuple(
         (reg_param, middle_quota, high_quota, low_threshold, high_threshold)
         for reg_param in REG_PARAMS
+        for middle_quota in ADAPTIVE_AUDIO_QUOTAS
+        for high_quota in ADAPTIVE_AUDIO_QUOTAS
+        if high_quota <= middle_quota
+        for low_index, low_threshold in enumerate(thresholds)
+        for high_threshold in thresholds[low_index:]
+    )
+    aggregated = {
+        fold: {configuration: {} for configuration in grid}
+        for fold in ("tune", "confirm")
     }
-    selected_reg, report = select_grouped_reg_param(query_scores)
-    report["set_b_diagnostics"] = {
-        "full": summaries[selected_reg],
-        "c1_only": c1_summary,
-        "c2_only": c2_summary,
-        "bfs": bfs_summary,
-    }
-    report["configuration_metrics"] = {
-        f"reg={reg_param:g}": summaries[reg_param] for reg_param in REG_PARAMS
-    }
-    return selected_reg, report
+    for fold in aggregated:
+        for group in QUERY_GROUPS:
+            selected = (folds == fold) & (groups == group)
+            count = int(np.count_nonzero(selected))
+            if count == 0:
+                raise ValueError(f"Set-B {fold} fold is missing a frozen query group")
+            for low_index, low_threshold in enumerate(thresholds):
+                fallback = selected & (evidence < low_threshold)
+                fallback_sum = float(np.sum(c1[fallback]))
+                for high_threshold in thresholds[low_index:]:
+                    middle = selected & (evidence >= low_threshold) & (
+                        evidence < high_threshold
+                    )
+                    high = selected & (evidence >= high_threshold)
+                    for reg_param in REG_PARAMS:
+                        middle_sums = {
+                            quota: float(np.sum(
+                                model_scores[(reg_param, quota)][middle]
+                            ))
+                            for quota in ADAPTIVE_AUDIO_QUOTAS
+                        }
+                        high_sums = {
+                            quota: float(np.sum(
+                                model_scores[(reg_param, quota)][high]
+                            ))
+                            for quota in ADAPTIVE_AUDIO_QUOTAS
+                        }
+                        for middle_quota in ADAPTIVE_AUDIO_QUOTAS:
+                            for high_quota in ADAPTIVE_AUDIO_QUOTAS:
+                                if high_quota > middle_quota:
+                                    continue
+                                total = (
+                                    fallback_sum
+                                    + middle_sums[middle_quota]
+                                    + high_sums[high_quota]
+                                )
+                                key = (
+                                    reg_param,
+                                    middle_quota,
+                                    high_quota,
+                                    low_threshold,
+                                    high_threshold,
+                                )
+                                aggregated[fold][key][group] = total / count
+    return aggregated
 
 
 def main() -> None:
