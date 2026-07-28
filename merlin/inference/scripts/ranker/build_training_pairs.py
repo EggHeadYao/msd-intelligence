@@ -476,15 +476,11 @@ def _table_batch(
             weak_sources.update(row["positive_sources"])
             recall_sources.update(row["recall_sources"])
             candidate_id = str(row["candidate_track_id"])
-            if isinstance(candidates, EncodedCandidates):
-                candidate_code = candidates.codec.code(candidate_id)
-                candidate_position = candidates.position(candidate_code)
-                scores = (
-                    candidates.evidence(candidate_position)[1]
-                    if candidate_position is not None
-                    else {}
-                )
-            else:
+            scores = {
+                str(source): float(score)
+                for source, score in dict(row.get("recall_scores", {})).items()
+            }
+            if not scores and not isinstance(candidates, EncodedCandidates):
                 assert recalled_by_id is not None
                 recalled = recalled_by_id.get(candidate_id)
                 scores = dict(recalled.recall_scores) if recalled else {}
@@ -522,6 +518,7 @@ def _table_batch(
             "candidate_track_id",
             "label",
             SAMPLE_WEIGHT_COLUMN,
+            "negative_source",
         )
     }
     feature_columns.update(raw_columns)
@@ -539,6 +536,7 @@ def _table_batch(
 
 def _query_rows(
     queries: Sequence[str],
+    universe: Sequence[str],
     allowed: set[str],
     thresholds: Mapping[str, object],
     recall_engine: StreamingRecallEngine,
@@ -553,7 +551,6 @@ def _query_rows(
     total_query_count: int | None = None,
 ) -> Iterator[StreamTableBatch | StreamCheckpoint]:
     total = len(queries) if total_query_count is None else total_query_count
-    universe = tuple(sorted(allowed))
     last_checkpoint = query_offset
     indexed_batches = iter(
         (start, queries[start : start + batch_size])
@@ -601,7 +598,21 @@ def _query_rows(
                     for track_id, score in neighbors
                     if track_id in allowed
                 }
-                is_positive, is_positive_batch, signal_caches = _positive_checks(
+                encoded_context = (
+                    (
+                        candidates.codec,
+                        recall_engine.audio_code_rows,
+                        *recalled.audio.query(position),
+                    )
+                    if isinstance(candidates, EncodedCandidates)
+                    else (None, None, None, None)
+                )
+                (
+                    is_positive,
+                    is_positive_batch,
+                    is_positive_encoded_batch,
+                    signal_caches,
+                ) = _positive_checks(
                     query_id,
                     artist,
                     audio_cache,
@@ -609,6 +620,7 @@ def _query_rows(
                     tag,
                     computer,
                     thresholds,
+                    *encoded_context,
                 )
                 prepared = prepare_query_pairs(
                     query_id,
@@ -618,6 +630,7 @@ def _query_rows(
                     audio_retriever.same_song,
                     is_positive,
                     is_positive_batch,
+                    is_positive_encoded_batch=is_positive_encoded_batch,
                 )
                 if prepared is not None:
                     prepared_states.append((prepared, candidates, signal_caches))
