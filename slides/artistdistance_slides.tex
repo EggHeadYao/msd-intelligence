@@ -1,0 +1,290 @@
+\begin{frame}{Supports song recommendation}
+
+\centering
+\makebox[\textwidth][c]{%
+\begin{tikzpicture}[
+	xscale=1.12,
+	yscale=.88,
+	>=stealth,
+	artistedge/.style={->,line width=1.1pt,draw=black!38},
+	songedge/.style={line width=.62pt,draw=black!24},
+	artist/.style={circle,minimum size=.72cm,draw=projectteal,line width=1.15pt,
+		fill=projectteal!48},
+	song/.style={circle,minimum size=.19cm,inner sep=0pt,line width=.65pt},
+	targetsong/.style={song,draw=summaryred!80!black,fill=summaryred},
+	dzero/.style={song,draw=summaryred,fill=summaryred!35},
+	done/.style={song,draw=distancegold,fill=distancegoldfill},
+	dtwo/.style={song,draw=audioblue,fill=audioblue!48},
+	legend/.style={font=\scriptsize\bfseries,text=black!58,anchor=west}
+]
+	\node[artist] (root) at (0,0) {};
+	\node[artist] (aone) at (-2.0,1.0) {};
+	\node[artist] (atwo) at (.8,1.65) {};
+	\node[artist] (athree) at (2.0,-.55) {};
+	\node[artist] (afour) at (-1.25,-1.65) {};
+	\node[artist] (aoneone) at (-3.65,1.95) {};
+	\node[artist] (aonetwo) at (-3.8,.35) {};
+	\node[artist] (atwoone) at (-.1,2.8) {};
+	\node[artist] (atwotwo) at (2.1,2.65) {};
+	\node[artist] (athreeone) at (3.55,.35) {};
+	\node[artist] (athreetwo) at (3.45,-1.7) {};
+	\node[artist] (afourone) at (-2.8,-2.75) {};
+	\node[artist] (afourtwo) at (.05,-2.95) {};
+
+	\foreach \from/\to in {
+		root/aone,root/atwo,root/athree,root/afour,
+		aone/aoneone,aone/aonetwo,
+		atwo/atwoone,atwo/atwotwo,
+		athree/athreeone,athree/athreetwo,
+		afour/afourone,afour/afourtwo}
+		\draw[artistedge] (\from) -- (\to);
+
+	\node[targetsong] (query) at (-.58,-.38) {};
+	\node[dzero] (rzeroone) at (.52,.42) {};
+	\node[dzero] (rzerotwo) at (.66,-.16) {};
+	\node[dzero] (rzerothree) at (.08,.65) {};
+	\foreach \songname in {query,rzeroone,rzerotwo,rzerothree}
+		\draw[songedge] (root) -- (\songname);
+
+	\foreach \artist/\one/\xone/\yone/\two/\xtwo/\ytwo/\three/\xthree/\ythree in {
+		aone/aonea/-2.18/1.62/aoneb/-2.67/.98/aonec/-1.72/.44,
+		atwo/atwoa/.30/1.37/atwob/1.35/1.22/atwoc/1.42/1.72,
+		athree/athreea/1.54/-1.08/athreeb/2.28/-1.16/athreec/2.57/-.72,
+		afour/afoura/-.68/-1.82/afourb/-1.14/-2.25/afourc/-1.82/-1.92}
+	{
+		\node[done] (\one) at (\xone,\yone) {};
+		\node[done] (\two) at (\xtwo,\ytwo) {};
+		\node[done] (\three) at (\xthree,\ythree) {};
+		\foreach \songname in {\one,\two,\three}
+			\draw[songedge] (\artist) -- (\songname);
+	}
+
+	\foreach \artist/\one/\xone/\yone/\two/\xtwo/\ytwo/\three/\xthree/\ythree in {
+		aoneone/aoneonea/-4.16/2.34/aoneoneb/-4.24/1.82/aoneonec/-3.70/2.52,
+		aonetwo/aonetwoa/-4.34/.67/aonetwob/-4.36/.16/aonetwoc/-3.84/-.27,
+		atwoone/atwoonea/-.58/3.22/atwooneb/.04/3.42/atwoonec/.43/3.17,
+		atwotwo/atwotwoa/1.72/3.15/atwotwob/2.38/3.20/atwotwoc/2.70/2.73,
+		athreeone/athreeonea/4.08/.72/athreeoneb/4.20/.22/athreeonec/3.80/-.22,
+		athreetwo/athreetwoa/4.02/-1.35/athreetwob/4.08/-1.91/athreetwoc/3.43/-2.30,
+		afourone/afouronea/-3.35/-3.14/afouroneb/-2.77/-3.40/afouronec/-2.24/-3.10,
+		afourtwo/afourtwoa/-.38/-3.40/afourtwob/.28/-3.47/afourtwoc/.65/-3.10}
+	{
+		\node[dtwo] (\one) at (\xone,\yone) {};
+		\node[dtwo] (\two) at (\xtwo,\ytwo) {};
+		\node[dtwo] (\three) at (\xthree,\ythree) {};
+		\foreach \songname in {\one,\two,\three}
+			\draw[songedge] (\artist) -- (\songname);
+	}
+
+	\node[targetsong] at (-2.90,-4.35) {};
+	\node[legend] at (-2.73,-4.35) {target};
+	\node[dzero] at (-1.10,-4.35) {};
+	\node[legend] at (-.93,-4.35) {$d=0$};
+	\node[done] at (.50,-4.35) {};
+	\node[legend] at (.67,-4.35) {$d=1$};
+	\node[dtwo] at (2.10,-4.35) {};
+	\node[legend] at (2.27,-4.35) {$d=2$};
+\end{tikzpicture}
+}
+
+\end{frame}
+
+\begin{frame}{From artist similarities to shortest paths}
+
+\centering
+\makebox[\textwidth][c]{%
+\begin{tikzpicture}[
+	>=stealth,
+	stage/.style={rounded corners=2pt,minimum width=3cm,minimum height=2.25cm,
+		align=center,line width=1.2pt,inner sep=8pt},
+	flow/.style={->,line width=1.25pt,draw=black!45}
+]
+	\node[stage,draw=summaryred,fill=summaryfill] (db) at (-4.05,.45) {
+		\textbf{Artist similarity DB}\\[5pt]
+		{\Large\bfseries 44,745}\\[-1pt]
+		{\small artists}\\[2pt]
+		{\large\bfseries 2,201,916}\\[-1pt]
+		{\small directed edges}
+	};
+	\node[stage,draw=audioblue,fill=audiofill] (adj) at (0,.45) {
+		\textbf{Adjacency graph}\\[1pt]
+		{\scriptsize Avro / Parquet}\\[4pt]
+		\texttt{id}\\
+		\texttt{neighbors[]}\\
+		\texttt{degree}
+	};
+	\node[stage,draw=structbgcolor,fill=structbgcolor!14] (out) at (3.9,.45) {
+		\textbf{BFS output}\\[5pt]
+		\texttt{id}\\
+		\texttt{distance}\\
+		\texttt{parent}
+	};
+
+	\draw[flow] (db) -- (adj);
+	\draw[flow] (adj) -- node[above,font=\scriptsize\bfseries] {BFS} (out);
+
+	\node[anchor=north,align=center,text width=3.05cm,font=\small] at (-4.05,-1.05) {
+		Keep the database direction;\\never synthesize reverse edges.
+	};
+	\node[anchor=north,align=center,text width=3.05cm,font=\small] at (0,-1.05) {
+		Every artist appears, including\\zero-out-degree vertices.
+	};
+	\node[anchor=north,align=center,text width=3.05cm,font=\small] at (3.9,-1.05) {
+		\texttt{null} distance means\\unreachable from the source.
+	};
+\end{tikzpicture}
+}
+
+\medskip
+\begin{block}{Distance contract}
+The distance is the minimum number of directed, unit-weight similarity edges; the parent reconstructs one deterministic shortest path.
+\end{block}
+
+\end{frame}
+
+\begin{frame}{Parallel BFS expands one frontier at a time}
+
+\centering
+\begin{tikzpicture}[
+	>=stealth,
+	phase/.style={rounded corners=2pt,minimum width=2.25cm,minimum height=1.25cm,
+		align=center,draw=structbgcolor,line width=1.1pt,fill=structbgcolor!12,
+		font=\small\bfseries},
+	flow/.style={->,line width=1.2pt,draw=black!48}
+]
+	\node[phase] (frontier) at (-4.15,1.25) {Frontier\\at distance $d$};
+	\node[phase] (expand) at (-1.38,1.25) {Join and explode\\neighbors in parallel};
+	\node[phase] (filter) at (1.38,1.25) {Remove\\visited artists};
+	\node[phase] (reduce) at (4.15,1.25) {Choose best parent\\for each artist};
+	\draw[flow] (frontier) -- (expand);
+	\draw[flow] (expand) -- (filter);
+	\draw[flow] (filter) -- (reduce);
+	\draw[flow,rounded corners=5pt] (reduce.south) |- node[below,pos=.58,font=\scriptsize\bfseries] {next frontier at $d+1$} (frontier.south);
+
+	\node[circle,draw=summaryred,fill=summaryfill,minimum size=.72cm,font=\bfseries] (l0) at (-3.6,-1.45) {A};
+	\node[circle,draw=audioblue,fill=audiofill,minimum size=.72cm,font=\bfseries] (l1a) at (-.9,-1.05) {B};
+	\node[circle,draw=audioblue,fill=audiofill,minimum size=.72cm,font=\bfseries] (l1b) at (-.9,-1.85) {C};
+	\node[circle,draw=structbgcolor,fill=structbgcolor!14,minimum size=.72cm,font=\bfseries] (l2a) at (2.2,-.75) {D};
+	\node[circle,draw=structbgcolor,fill=structbgcolor!14,minimum size=.72cm,font=\bfseries] (l2b) at (2.2,-1.45) {E};
+	\node[circle,draw=structbgcolor,fill=structbgcolor!14,minimum size=.72cm,font=\bfseries] (l2c) at (2.2,-2.15) {F};
+	\draw[flow] (l0) -- (l1a);
+	\draw[flow] (l0) -- (l1b);
+	\draw[flow] (l1a) -- (l2a);
+	\draw[flow] (l1a) -- (l2b);
+	\draw[flow] (l1b) -- (l2c);
+	\node[font=\scriptsize\bfseries,text=black!55] at (-3.6,-2.35) {LEVEL 0};
+	\node[font=\scriptsize\bfseries,text=black!55] at (-.9,-2.35) {LEVEL 1};
+	\node[font=\scriptsize\bfseries,text=black!55] at (2.2,-2.65) {LEVEL 2};
+\end{tikzpicture}
+
+\smallskip
+\begin{columns}[T,onlytextwidth]
+	\column{.48\textwidth}
+	\centering\textbf{Parallel inside a level}\par
+	{\small Every frontier vertex and outgoing edge can be processed independently.}
+	\column{.48\textwidth}
+	\centering\textbf{Ordered across levels}\par
+	{\small Distance $d+1$ depends on completion of distance $d$.}
+\end{columns}
+
+\end{frame}
+
+\begin{frame}{One BFS, four distributed implementations}
+
+\centering
+\begin{tikzpicture}[
+	box/.style={rounded corners=2pt,minimum width=4.35cm,minimum height=.72cm,
+		align=center,line width=1.05pt,font=\small\bfseries},
+	flow/.style={->,>=stealth,line width=1.1pt,draw=black!45}
+]
+	\draw[black!18,line width=.8pt] (0,-2.65) -- (0,2.55);
+	\node[font=\large\bfseries,text=summaryred] at (-3.1,2.45) {MapReduce};
+	\node[font=\large\bfseries,text=structbgcolor] at (3.1,2.45) {Spark};
+
+	\node[box,draw=summaryred,fill=summaryfill] (mi) at (-3.1,1.45) {Initialization job};
+	\node[box,draw=summaryred,fill=summaryfill] (ml) at (-3.1,.35) {One MapReduce job per level};
+	\node[box,draw=summaryred,fill=summaryfill] (mf) at (-3.1,-.75) {Final output job};
+	\draw[flow] (mi) -- (ml);
+	\draw[flow] (ml) -- node[right,font=\scriptsize\bfseries] {HDFS state} (mf);
+	\node[font=\Large\bfseries,text=summaryred] at (-3.1,-1.65) {13 applications};
+
+	\node[box,draw=structbgcolor,fill=structbgcolor!14] (sr) at (3.1,1.45) {Read and persist adjacency};
+	\node[box,draw=structbgcolor,fill=structbgcolor!14] (sl) at (3.1,.35) {Frontier joins and checkpoints};
+	\node[box,draw=structbgcolor,fill=structbgcolor!14] (sw) at (3.1,-.75) {Write final distances};
+	\draw[flow] (sr) -- (sl);
+	\draw[flow] (sl) -- node[right,font=\scriptsize\bfseries] {cached state} (sw);
+	\node[font=\Large\bfseries,text=structbgcolor] at (3.1,-1.65) {1 application};
+
+	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
+		minimum height=.55cm,font=\small\bfseries] at (-4.25,-2.5) {Avro};
+	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
+		minimum height=.55cm,font=\small\bfseries] at (-1.95,-2.5) {Parquet};
+	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
+		minimum height=.55cm,font=\small\bfseries] at (1.95,-2.5) {Avro};
+	\node[rounded corners=2pt,draw=audioblue,fill=audiofill,minimum width=2cm,
+		minimum height=.55cm,font=\small\bfseries] at (4.25,-2.5) {Parquet};
+\end{tikzpicture}
+
+\end{frame}
+
+\begin{frame}{A controlled full-graph experiment}
+
+\begin{center}
+{\Large\bfseries 4 combinations $\times$ 5 repetitions $=$ 20 verified outputs}
+\end{center}
+
+\smallskip
+\begin{columns}[T,onlytextwidth]
+	\small
+	\column{.31\textwidth}
+	\textbf{Same graph}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item Full directed graph
+		\item Fixed source artist
+		\item Identical adjacency
+	\end{itemize}
+
+	\column{.34\textwidth}
+	\textbf{Controlled execution}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item Restart HDFS/YARN
+		\item Rotate run order
+		\item Fixed parallelism
+	\end{itemize}
+
+	\column{.31\textwidth}
+	\textbf{Independent checks}
+	\begin{itemize}
+		\setlength{\itemsep}{1pt}
+		\item Reference BFS
+		\item Distance and parent
+		\item Same graph outcome
+	\end{itemize}
+\end{columns}
+
+\smallskip
+\begin{block}{Primary measurement}
+Wall time covers every BFS level and framework orchestration; YARN time and allocated resources explain the cost.
+\end{block}
+
+\smallskip
+\begin{center}
+\small
+\begin{tabular}{r@{\hspace{5pt}}l@{\qquad}r@{\hspace{5pt}}l@{\qquad}r@{\hspace{5pt}}l}
+	$43{,}228$ & reachable & $1{,}517$ & unreachable & $10$ & max distance
+\end{tabular}
+\end{center}
+
+\end{frame}
+
+\begin{frame}[plain]
+\centering
+\vspace{.2cm}
+\includegraphics[width=\textwidth]{artistdistance/artistdistance_performance}
+
+\vspace{-.15cm}
+{\large\bfseries\color{structbgcolor}
+Decision: Spark + Avro -- engine choice dominates storage format.}
+\end{frame}
