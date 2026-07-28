@@ -26,3 +26,36 @@ Limit a run to a section with `--from` and `--to`, for example:
 Use `--list-steps` to show valid boundaries and `--dry-run` to print commands.
 The individual commands below remain the reference for manual recovery and
 debugging.
+
+## Environment
+
+Run commands from the repository root. The Spark module wrapper is deliberately
+kept outside the repository; it contains only
+`from merlin.inference.scripts.ranker.train_ranker import main` followed by the
+usual `if __name__ == "__main__": main()` call.
+
+```bash
+export MERLIN_ROOT=/home/zjk/p1team02
+export MERLIN_PYTHON=/home/zjk/.venvs/merlin-faiss/bin/python
+export MERLIN_SPARK_ENTRY=/home/zjk/merlin_local_tests/c3/run_train_ranker_module.py
+export MERLIN_RANKER_ROOT="$MERLIN_ROOT/parquets_new/merlin/ranker"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPATH="$MERLIN_ROOT"
+export OPENBLAS_CORETYPE=generic
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=4
+cd "$MERLIN_ROOT"
+```
+
+Before a Spark job, also export:
+
+```bash
+export PYSPARK_PYTHON="$MERLIN_PYTHON"
+export PYSPARK_DRIVER_PYTHON="$MERLIN_PYTHON"
+export SPARK_LOCAL_IP=127.0.0.1
+export JAVA_TOOL_OPTIONS='-XX:UseAVX=0 -XX:UseSSE=2 -XX:-TieredCompilation'
+```
+
+Do not remove an active `.c3-scratch` directory. Set `--min-free-gb` according
+to available disk; lowering it to zero disables only the reserve, not the
+projected-work check.
