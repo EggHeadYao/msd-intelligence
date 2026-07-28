@@ -140,17 +140,39 @@ def select_guarded_ranker_means(
                 key[4],
             ),
         )
-        comparisons[f"{reference:g}_minus_{larger:g}"] = list(ci)
-        if ci[0] <= 0.0 <= ci[1]:
-            selected = max(selected, larger)
+        if confirmed_feasible
+        else fallback
+    )
+    confirmed = bool(confirmed_feasible)
+    selected = proposed
     return selected, {
-        "mean_three_strata_ndcg20": {
-            f"{reg:g}": means[reg] for reg in REG_PARAMS
+        "selection_metric": "equal_three_strata_query_macro_ndcg@20",
+        "selected_reg_param": selected[0],
+        "selected_audio_quota": selected[1],
+        "selected_high_evidence_audio_quota": selected[2],
+        "selected_relation_gate_threshold": selected[3],
+        "selected_high_relation_gate_threshold": selected[4],
+        "publishable_fusion": confirmed,
+        "fallback_policy": "c1_only",
+        "proposed_configuration": {
+            "reg_param": proposed[0],
+            "audio_quota": proposed[1],
+            "high_evidence_audio_quota": proposed[2],
+            "relation_gate_threshold": proposed[3],
+            "high_relation_gate_threshold": proposed[4],
         },
-        "paired_difference_ci": comparisons,
-        "selected_reg_param": selected,
-        "tie_rule": "choose_larger_reg_param_when_paired_95pct_ci_contains_zero",
-        "bootstrap_samples": SELECTION_BOOTSTRAPS,
-        "bootstrap_unit": "query_id_cluster_with_equal_stratum_means",
-        "seed": SELECTION_SEED,
+        "tune_metrics": tune[proposed],
+        "confirmation_metrics": confirm[proposed],
+        "c1_tune_metrics": c1_tune,
+        "c1_confirmation_metrics": c1_confirm,
+        "release_guards": {
+            "audio_retention": AUDIO_RETENTION,
+            "relation_strictly_above_c1": True,
+            "mixed_not_below_c1": True,
+            "confirmation_macro_relative_margin": CONFIRM_MACRO_MARGIN,
+        },
+        "tune_feasible_configuration_count": len(tune_feasible),
+        "confirmed_feasible_configuration_count": len(confirmed_feasible),
+        "tie_rule": "higher_worst_fold_gain_then_higher_combined_macro_then_safer_quota",
+        "configuration_count": len(tune),
     }
