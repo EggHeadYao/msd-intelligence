@@ -366,3 +366,29 @@ def paired_bootstrap_ci(
         "ci95_low": float(low),
         "ci95_high": float(high),
     }
+
+
+def paired_bootstrap_cis(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    baselines: Sequence[str],
+    metric: str,
+    samples: int,
+    seed: int = EVALUATION_SEED,
+    clusters: Mapping[str, str] | None = None,
+) -> dict[str, dict[str, float | int]]:
+    """Bootstrap multiple baselines through the established paired routine."""
+    baseline_tuple = tuple(baselines)
+    if not baseline_tuple or len(set(baseline_tuple)) != len(baseline_tuple):
+        raise ValueError("paired bootstrap baselines must be unique and non-empty")
+    return {
+        baseline: paired_bootstrap_ci(
+            rows,
+            baseline=baseline,
+            metric=metric,
+            samples=samples,
+            seed=seed,
+            clusters=clusters,
+        )
+        for baseline in baseline_tuple
+    }
