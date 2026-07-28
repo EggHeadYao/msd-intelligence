@@ -207,7 +207,9 @@ def main() -> None:
     projected_scratch_gb = 0.0
     if args.scope == "formal":
         projected_scratch_gb = estimate_validation_scratch_gb(
-            set_a_tracks=int(split_counts.get("set_a", 0)) if not is_set_c else 1,
+            set_a_tracks=(
+                int(split_counts.get("set_a", 0)) if not is_development else 1
+            ),
             set_b_tracks=int(split_counts.get(args.apply_split, 0)),
             feature_dimension=len(feature_columns),
             unique_candidates=int(candidate_totals.get("unique_candidates", 0)),
@@ -274,7 +276,9 @@ def main() -> None:
             )
 
         assignments = read_rows(args.split_assignments).select(
-            F.col("track_id").cast("string"), F.col("split").cast("string")
+            F.col("track_id").cast("string"),
+            F.col("split").cast("string"),
+            F.col("selection_fold").cast("string"),
         ).persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(assignments)
         pool_queries = read_rows(args.candidate_pool).select(
@@ -296,7 +300,9 @@ def main() -> None:
             )
 
         selected_splits = (
-            ("set_a", args.apply_split) if not is_set_c else (args.apply_split,)
+            ("set_a", args.apply_split)
+            if not is_development
+            else (args.apply_split,)
         )
         selected_ids = assignments.where(
             F.col("split").isin(*selected_splits)
@@ -347,7 +353,7 @@ def main() -> None:
         ).localCheckpoint(eager=True)
         cached.append(vectors)
 
-        if not is_set_c:
+        if not is_development:
             set_a = vectors.where(F.col("split") == "set_a").drop("split")
             set_a_count = set_a.count()
             if set_a_count < 2:
