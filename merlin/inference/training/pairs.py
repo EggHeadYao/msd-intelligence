@@ -567,6 +567,7 @@ class PreparedQueryPairs:
     candidate_selected: list[tuple[str, object]]
     negative_target: int
     candidate_target: int
+    unrecalled_positive_count: int
     rejection_counts: Counter[str]
 
 
@@ -681,6 +682,7 @@ def _source_balanced_candidate_sample(
 def _empty_pair_audit() -> dict[str, object]:
     return {
         "positive_count": 0,
+        "unrecalled_positive_count": 0,
         "negative_count": 0,
         "candidate_aware_count": 0,
         "random_count": 0,
@@ -709,19 +711,50 @@ def prepare_query_pairs(
     is_positive: IsPositive,
     is_positive_batch: IsPositiveBatch | None = None,
     candidate_aware_fraction: float = CANDIDATE_AWARE_FRACTION,
+    is_positive_encoded_batch: IsPositiveEncodedBatch | None = None,
 ) -> PreparedQueryPairs | None:
     """Select positives and candidate-aware negatives before random backfill."""
     if not 0.0 <= candidate_aware_fraction <= 1.0:
         raise ValueError("candidate-aware fraction must be in [0, 1]")
     if query_id not in allowed_tracks:
         raise ValueError(f"query endpoint is outside the training universe: {query_id}")
-    selected_positives = {
+    allowed_positives = {
         track_id: sources
         for track_id, sources in positives.items()
         if track_id in allowed_tracks
         and track_id != query_id
         and not same_song(query_id, track_id)
     }
+    if isinstance(candidates, EncodedCandidates):
+        positive_items = tuple(allowed_positives.items())
+        positive_codes = np.fromiter(
+            (
+                candidates.codec.code(track_id)
+                for track_id, _sources in positive_items
+            ),
+            dtype=np.int32,
+            count=len(positive_items),
+        )
+        recalled = np.isin(positive_codes, candidates.codes, assume_unique=True)
+        selected_positives = dict(
+            item
+            for item, present in zip(positive_items, recalled, strict=True)
+            if present
+        )
+    else:
+        candidate_ids = {
+            (
+                candidate.track_id
+                if isinstance(candidate, Candidate)
+                else str(candidate["track_id"])
+            )
+            for candidate in candidates
+        }
+        selected_positives = {
+            track_id: sources
+            for track_id, sources in allowed_positives.items()
+            if track_id in candidate_ids
+        }
     if not selected_positives:
         return None
     positive_ids = set(selected_positives)
@@ -764,6 +797,9 @@ def prepare_query_pairs(
         same_song_mask = remaining & candidates.codec.same_song_mask(query_code, codes)
         rejection_counts["same_song"] += int(np.count_nonzero(same_song_mask))
         remaining &= ~same_song_mask
+        same_artist = remaining & candidates.codec.same_artist_mask(query_code, codes)
+        rejection_counts["known_positive"] += int(np.count_nonzero(same_artist))
+        remaining &= ~same_artist
         positive_codes = np.asarray(
             [candidates.codec.code(track_id) for track_id in positive_ids],
             dtype=np.int32,
@@ -771,10 +807,28 @@ def prepare_query_pairs(
         known_positive = remaining & np.isin(codes, positive_codes)
         rejection_counts["known_positive"] += int(np.count_nonzero(known_positive))
         remaining &= ~known_positive
-        predicate_candidates.extend(
-            (candidates.track_id(int(position)), int(position))
-            for position in np.flatnonzero(remaining)
-        )
+        remaining_positions = np.flatnonzero(remaining)
+        if is_positive_encoded_batch is None:
+            predicate_candidates.extend(
+                (candidates.track_id(int(position)), int(position))
+                for position in remaining_positions
+            )
+        else:
+            encoded_results = np.asarray(
+                is_positive_encoded_batch(candidates, remaining_positions),
+                dtype=np.bool_,
+            )
+            if encoded_results.shape != remaining_positions.shape:
+                raise ValueError(
+                    "encoded positive predicate returned the wrong result shape"
+                )
+            rejection_counts["known_positive"] += int(
+                np.count_nonzero(encoded_results)
+            )
+            eligible_candidates.extend(
+                (candidates.track_id(int(position)), int(position))
+                for position in remaining_positions[~encoded_results]
+            )
     else:
         for track_id, recall_evidence in records():
             if track_id == query_id:
