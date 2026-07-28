@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque, OrderedDict
 from dataclasses import dataclass, field
 from functools import lru_cache
+import hashlib
 from typing import Callable, Mapping, Sequence
 
 from ..types import Candidate, CandidateRetriever
@@ -20,6 +21,21 @@ def _zero_similarity(_left: str, _right: str) -> float:
 
 def _available(_track_id: str) -> bool:
     return True
+
+
+def seeded_artist_track_offset(
+    query_track_id: str,
+    artist_id: str,
+    track_count: int,
+    seed: int = 42,
+) -> int:
+    """Choose a stable query-specific start within one artist's tracks."""
+    if track_count <= 0:
+        return 0
+    digest = hashlib.sha256(
+        f"{seed}\0{query_track_id}\0{artist_id}".encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:8], "big") % track_count
 
 
 def merge_candidates(groups: Sequence[Sequence[Candidate]], query_track_id: str) -> list[Candidate]:
