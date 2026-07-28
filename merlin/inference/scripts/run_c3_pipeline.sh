@@ -244,3 +244,68 @@ development_groups_manifest=$development_root/validation_groups_manifest.json
 development_features=$development_root/raw_pair_features.parquet
 development_features_manifest=$development_root/raw_pair_features_manifest.json
 development_report=$development_root/evaluation_report.json
+
+run_step split "$split_assignments" "$split_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_split \
+  --songs-metadata "$MERLIN_ROOT/parquets_new/prepared/songs_metadata.parquet" \
+  --assignments "$split_assignments" \
+  --manifest "$split_manifest"
+
+run_step recall-contract "$candidate_policy" "$tag_idf" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.recall.build_recall_artifacts \
+  --graph-edges "$MERLIN_ROOT/parquets_new/prepared/graph_edges.parquet" \
+  --candidate-policy "$candidate_policy" \
+  --tag-idf "$tag_idf"
+
+run_step weak-labels "$weak_thresholds" "$weak_positives" "$weak_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_weak_labels \
+  --split-assignments "$split_assignments" \
+  --split-manifest "$split_manifest" \
+  --thresholds "$weak_thresholds" \
+  --positives "$weak_positives" \
+  --manifest "$weak_manifest" \
+  --query-splits set_a \
+  --min-free-gb "$MIN_FREE_GB"
+
+run_step set-a-candidates "$set_a_pool" "$set_a_pool_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.recall.export_candidates \
+  --split-assignments "$split_assignments" \
+  --split-manifest "$split_manifest" \
+  --query-split set_a \
+  --output "$set_a_pool" \
+  --manifest "$set_a_pool_manifest" \
+  --min-free-gb "$MIN_FREE_GB"
+
+run_step tuning-pairs "$tuning_pairs" "$tuning_pairs_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
+  --candidate-pool "$set_a_pool" \
+  --candidate-pool-manifest "$set_a_pool_manifest" \
+  --weak-positives "$weak_positives" \
+  --weak-positives-manifest "$weak_manifest" \
+  --thresholds "$weak_thresholds" \
+  --split-assignments "$split_assignments" \
+  --split-manifest "$split_manifest" \
+  --stage tuning \
+  --scope formal \
+  --output "$tuning_pairs" \
+  --manifest "$tuning_pairs_manifest"
+
+run_step tuning-features "$tuning_features" "$tuning_features_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.export_ranker_features \
+  --pair-kind training \
+  --pairs "$tuning_pairs" \
+  --pairs-manifest "$tuning_pairs_manifest" \
+  --output "$tuning_features" \
+  --manifest "$tuning_features_manifest" \
+  --stage tuning \
+  --scope formal \
+  --min-free-gb "$MIN_FREE_GB"
+
+run_step set-b-candidates "$set_b_pool" "$set_b_pool_manifest" -- \
+  "$MERLIN_PYTHON" -m merlin.inference.scripts.recall.export_candidates \
+  --split-assignments "$split_assignments" \
+  --split-manifest "$split_manifest" \
+  --query-split set_b \
+  --output "$set_b_pool" \
+  --manifest "$set_b_pool_manifest" \
+  --min-free-gb "$MIN_FREE_GB"
