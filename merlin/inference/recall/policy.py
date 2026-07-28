@@ -9,22 +9,29 @@ from typing import Mapping
 
 
 CANDIDATE_POLICY_ARTIFACT_TYPE = "candidate_policy"
-CANDIDATE_POLICY_MANIFEST_VERSION = "merlin_candidate_policy_v1"
-CANDIDATE_POLICY_VERSION = "canonical-all-union-v1"
+CANDIDATE_POLICY_MANIFEST_VERSION = "merlin_candidate_policy_v4"
+CANDIDATE_POLICY_VERSION = "canonical-all-union-v4"
 CANONICAL_RETRIEVER_LIMITS = {
     "audio": 250,
     "graph": 250,
     "bfs": 250,
     "tag": 250,
 }
+CANONICAL_BACKFILL_LIMITS = {
+    "audio": 250,
+    "graph": 250,
+    "bfs": 500,
+    "tag": 500,
+}
+CANONICAL_BACKFILL_ORDER = ("tag", "bfs")
 CANONICAL_CANDIDATE_LIMIT = 1_000
 CANONICAL_LIMIT = 20
 CANONICAL_VECTOR_OVERFETCH_FACTOR = 3
 CANONICAL_BFS_MAX_DEPTH = 2
 CANONICAL_BFS_PER_ARTIST_CAP = 10
-CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT = 100
+CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT = 200
 CANONICAL_TAG_MAX_TERM_ARTISTS = 5_000
-CANONICAL_TAG_PER_ARTIST_CAP = 5
+CANONICAL_TAG_PER_ARTIST_CAP = 3
 
 
 def canonical_policy_manifest() -> dict[str, object]:
@@ -35,6 +42,8 @@ def canonical_policy_manifest() -> dict[str, object]:
         "policy_version": CANDIDATE_POLICY_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "retriever_limits": dict(CANONICAL_RETRIEVER_LIMITS),
+        "backfill_limits": dict(CANONICAL_BACKFILL_LIMITS),
+        "backfill_order": list(CANONICAL_BACKFILL_ORDER),
         "candidate_limit": CANONICAL_CANDIDATE_LIMIT,
         "final_limit": CANONICAL_LIMIT,
         "same_song_filter": True,
@@ -46,13 +55,17 @@ def canonical_policy_manifest() -> dict[str, object]:
             "directed": True,
             "max_depth": CANONICAL_BFS_MAX_DEPTH,
             "per_artist_cap": CANONICAL_BFS_PER_ARTIST_CAP,
+            "artist_allocation": "distance_then_round_robin_v1",
             "order": ["distance_ascending", "tag_cosine_descending", "track_id_ascending"],
         },
         "tag": {
             "artist_neighbor_limit": CANONICAL_TAG_ARTIST_NEIGHBOR_LIMIT,
             "max_term_artists": CANONICAL_TAG_MAX_TERM_ARTISTS,
             "per_artist_cap": CANONICAL_TAG_PER_ARTIST_CAP,
-            "order": ["tfidf_cosine_descending", "artist_id_ascending", "track_id_ascending"],
+            "track_selection": "query_artist_seeded_rotation_v1",
+            "artist_allocation": "round_robin_v1",
+            "seed": 42,
+            "order": ["tfidf_cosine_descending", "artist_id_ascending"],
         },
     }
 
@@ -66,6 +79,16 @@ def validate_canonical_policy(
         raise ValueError("retriever limits do not match the canonical four-source policy")
     if candidate_limit != CANONICAL_CANDIDATE_LIMIT or limit != CANONICAL_LIMIT:
         raise ValueError("candidate or recommendation limit does not match the canonical policy")
+
+
+def validate_canonical_backfill(
+    limits: Mapping[str, int],
+    order: tuple[str, ...] | list[str],
+) -> None:
+    if dict(limits) != CANONICAL_BACKFILL_LIMITS:
+        raise ValueError("backfill limits do not match the canonical policy")
+    if tuple(order) != CANONICAL_BACKFILL_ORDER:
+        raise ValueError("backfill order does not match the canonical policy")
 
 
 def load_candidate_policy(path: str | Path) -> dict[str, object]:
@@ -86,8 +109,20 @@ def load_candidate_policy(path: str | Path) -> dict[str, object]:
         int(manifest.get("candidate_limit", -1)),
         int(manifest.get("final_limit", -1)),
     )
+    validate_canonical_backfill(
+        {
+            str(name): int(value)
+            for name, value in manifest.get("backfill_limits", {}).items()
+        },
+        [str(name) for name in manifest.get("backfill_order", ())],
+    )
     expected = canonical_policy_manifest()
-    for key in ("same_song_filter", "vector", "bfs", "tag"):
+    for key in (
+        "same_song_filter",
+        "vector",
+        "bfs",
+        "tag",
+    ):
         if manifest.get(key) != expected[key]:
             raise ValueError(f"candidate policy {key} configuration mismatch")
     return manifest
