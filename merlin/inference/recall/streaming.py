@@ -721,33 +721,41 @@ class StreamingRecallEngine:
         source_positions = np.concatenate([
             np.arange(length, dtype=np.int64) for length in lengths
         ])
-        positions: dict[int, int] = {}
-        codes: list[int] = []
-        masks: list[int] = []
-        primary_masks: list[int] = []
-        score_rows: list[list[float]] = []
-        for code, score, source_index, source_position in zip(
-            all_codes, all_scores, sources, source_positions, strict=True
-        ):
-            value = int(code)
-            position = positions.get(value)
-            if position is None:
-                position = len(codes)
-                positions[value] = position
-                codes.append(value)
-                masks.append(0)
-                primary_masks.append(0)
-                score_rows.append([float("nan")] * len(SOURCE_NAMES))
-            masks[position] |= 1 << source_index
-            if source_position < self.limits[SOURCE_NAMES[source_index]]:
-                primary_masks[position] |= 1 << source_index
-            score_rows[position][source_index] = float(score)
+        unique_codes, first_positions, inverse = np.unique(
+            all_codes,
+            return_index=True,
+            return_inverse=True,
+        )
+        first_order = np.argsort(first_positions, kind="stable")
+        remap = np.empty(len(first_order), dtype=np.int64)
+        remap[first_order] = np.arange(len(first_order), dtype=np.int64)
+        merged_positions = remap[inverse]
+        masks = np.zeros(len(unique_codes), dtype=np.uint8)
+        source_bits = np.left_shift(np.uint8(1), sources)
+        np.bitwise_or.at(masks, merged_positions, source_bits)
+        primary_limits = np.asarray(
+            [self.limits[name] for name in SOURCE_NAMES],
+            dtype=np.int64,
+        )
+        primary = source_positions < primary_limits[sources]
+        primary_masks = np.zeros(len(unique_codes), dtype=np.uint8)
+        np.bitwise_or.at(
+            primary_masks,
+            merged_positions[primary],
+            source_bits[primary],
+        )
+        score_rows = np.full(
+            (len(unique_codes), len(SOURCE_NAMES)),
+            np.nan,
+            dtype=np.float32,
+        )
+        score_rows[merged_positions, sources] = all_scores
         return EncodedCandidates(
             self.codec,
-            np.asarray(codes, dtype=np.int32),
-            np.asarray(masks, dtype=np.uint8),
-            np.asarray(primary_masks, dtype=np.uint8),
-            np.asarray(score_rows, dtype=np.float32).reshape((-1, len(SOURCE_NAMES))),
+            unique_codes[first_order].astype(np.int32, copy=False),
+            masks,
+            primary_masks,
+            score_rows,
         )
 
     def _allocate_groups(
