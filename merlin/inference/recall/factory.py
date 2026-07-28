@@ -21,6 +21,7 @@ from .streaming import StreamingRecallEngine, TrackCodec
 from ..retrieval.faiss import FaissTrackIndex, load_audio_index
 from .pipeline import (
     RecallPipeline,
+    allocate_backfill_groups,
     audit_recall_groups,
     candidate_digest,
     recall_query_report,
@@ -123,6 +124,13 @@ def load_recall_pipeline(
         },
         candidate_limit=int(policy["candidate_limit"]),
         canonical=True,
+        backfill_limits={
+            str(name): int(limit)
+            for name, limit in policy["backfill_limits"].items()
+        },
+        backfill_order=tuple(
+            str(name) for name in policy["backfill_order"]
+        ),
     )
 
 
@@ -175,11 +183,22 @@ def load_streaming_recall_engine(
         graph,
         bfs,
         tag,
-        TrackCodec.build(assignments, allowed_splits, catalog.same_song),
+        TrackCodec.build(
+            assignments,
+            allowed_splits,
+            catalog.same_song,
+            tag.track_to_artist,
+        ),
         {
             str(name): int(limit)
             for name, limit in policy["retriever_limits"].items()
         },
+        {
+            str(name): int(limit)
+            for name, limit in policy["backfill_limits"].items()
+        },
+        tuple(str(name) for name in policy["backfill_order"]),
+        int(policy["candidate_limit"]),
     )
 
 
@@ -198,6 +217,11 @@ def validate_recall_low_memory(
         str(name): int(limit)
         for name, limit in policy["retriever_limits"].items()
     }
+    backfill_limits = {
+        str(name): int(limit)
+        for name, limit in policy["backfill_limits"].items()
+    }
+    backfill_order = tuple(str(name) for name in policy["backfill_order"])
     groups: dict[str, dict[str, list[Any]]] = {
         query_id: {} for query_id in query_track_ids
     }
@@ -210,12 +234,12 @@ def validate_recall_low_memory(
         for query_id in query_track_ids:
             available = bool(retriever.is_available(query_id))
             first = (
-                list(retriever.retrieve(query_id, limits[retriever.name]))
+                list(retriever.retrieve(query_id, backfill_limits[retriever.name]))
                 if available
                 else []
             )
             second = (
-                list(retriever.retrieve(query_id, limits[retriever.name]))
+                list(retriever.retrieve(query_id, backfill_limits[retriever.name]))
                 if available
                 else []
             )
@@ -290,8 +314,15 @@ def validate_recall_low_memory(
 
     reports = []
     for query_id in query_track_ids:
-        candidates, audit = audit_recall_groups(
+        allocated_groups = allocate_backfill_groups(
             groups[query_id],
+            limits,
+            backfill_limits,
+            backfill_order,
+            int(policy["candidate_limit"]),
+        )
+        candidates, audit = audit_recall_groups(
+            allocated_groups,
             limits,
             int(policy["candidate_limit"]),
             query_id,
