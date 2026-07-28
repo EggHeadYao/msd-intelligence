@@ -17,17 +17,25 @@ from .policy import CANDIDATE_POLICY_VERSION
 from .streaming import SOURCE_NAMES, StreamingRecallEngine
 
 
-CANDIDATE_POOL_VERSION = "merlin_candidate_pool_v2"
+CANDIDATE_POOL_VERSION = "merlin_candidate_pool_v3"
 CANDIDATE_BATCH_SIZE = 256
 CANDIDATE_READ_BATCH_SIZE = 64
 CANDIDATE_AUDIT_VERSION = "merlin_candidate_audit_v1"
 RECALL_SOURCES = ("audio", "graph", "bfs", "tag")
 
 
-def _candidate_payload(candidate: Candidate) -> dict[str, object]:
+def _candidate_payload(
+    candidate: Candidate,
+    primary_limits: Mapping[str, int],
+) -> dict[str, object]:
     return {
         "track_id": candidate.track_id,
         "recall_sources": sorted(candidate.sources),
+        "primary_recall_sources": sorted(
+            source
+            for source, rank in candidate.source_ranks.items()
+            if int(rank) <= int(primary_limits[source])
+        ),
     }
 
 
@@ -87,11 +95,17 @@ def export_candidate_pool(
                                     for source, name in enumerate(SOURCE_NAMES)
                                     if int(candidates.source_masks[index]) & (1 << source)
                                 ),
+                                "primary_recall_sources": sorted(
+                                    candidates.primary_sources(index)
+                                ),
                             }
                             for index in range(len(candidates))
                         ]
                         if streaming
-                        else [_candidate_payload(candidate) for candidate in candidates]
+                        else [
+                            _candidate_payload(candidate, limits)
+                            for candidate in candidates
+                        ]
                     ),
                     "audit": {
                         "raw_candidates": audit.raw_candidates,
@@ -119,6 +133,11 @@ def export_candidate_pool(
             pa.field("candidates", pa.list_(pa.struct((
                 pa.field("track_id", pa.string(), nullable=False),
                 pa.field("recall_sources", pa.list_(pa.string()), nullable=False),
+                pa.field(
+                    "primary_recall_sources",
+                    pa.list_(pa.string()),
+                    nullable=False,
+                ),
             ))), nullable=False),
             pa.field("audit", pa.struct((
                 pa.field("raw_candidates", pa.int64(), nullable=False),
@@ -154,7 +173,9 @@ def export_candidate_pool(
         "parent_hashes": parents,
         "schema": {
             "query_track_id": "string",
-            "candidates": "ordered array<track_id, recall_sources>",
+            "candidates": (
+                "ordered array<track_id, recall_sources, primary_recall_sources>"
+            ),
         },
     }
     write_json_atomic(manifest, manifest_path)
@@ -218,6 +239,12 @@ def audit_candidate_pool(
             str(candidate["track_id"]): frozenset(candidate["recall_sources"])
             for candidate in row["candidates"]
         }
+        primary_candidate_sources = {
+            str(candidate["track_id"]): frozenset(
+                candidate["primary_recall_sources"]
+            )
+            for candidate in row["candidates"]
+        }
         positive_ids = set(positive_map)
         union_hit_count = 0
         single = {source: 0 for source in RECALL_SOURCES}
@@ -228,8 +255,9 @@ def audit_candidate_pool(
             if not sources:
                 continue
             union_hit_count += 1
+            primary_sources = primary_candidate_sources[track_id]
             for source in RECALL_SOURCES:
-                single[source] += int(source in sources)
+                single[source] += int(source in primary_sources)
                 minus[source] += int(bool(sources - {source}))
                 exclusive[source] += int(sources == frozenset({source}))
         strata = {
