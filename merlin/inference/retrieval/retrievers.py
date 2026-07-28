@@ -305,8 +305,8 @@ class TagRetriever(CandidateRetriever):
     same_song: Callable[[str, str], bool] = _different_song
     pair_similarity: Callable[[str, str], float | None] = _zero_similarity
     query_available: Callable[[str], bool] | None = None
-    per_artist_cap: int = 5
-    artist_neighbor_limit: int = 100
+    per_artist_cap: int = 3
+    artist_neighbor_limit: int = 200
     _name: str = "tag"
     _sparse_index: object | None = field(default=None, repr=False)
 
@@ -318,9 +318,9 @@ class TagRetriever(CandidateRetriever):
         *,
         tag_idf_path: str | None = None,
         same_song: Callable[[str, str], bool] = _different_song,
-        artist_neighbor_limit: int = 100,
+        artist_neighbor_limit: int = 200,
         max_term_artists: int = 5_000,
-        per_artist_cap: int = 5,
+        per_artist_cap: int = 3,
     ) -> TagRetriever:
         """Construct lazy TF-IDF shared-tag recall from prepared datasets."""
         from ..data.tags import load_tag_data, load_tag_idf
@@ -350,9 +350,9 @@ class TagRetriever(CandidateRetriever):
         *,
         idf_values: Mapping[str, float] | None = None,
         same_song: Callable[[str, str], bool] = _different_song,
-        artist_neighbor_limit: int = 100,
+        artist_neighbor_limit: int = 200,
         max_term_artists: int = 5_000,
-        per_artist_cap: int = 5,
+        per_artist_cap: int = 3,
     ) -> TagRetriever:
         """Construct a retriever from catalog data already loaded by a batch stage."""
         from ..data.tags import (
@@ -499,14 +499,25 @@ class TagRetriever(CandidateRetriever):
         root = self.track_to_artist.get(query_track_id)
         if root is None:
             return []
-        result: list[Candidate] = []
         neighbors = (
             self.similar_artists(root)
             if callable(self.similar_artists)
             else self.similar_artists.get(root, ())
         )
+        selections: list[tuple[tuple[str, ...], float]] = []
         for artist, similarity in neighbors:
-            for track_id in self.artist_tracks.get(artist, ())[: self.per_artist_cap]:
+            tracks = tuple(sorted(self.artist_tracks.get(artist, ())))
+            offset = seeded_artist_track_offset(
+                query_track_id, artist, len(tracks)
+            )
+            rotated = (*tracks[offset:], *tracks[:offset])
+            selections.append((rotated[: self.per_artist_cap], float(similarity)))
+        result: list[Candidate] = []
+        for artist_rank in range(self.per_artist_cap):
+            for tracks, similarity in selections:
+                if artist_rank >= len(tracks):
+                    continue
+                track_id = tracks[artist_rank]
                 if track_id == query_track_id or self.same_song(query_track_id, track_id):
                     continue
                 result.append(Candidate(
@@ -533,16 +544,24 @@ class TagRetriever(CandidateRetriever):
             if callable(self.similar_artists)
             else self.similar_artists.get(root, ())
         )
-        candidates: list[Candidate] = []
+        selections: list[tuple[tuple[str, ...], float]] = []
         positive_neighbors: list[tuple[str, float]] = []
         for artist, similarity in artists:
-            tracks = self.artist_tracks.get(artist, ())
+            tracks = tuple(sorted(self.artist_tracks.get(artist, ())))
             positive_neighbors.extend(
-                (track_id, float(similarity)) for track_id in sorted(tracks)
+                (track_id, float(similarity)) for track_id in tracks
             )
-            if len(candidates) == limit:
-                continue
-            for track_id in tracks[: self.per_artist_cap]:
+            offset = seeded_artist_track_offset(
+                query_track_id, artist, len(tracks)
+            )
+            rotated = (*tracks[offset:], *tracks[:offset])
+            selections.append((rotated[: self.per_artist_cap], float(similarity)))
+        candidates: list[Candidate] = []
+        for artist_rank in range(self.per_artist_cap):
+            for tracks, similarity in selections:
+                if artist_rank >= len(tracks):
+                    continue
+                track_id = tracks[artist_rank]
                 if track_id == query_track_id or self.same_song(query_track_id, track_id):
                     continue
                 candidates.append(Candidate(
@@ -552,5 +571,5 @@ class TagRetriever(CandidateRetriever):
                     source_ranks={self.name: len(candidates) + 1},
                 ))
                 if len(candidates) == limit:
-                    break
+                    return candidates, positive_neighbors
         return candidates, positive_neighbors
