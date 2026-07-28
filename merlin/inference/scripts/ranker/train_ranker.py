@@ -761,7 +761,10 @@ def main() -> None:
     )
     solver_features = solver_feature_order(constant_features)
     projected_gb = estimate_ranker_scratch_gb(
-        training_rows=int(train_feature_manifest["row_count"]),
+        training_rows=int(train_feature_manifest.get(
+            "effective_row_count",
+            train_feature_manifest["row_count"],
+        )),
         validation_rows=(
             int(validation_feature_manifest["row_count"])
             if validation_feature_manifest is not None
@@ -804,7 +807,26 @@ def main() -> None:
                 else spark.read.json(str(path))
             )
 
-        train = read_rows(args.train_features).select("label", *RAW_BASE_FEATURES)
+        train_columns = ("label", SAMPLE_WEIGHT_COLUMN, *RAW_BASE_FEATURES)
+        train = read_rows(args.train_features).select(*train_columns)
+        if args.training_variant == "no_hard_neg":
+            assert base_features is not None
+            base = read_rows(base_features).select(
+                "label",
+                SAMPLE_WEIGHT_COLUMN,
+                "negative_source",
+                *RAW_BASE_FEATURES,
+            )
+            base = base.where(
+                F.col("negative_source").isNull()
+                | (F.col("negative_source") != F.lit("candidate_aware"))
+            ).withColumn(
+                SAMPLE_WEIGHT_COLUMN,
+                F.when(F.col("label") == 0, F.lit(1.0)).otherwise(
+                    F.col(SAMPLE_WEIGHT_COLUMN)
+                ),
+            ).select(*train_columns)
+            train = base.unionByName(train)
         if args.stage == "tuning":
             train = train.persist(StorageLevel.MEMORY_AND_DISK)
             cached.append(train)
@@ -824,7 +846,15 @@ def main() -> None:
                     raise ValueError(f"Set-A fill statistic is invalid: {name}")
                 fill_values[name] = float(value)
         else:
-            fill_values, means, stds, constant_features = frozen_preprocessing
+            (
+                fill_values,
+                means,
+                stds,
+                constant_features,
+                _,
+                _,
+                _,
+            ) = frozen_preprocessing
 
         def materialize(frame: Any) -> Any:
             result = frame
