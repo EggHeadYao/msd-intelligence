@@ -363,19 +363,59 @@ def _collect_validation_scores(frame: Any, models: Mapping) -> ValidationScoreTa
             selected = np.concatenate((better, selected_ties))
             return selected[np.lexsort((candidate_ids[selected], -values[selected]))]
 
-        metrics = {name: {} for name in scorer_names}
-        discounts = 1.0 / np.log2(np.arange(2, 22, dtype=np.float64))
-        for scorer, margins in scores.items():
-            top = top_indices(margins)
-            for group, positive_count in positive_counts.items():
-                dcg = float(np.sum(discounts[: len(top)] * labels[group][top]))
-                ndcg20 = dcg / _idcg20(positive_count)
-                metrics[scorer][group] = ndcg20
+        audio_order = np.lexsort((candidate_ids, -audio_scores))
+        learned_orders = tuple(
+            np.lexsort((candidate_ids, -lr_score_matrix[:, model_index]))
+            for model_index in range(len(REG_PARAMS))
+        )
+
+        ranking_limit = min(20, len(query))
+
+        def quota_top(learned_order, quota):
+            if quota == 0:
+                return learned_order[:ranking_limit]
+            if quota == 20:
+                return audio_order[:ranking_limit]
+            sources = quota_sources[quota]
+            pointers = [0, 0]
+            orders = (learned_order, audio_order)
+            selected = []
+            used = set()
+            for source in sources[:ranking_limit]:
+                while int(orders[source][pointers[source]]) in used:
+                    pointers[source] += 1
+                index = int(orders[source][pointers[source]])
+                pointers[source] += 1
+                selected.append(index)
+                used.add(index)
+            return np.asarray(selected, dtype=np.int64)
+
+        denominators = {
+            group: float(np.sum(discounts[: min(positive_count, 20)]))
+            for group, positive_count in positive_counts.items()
+        }
+        rankings = [
+            quota_top(learned_order, quota)
+            for learned_order in learned_orders
+            for quota in AUDIO_QUOTAS
+        ]
+        rankings.append(audio_order[:ranking_limit])
+        rankings.extend(
+            top_indices(baseline_scores[name]) for name in ("c2_only", "bfs")
+        )
+        metrics = {group: [] for group in positive_counts}
+        for top in rankings:
+            weighted = discounts[: len(top)]
+            for group in positive_counts:
+                dcg = float(np.sum(weighted * labels[group][top]))
+                metrics[group].append(dcg / denominators[group])
         rows = [
             {
                 "query_track_id": query_id,
                 "query_group": group,
-                "score_values": [metrics[name][group] for name in scorer_names],
+                "selection_fold": selection_fold,
+                "relation_evidence": relation_evidence,
+                "score_values": metrics[group],
             }
             for group in positive_counts
         ]
