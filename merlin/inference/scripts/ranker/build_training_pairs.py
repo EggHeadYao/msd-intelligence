@@ -319,6 +319,10 @@ def _positive_checks(
     tag: TagRetriever,
     computer: RankerFeatureComputer,
     thresholds: Mapping[str, object],
+    codec: TrackCodec | None = None,
+    audio_code_rows: np.ndarray | None = None,
+    audio_neighbor_codes: np.ndarray | None = None,
+    audio_neighbor_scores: np.ndarray | None = None,
 ):
     audio_threshold = float(thresholds["audio_cosine_p90"])
     tag_threshold = float(thresholds["tag_tfidf_cosine_p90"])
@@ -374,7 +378,69 @@ def _positive_checks(
             results.append(tag_score is not None and tag_score >= tag_threshold)
         return results
 
-    return is_positive, is_positive_batch, {
+    def is_positive_encoded_batch(
+        candidates: EncodedCandidates,
+        positions: np.ndarray,
+    ) -> np.ndarray:
+        if codec is None or audio_code_rows is None or codec.artist_codes is None:
+            raise ValueError("encoded positive checks require numeric catalog metadata")
+        selected_positions = np.asarray(positions, dtype=np.int64)
+        codes = candidates.codes[selected_positions]
+        results = np.zeros(len(codes), dtype=np.bool_)
+        query_code = codec.code(query_id)
+        query_artist_code = int(codec.artist_codes[query_code])
+        if query_artist_code < 0 or artist is None:
+            return results
+        candidate_artist_codes = codec.artist_codes[codes]
+        same_artist = candidate_artist_codes == query_artist_code
+        results[same_artist] = True
+        comparable = (candidate_artist_codes >= 0) & ~same_artist
+        if not np.any(comparable):
+            return results
+
+        known_audio = candidates.scores[selected_positions, 0]
+        if audio_neighbor_codes is not None and audio_neighbor_scores is not None:
+            neighbor_order = np.argsort(audio_neighbor_codes, kind="stable")
+            sorted_neighbor_codes = audio_neighbor_codes[neighbor_order]
+            lookup_positions = np.searchsorted(sorted_neighbor_codes, codes)
+            bounded = lookup_positions < len(sorted_neighbor_codes)
+            matched = np.zeros(len(codes), dtype=np.bool_)
+            matched[bounded] = (
+                sorted_neighbor_codes[lookup_positions[bounded]] == codes[bounded]
+            )
+            known_audio[matched] = audio_neighbor_scores[
+                neighbor_order[lookup_positions[matched]]
+            ]
+        results |= comparable & np.isfinite(known_audio) & (
+            known_audio >= audio_threshold
+        )
+        unresolved = comparable & ~results
+        query_audio_row = audio.row_id(query_id)
+        if query_audio_row is not None and np.any(unresolved):
+            unresolved_positions = np.flatnonzero(unresolved)
+            candidate_audio_rows = audio_code_rows[codes[unresolved_positions]]
+            available = candidate_audio_rows >= 0
+            if np.any(available):
+                score_positions = unresolved_positions[available]
+                scores = audio.similarities_by_rows(
+                    query_audio_row,
+                    candidate_audio_rows[available],
+                )
+                results[score_positions] = scores >= audio_threshold
+
+        unresolved = comparable & ~results
+        for candidate_artist_code in np.unique(candidate_artist_codes[unresolved]):
+            candidate_artist = codec.artists[int(candidate_artist_code)]
+            if candidate_artist not in tag_cache:
+                tag_cache[candidate_artist] = _finite(
+                    tag.pair_similarity(artist, candidate_artist)
+                )
+            tag_score = tag_cache[candidate_artist]
+            if tag_score is not None and tag_score >= tag_threshold:
+                results |= candidate_artist_codes == candidate_artist_code
+        return results
+
+    return is_positive, is_positive_batch, is_positive_encoded_batch, {
         "audio": audio_cache,
         "tag": tag_pair_cache,
     }
