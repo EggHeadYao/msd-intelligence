@@ -1413,15 +1413,20 @@ def write_training_pair_artifacts(
     parent_paths: Mapping[str, str | Path],
     scope: str,
     is_positive_batch: IsPositiveBatch | None = None,
+    limit_queries: int = 0,
 ) -> dict[str, object]:
     if scope not in {"formal", "smoke"}:
         raise ValueError("training-pair scope must be formal or smoke")
+    if limit_queries < 0:
+        raise ValueError("training-pair query limit must be non-negative")
     allowed = allowed_training_tracks(assignments, stage)
     universe = tuple(sorted(allowed))
     totals: Counter[str] = Counter()
     loss_weight_totals: Counter[str] = Counter()
     loss_weight_shape_histogram: Counter[str] = Counter()
     rejection_totals: Counter[str] = Counter()
+    weak_source_totals: Counter[str] = Counter()
+    recall_source_totals: Counter[str] = Counter()
     query_count = 0
 
     def pair_rows() -> Iterator[dict[str, object]]:
@@ -1429,6 +1434,8 @@ def write_training_pair_artifacts(
         for record, query_positives in iter_candidate_positives(
             candidate_pool_path, positives
         ):
+            if limit_queries and query_count >= limit_queries:
+                break
             query_id = str(record["query_track_id"])
             if query_positives is None or query_id not in allowed:
                 continue
@@ -1447,6 +1454,7 @@ def write_training_pair_artifacts(
             query_count += 1
             for key in (
                 "positive_count",
+                "unrecalled_positive_count",
                 "negative_count",
                 "candidate_aware_count",
                 "random_count",
@@ -1456,7 +1464,10 @@ def write_training_pair_artifacts(
             loss_weight_totals.update(audit["loss_weight_sums"])
             loss_weight_shape_histogram[_loss_weight_shape_key(audit)] += 1
             rejection_totals.update(audit["rejections"])
-            yield from rows
+            for row in rows:
+                weak_source_totals.update(row["positive_sources"])
+                recall_source_totals.update(row["recall_sources"])
+                yield row
 
     output = Path(output_path)
     parquet_schema = None
@@ -1473,10 +1484,16 @@ def write_training_pair_artifacts(
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "scope": scope,
         "stage": stage,
+        "training_splits": sorted(training_splits(stage)),
         "seed": PAIR_SEED,
+        "random_sampling": "query_seeded_splitmix64_v1",
+        "row_ordering": "positive_candidate_random_v1",
+        "positive_selection": "recalled_weak_positives_only",
+        "candidate_aware_sampling": CANDIDATE_SAMPLING_STRATEGY,
         "negative_ratio": NEGATIVE_RATIO,
         "candidate_aware_target_fraction": CANDIDATE_AWARE_FRACTION,
         "query_count": query_count,
+        "query_limit": limit_queries or None,
         "pair_count": pair_count,
         "counts": dict(sorted(totals.items())),
         "actual_candidate_aware_fraction": (
@@ -1490,6 +1507,8 @@ def write_training_pair_artifacts(
             },
         ),
         "rejection_counts": dict(sorted(rejection_totals.items())),
+        "weak_positive_source_counts": dict(sorted(weak_source_totals.items())),
+        "recall_source_totals": dict(sorted(recall_source_totals.items())),
         "pairs_file": output.name,
         "storage_format": "parquet" if output.suffix == ".parquet" else "jsonl_gzip",
         "pairs_sha256": sha256_path(output),
@@ -1620,6 +1639,12 @@ def load_training_pair_manifest(
         raise ValueError("training-pair scope mismatch")
     if manifest.get("stage") != expected_stage:
         raise ValueError("training-pair stage mismatch")
+    if manifest.get("training_splits") != sorted(training_splits(expected_stage)):
+        raise ValueError("training-pair split universe mismatch")
+    if manifest.get("positive_selection") != "recalled_weak_positives_only":
+        raise ValueError("training-pair positive selection mismatch")
+    if manifest.get("candidate_aware_sampling") != CANDIDATE_SAMPLING_STRATEGY:
+        raise ValueError("training-pair candidate sampling mismatch")
     pairs = Path(pairs_path)
     if manifest.get("pairs_file") != pairs.name:
         raise ValueError("training-pair output path mismatch")
