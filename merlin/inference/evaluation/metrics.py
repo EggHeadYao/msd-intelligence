@@ -1,4 +1,4 @@
-"""Deterministic query metrics and paired inference for Set-C evaluation."""
+"""Deterministic query metrics and paired development evaluation."""
 
 from __future__ import annotations
 
@@ -8,7 +8,11 @@ import math
 from typing import Iterable, Mapping, Sequence
 
 from ..ranking.features import FEATURE_ORDER, FILL_FEATURES, materialize_raw_features
-from ..ranking.model import LogisticRanker
+from ..ranking.model import (
+    LogisticRanker,
+    query_relation_evidence,
+    quota_interleave_ordered_indices,
+)
 from ..training.validation_groups import VALIDATION_QUERY_GROUPS
 from .protocol import EVALUATION_CUTOFFS, EVALUATION_SEED
 
@@ -113,7 +117,7 @@ def score_query(
     import numpy as np
 
     if not rows:
-        raise ValueError("Set-C query candidate list must not be empty")
+        raise ValueError("development query candidate list must not be empty")
     candidate_ids = np.asarray(
         [str(row["candidate_track_id"]) for row in rows], dtype=object
     )
@@ -125,7 +129,7 @@ def score_query(
         dtype=np.float64,
     )
     if not np.all(np.isfinite(matrix)):
-        raise ValueError(f"non-finite Set-C feature for query {query_id}")
+        raise ValueError(f"non-finite development feature for query {query_id}")
 
     audio_index = FEATURE_ORDER.index("cos_audio")
     full_means = np.asarray(full_ranker.means, dtype=np.float64)
@@ -165,10 +169,30 @@ def score_query(
             no_hard_scaled,
         ),
     }
-    rankings = {
-        name: candidate_ids[np.lexsort((candidate_ids, -values))].tolist()
+    score_orders = {
+        name: np.lexsort((candidate_ids, -values))
         for name, values in scores.items()
     }
+    rankings = {
+        name: candidate_ids[order].tolist()
+        for name, order in score_orders.items()
+    }
+    relation_evidence = query_relation_evidence(materialized)
+    audio_order = score_orders["c1_only"]
+    for name, ranker in (
+        ("full", full_ranker),
+        ("no_hard_neg", no_hard_ranker),
+    ):
+        effective_quota = ranker.effective_audio_quota(relation_evidence)
+        learned_order = score_orders[name]
+        indexes = quota_interleave_ordered_indices(
+            learned_order,
+            audio_order,
+            effective_quota,
+        )
+        selected = set(indexes)
+        complete = (*indexes, *(int(index) for index in learned_order if index not in selected))
+        rankings[name] = candidate_ids[list(complete)].tolist()
     cold_positions = np.asarray([
         index
         for index, row in enumerate(rows)
