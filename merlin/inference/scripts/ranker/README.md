@@ -187,3 +187,43 @@ regularization, Audio quota, and relation-evidence gate:
 
 Read `selected_reg_param` from `tuning_model/training_manifest.json` and use
 that exact value as `MERLIN_REG` below. Do not select it from Set C.
+
+## 5. Full-catalog retrain data
+
+The first command is resumable and streams candidates, sampling, and features
+without publishing an all-catalog candidate pool.
+
+```bash
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
+  --stage final_retrain \
+  --scope formal \
+  --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
+  --split-manifest parquets_new/merlin/ranker/split_manifest.json \
+  --thresholds parquets_new/merlin/ranker/weak_label_thresholds.json \
+  --output parquets_new/merlin/ranker/training_pairs.parquet \
+  --manifest parquets_new/merlin/ranker/training_pairs_manifest.json \
+  --features-output parquets_new/merlin/ranker/raw_pair_features.parquet \
+  --features-manifest parquets_new/merlin/ranker/raw_pair_features_manifest.json \
+  --batch-size 256 \
+  --rows-per-file 250000 \
+  --positive-neighbor-limit 1001 \
+  --min-free-gb 8
+
+"$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
+  --stage final_retrain \
+  --negative-mode random_only \
+  --scope formal \
+  --split-assignments parquets_new/merlin/ranker/split_assignments.parquet \
+  --split-manifest parquets_new/merlin/ranker/split_manifest.json \
+  --thresholds parquets_new/merlin/ranker/weak_label_thresholds.json \
+  --full-training-pairs parquets_new/merlin/ranker/training_pairs.parquet \
+  --full-training-pairs-manifest parquets_new/merlin/ranker/training_pairs_manifest.json \
+  --full-features parquets_new/merlin/ranker/raw_pair_features.parquet \
+  --full-features-manifest parquets_new/merlin/ranker/raw_pair_features_manifest.json \
+  --output parquets_new/merlin/ranker/no_hard_neg_training_pairs.parquet \
+  --manifest parquets_new/merlin/ranker/no_hard_neg_training_pairs_manifest.json \
+  --features-output parquets_new/merlin/ranker/no_hard_neg_raw_pair_features.parquet \
+  --features-manifest parquets_new/merlin/ranker/no_hard_neg_raw_pair_features_manifest.json \
+  --rows-per-file 250000 \
+  --min-free-gb 8
+```
