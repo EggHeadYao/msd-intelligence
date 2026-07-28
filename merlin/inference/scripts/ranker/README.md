@@ -227,3 +227,67 @@ without publishing an all-catalog candidate pool.
   --rows-per-file 250000 \
   --min-free-gb 8
 ```
+
+## 6. Train Full and no-hard-negative models
+
+Set `MERLIN_REG` to the exact selected value first:
+
+```bash
+export MERLIN_REG='<selected_reg_param>'
+
+/opt/spark/bin/spark-submit \
+  --master 'local[4]' \
+  --driver-memory 5500m \
+  --conf spark.eventLog.enabled=false \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  --conf spark.hadoop.fs.defaultFS=file:/// \
+  --conf spark.driver.bindAddress=127.0.0.1 \
+  --conf spark.memory.fraction=0.40 \
+  "$MERLIN_SPARK_ENTRY" \
+  --train-features "$MERLIN_RANKER_ROOT/raw_pair_features.parquet" \
+  --train-features-manifest "$MERLIN_RANKER_ROOT/raw_pair_features_manifest.json" \
+  --output "$MERLIN_RANKER_ROOT" \
+  --stage final_retrain \
+  --training-variant full \
+  --fixed-reg-param "$MERLIN_REG" \
+  --frozen-scaler "$MERLIN_RANKER_ROOT/tuning_model/ranker_scaler.json" \
+  --frozen-tuning-manifest "$MERLIN_RANKER_ROOT/tuning_model/training_manifest.json" \
+  --scope formal \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb 2 \
+  --max-block-size-mb 8 \
+  --parent audio_index_manifest="$MERLIN_ROOT/parquets_new/merlin/audio/index_audio_manifest.json" \
+  --parent graph_index_manifest="$MERLIN_ROOT/parquets_new/merlin/graph/index_graph_manifest.json" \
+  --parent candidate_policy_manifest="$MERLIN_RANKER_ROOT/candidate_policy_manifest.json" \
+  --parent tag_idf="$MERLIN_RANKER_ROOT/tag_idf.json" \
+  --parent training_pairs_manifest="$MERLIN_RANKER_ROOT/training_pairs_manifest.json"
+
+/opt/spark/bin/spark-submit \
+  --master 'local[4]' \
+  --driver-memory 5500m \
+  --conf spark.eventLog.enabled=false \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.shuffle.partitions=64 \
+  --conf spark.hadoop.fs.defaultFS=file:/// \
+  --conf spark.driver.bindAddress=127.0.0.1 \
+  --conf spark.memory.fraction=0.40 \
+  "$MERLIN_SPARK_ENTRY" \
+  --train-features "$MERLIN_RANKER_ROOT/no_hard_neg_raw_pair_features.parquet" \
+  --train-features-manifest "$MERLIN_RANKER_ROOT/no_hard_neg_raw_pair_features_manifest.json" \
+  --training-pairs-manifest "$MERLIN_RANKER_ROOT/no_hard_neg_training_pairs_manifest.json" \
+  --output "$MERLIN_RANKER_ROOT/no_hard_neg_model" \
+  --stage final_retrain \
+  --training-variant no_hard_neg \
+  --fixed-reg-param "$MERLIN_REG" \
+  --frozen-scaler "$MERLIN_RANKER_ROOT/tuning_model/ranker_scaler.json" \
+  --frozen-tuning-manifest "$MERLIN_RANKER_ROOT/tuning_model/training_manifest.json" \
+  --scope formal \
+  --scratch-root "$MERLIN_RANKER_ROOT/.c3-scratch" \
+  --min-free-gb 2 \
+  --max-block-size-mb 8 \
+  --parent audio_index_manifest="$MERLIN_ROOT/parquets_new/merlin/audio/index_audio_manifest.json" \
+  --parent graph_index_manifest="$MERLIN_ROOT/parquets_new/merlin/graph/index_graph_manifest.json" \
+  --parent candidate_policy_manifest="$MERLIN_RANKER_ROOT/candidate_policy_manifest.json" \
+  --parent tag_idf="$MERLIN_RANKER_ROOT/tag_idf.json"
+```
