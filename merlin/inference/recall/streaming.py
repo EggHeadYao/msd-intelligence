@@ -637,13 +637,47 @@ class StreamingRecallEngine:
         if template is None:
             empty = self._empty_group()
             return empty, empty
+        query_id = self.codec.tracks[query_code]
+        artist_codes: list[np.ndarray] = []
+        artist_scores: list[float] = []
+        for index, (artist, score) in enumerate(zip(
+            template.artist_ids, template.artist_scores, strict=True
+        )):
+            codes = template.track_codes[
+                template.artist_offsets[index] : template.artist_offsets[index + 1]
+            ]
+            if len(codes) == 0:
+                continue
+            offset = seeded_artist_track_offset(query_id, artist, len(codes))
+            positions = (
+                offset + np.arange(min(self.tag.per_artist_cap, len(codes)))
+            ) % len(codes)
+            artist_codes.append(codes[positions])
+            artist_scores.append(float(score))
+        code_matrix = np.full(
+            (len(artist_codes), self.tag.per_artist_cap),
+            -1,
+            dtype=np.int32,
+        )
+        score_matrix = np.full(code_matrix.shape, np.nan, dtype=np.float32)
+        for row, (codes, score) in enumerate(zip(
+            artist_codes, artist_scores, strict=True
+        )):
+            code_matrix[row, : len(codes)] = codes
+            score_matrix[row, : len(codes)] = score
+        recall_codes = code_matrix.T.reshape(-1)
+        recall_scores = score_matrix.T.reshape(-1)
+        valid = recall_codes >= 0
         recall = self._filter_group(
             query_code,
-            template.recall_codes,
-            template.recall_scores,
-            self.limits["tag"],
+            recall_codes[valid],
+            recall_scores[valid],
+            self.backfill_limits["tag"],
         )
-        return recall, (template.positive_codes, template.positive_scores)
+        return recall, (
+            template.track_codes,
+            template.track_scores,
+        )
 
     def _merge(
         self,
