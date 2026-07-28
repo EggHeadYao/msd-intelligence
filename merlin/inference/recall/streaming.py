@@ -322,10 +322,10 @@ class StreamingRecallEngine:
         audio_codes, audio_scores = self._ordered(audio_codes, audio_scores)
         graph_codes, graph_scores = self._ordered(graph_codes, graph_scores)
         audio_group = self._filter_group(
-            query_code, audio_codes, audio_scores, self.limits["audio"]
+            query_code, audio_codes, audio_scores, self.backfill_limits["audio"]
         )
         graph_group = self._filter_group(
-            query_code, graph_codes, graph_scores, self.limits["graph"]
+            query_code, graph_codes, graph_scores, self.backfill_limits["graph"]
         )
         root_artist = self.bfs.track_to_artist.get(query_id)
         bfs_group = self._bfs_group(
@@ -337,7 +337,10 @@ class StreamingRecallEngine:
             query_code,
             batch.tag_templates.get(root_artist) if root_artist is not None else None,
         )
-        candidates = self._merge((audio_group, graph_group, bfs_group, tag_group))
+        groups = self._allocate_groups((
+            audio_group, graph_group, bfs_group, tag_group
+        ))
+        candidates = self._merge(groups)
         audio_positive = [
             (self.codec.tracks[int(code)], float(score))
             for code, score in zip(audio_codes, audio_scores, strict=True)
@@ -361,12 +364,18 @@ class StreamingRecallEngine:
         graph_codes, graph_scores = batch.graph.query(position)
         audio_codes, audio_scores = self._ordered(audio_codes, audio_scores)
         graph_codes, graph_scores = self._ordered(graph_codes, graph_scores)
-        groups = (
+        expanded_groups = (
             self._filter_group(
-                query_code, audio_codes, audio_scores, self.limits["audio"]
+                query_code,
+                audio_codes,
+                audio_scores,
+                self.backfill_limits["audio"],
             ),
             self._filter_group(
-                query_code, graph_codes, graph_scores, self.limits["graph"]
+                query_code,
+                graph_codes,
+                graph_scores,
+                self.backfill_limits["graph"],
             ),
             self._bfs_group(
                 query_code,
@@ -377,6 +386,7 @@ class StreamingRecallEngine:
                 batch.tag_templates.get(self.tag.track_to_artist.get(query_id)),
             )[0],
         )
+        groups = self._allocate_groups(expanded_groups)
         candidates = self._merge(groups)
         counts = {
             name: len(group[0]) for name, group in zip(SOURCE_NAMES, groups, strict=True)
@@ -396,7 +406,8 @@ class StreamingRecallEngine:
         return candidates, RecallAudit(
             source_counts=counts,
             source_shortages={
-                name: int(self.limits[name]) - count for name, count in counts.items()
+                name: max(0, int(self.limits[name]) - count)
+                for name, count in counts.items()
             },
             unique_candidates=unique_count,
             raw_candidates=raw_count,
@@ -631,6 +642,47 @@ class StreamingRecallEngine:
             np.asarray(codes, dtype=np.int32),
             np.asarray(masks, dtype=np.uint8),
             np.asarray(score_rows, dtype=np.float32).reshape((-1, len(SOURCE_NAMES))),
+        )
+
+    def _allocate_groups(
+        self,
+        groups: Sequence[tuple[np.ndarray, np.ndarray]],
+    ) -> tuple[tuple[np.ndarray, np.ndarray], ...]:
+        """Retain primary groups and round-robin unused capacity."""
+        selected_ends = [
+            min(len(group[0]), self.limits[name])
+            for name, group in zip(SOURCE_NAMES, groups, strict=True)
+        ]
+        used = {
+            int(code)
+            for source, (codes, _scores) in enumerate(groups)
+            for code in codes[: selected_ends[source]]
+        }
+        source_positions = {name: index for index, name in enumerate(SOURCE_NAMES)}
+        while len(used) < self.candidate_limit:
+            progressed = False
+            for name in self.backfill_order:
+                source = source_positions[name]
+                codes, scores = groups[source]
+                boundary = min(len(codes), self.backfill_limits[name])
+                while selected_ends[source] < boundary:
+                    position = selected_ends[source]
+                    selected_ends[source] += 1
+                    code = int(codes[position])
+                    if code not in used:
+                        used.add(code)
+                        progressed = True
+                        break
+                if len(used) >= self.candidate_limit:
+                    break
+            if not progressed:
+                break
+        return tuple(
+            (
+                codes[: selected_ends[source]],
+                scores[: selected_ends[source]],
+            )
+            for source, (codes, scores) in enumerate(groups)
         )
 
     @staticmethod
