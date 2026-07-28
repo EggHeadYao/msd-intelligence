@@ -690,7 +690,10 @@ def main() -> None:
         relation_pairs.count()
         tag_pair_temporary.cleanup()
         tag_pair_temporary = None
-        release(set_b)
+        if is_development:
+            release(vectors)
+        else:
+            release(set_b)
 
         counts = audio_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "audio_count").join(
             relation_pairs.groupBy("query_track_id").count().withColumnRenamed("count", "relation_count"),
@@ -727,10 +730,17 @@ def main() -> None:
         positives = (
             audio_pairs.unionByName(relation_pairs).unionByName(mixed_audio).unionByName(mixed_relation)
             .dropDuplicates(["query_track_id", "candidate_track_id", "query_group"])
+            .join(F.broadcast(query_folds), "query_track_id", "inner")
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
         cached.append(positives)
-        positives.count()
+        positive_stats = {
+            row["query_group"]: row.asDict()
+            for row in positives.groupBy("query_group").agg(
+                F.count("*").alias("positive_count"),
+                F.countDistinct("query_track_id").alias("eligible_query_count"),
+            ).collect()
+        }
         release(audio_pairs)
         release(relation_pairs)
         release(counts)
@@ -743,6 +753,9 @@ def main() -> None:
             "query_track_id",
             F.col("candidate.track_id").cast("string").alias("candidate_track_id"),
             F.col("candidate.recall_sources").alias("recall_sources"),
+            F.col("candidate.primary_recall_sources").alias(
+                "primary_recall_sources"
+            ),
         )
         validation_pairs, eligible, recalled_positives = build_nested_validation_pairs(
             candidate_rows, positives
@@ -752,14 +765,24 @@ def main() -> None:
         cached.extend((eligible, recalled_positives))
         validation_pairs = validation_pairs.persist(StorageLevel.MEMORY_AND_DISK)
         cached.append(validation_pairs)
-        layout_counts = validation_pairs.agg(
+        fold_layout_rows = validation_pairs.groupBy("selection_fold").agg(
+            F.countDistinct("query_track_id").alias("query_count"),
             F.count("*").alias("pair_count"),
             F.sum(F.size("validation_groups")).alias("group_row_count"),
-        ).first()
-        validation_pair_count = int(layout_counts["pair_count"])
-        validation_group_row_count = int(layout_counts["group_row_count"] or 0)
+        ).collect()
+        validation_pair_count = sum(int(row["pair_count"]) for row in fold_layout_rows)
+        validation_group_row_count = sum(
+            int(row["group_row_count"] or 0) for row in fold_layout_rows
+        )
         if validation_pair_count == 0:
             raise ValueError(f"{args.apply_split} validation pairs are empty")
+        selection_fold_stats = {
+            str(row["selection_fold"]): {
+                "query_count": int(row["query_count"]),
+                "pair_count": int(row["pair_count"]),
+            }
+            for row in fold_layout_rows
+        }
         missing_candidate_queries = eligible.select("query_track_id").distinct().join(
             pool_queries.select(F.col("track_id").alias("query_track_id")),
             "query_track_id",
@@ -770,13 +793,6 @@ def main() -> None:
                 f"an eligible {args.apply_split} query has no canonical candidates"
             )
 
-        positive_stats = {
-            row["query_group"]: row.asDict()
-            for row in positives.groupBy("query_group").agg(
-                F.count("*").alias("positive_count"),
-                F.countDistinct("query_track_id").alias("eligible_query_count"),
-            ).collect()
-        }
         hit_stats = {
             row["query_group"]: row.asDict()
             for row in recalled_positives.groupBy("query_group").agg(
@@ -809,10 +825,10 @@ def main() -> None:
         release(eligible)
         release(pool_queries)
 
-        if not is_set_c:
+        if not is_development:
             threshold_payload = {
                 "artifact_type": "set_b_validation_thresholds",
-                "artifact_version": "merlin_validation_groups_v1",
+                "artifact_version": VALIDATION_THRESHOLD_VERSION,
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "fit_split": "set_a",
                 "seed": VALIDATION_GROUP_SEED,
