@@ -192,7 +192,11 @@ class StreamingRecallEngine:
     tag: TagRetriever
     codec: TrackCodec
     limits: Mapping[str, int]
+    backfill_limits: Mapping[str, int]
+    backfill_order: tuple[str, ...]
+    candidate_limit: int
     audio_row_codes: np.ndarray = field(init=False, repr=False)
+    audio_code_rows: np.ndarray = field(init=False, repr=False)
     graph_row_codes: np.ndarray = field(init=False, repr=False)
     bfs_artist_codes: Mapping[str, np.ndarray] = field(init=False, repr=False)
     _bfs_templates: OrderedDict[str, BfsTemplate] = field(
@@ -203,12 +207,31 @@ class StreamingRecallEngine:
     )
 
     def __post_init__(self) -> None:
+        if set(self.limits) != set(SOURCE_NAMES) or set(
+            self.backfill_limits
+        ) != set(SOURCE_NAMES):
+            raise ValueError("streaming recall limits must cover all sources")
+        if any(
+            self.backfill_limits[name] < self.limits[name]
+            for name in SOURCE_NAMES
+        ):
+            raise ValueError("streaming backfill cannot reduce a primary quota")
+        if set(self.backfill_order) - set(SOURCE_NAMES):
+            raise ValueError("streaming backfill order contains an unknown source")
+        if self.candidate_limit < sum(self.limits.values()):
+            raise ValueError("streaming candidate limit is below primary quotas")
         lookup = self.codec.track_to_code.get
         self.audio_row_codes = np.fromiter(
             (lookup(track_id, -1) for track_id in self.audio.row_to_track),
             dtype=np.int32,
             count=len(self.audio.row_to_track),
         )
+        self.audio_code_rows = np.full(len(self.codec.tracks), -1, dtype=np.int64)
+        valid_audio_rows = self.audio_row_codes >= 0
+        self.audio_code_rows[self.audio_row_codes[valid_audio_rows]] = np.flatnonzero(
+            valid_audio_rows
+        )
+        self.audio_code_rows.setflags(write=False)
         self.graph_row_codes = np.fromiter(
             (lookup(track_id, -1) for track_id in self.graph.row_to_track),
             dtype=np.int32,
