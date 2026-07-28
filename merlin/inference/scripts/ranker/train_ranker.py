@@ -686,8 +686,22 @@ def main() -> None:
         expected_pair_kind="training",
         expected_stage=args.stage,
     )
+    base_feature_manifest = None
+    base_features = None
+    base_features_manifest = None
     if args.training_variant == "no_hard_neg":
         paths = InferenceArtifactPaths()
+        base_features = args.base_train_features or paths.raw_pair_features
+        base_features_manifest = (
+            args.base_train_features_manifest or paths.raw_pair_features_manifest
+        )
+        base_feature_manifest = load_raw_feature_manifest(
+            base_features_manifest,
+            base_features,
+            expected_scope=args.scope,
+            expected_pair_kind="training",
+            expected_stage="final_retrain",
+        )
         pair_manifest_path = (
             args.training_pairs_manifest or paths.no_hard_neg_pairs_manifest
         )
@@ -700,6 +714,16 @@ def main() -> None:
             no_hard_pairs = json.load(stream)
         if float(no_hard_pairs.get("candidate_aware_target_fraction", -1.0)) != 0.0:
             raise ValueError("no-hard-neg pair manifest contains hard negatives")
+        if no_hard_pairs.get("dataset_layout") != "random_replacement_delta":
+            raise ValueError("no-hard-neg artifact is not a replacement delta")
+        if parents.get("full_raw_features_manifest") != sha256_path(
+            base_features_manifest
+        ):
+            raise ValueError("no-hard-neg delta is not bound to its Full base")
+        if int(train_feature_manifest.get("effective_row_count", -1)) != int(
+            base_feature_manifest["row_count"]
+        ):
+            raise ValueError("no-hard-neg delta and Full base row counts differ")
     validation_feature_manifest = None
     frozen_preprocessing = None
     frozen_initial = None
