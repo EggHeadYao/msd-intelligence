@@ -328,8 +328,6 @@ def write_audio_threshold_pairs_numpy(
             raise ValueError("audio threshold vector norms are invalid")
         return matrix / norms[:, None]
 
-    query_matrix = normalized_matrix(queries, "q_vector", "q_norm")
-    candidate_matrix = normalized_matrix(candidates, "c_vector", "c_norm")
     query_tracks = np.asarray(
         [str(row["query_track_id"]) for row in queries], dtype=object
     )
@@ -346,13 +344,37 @@ def write_audio_threshold_pairs_numpy(
         [str(row["c_artist_id"]) for row in candidates], dtype=object
     )
     candidate_releases = np.asarray([row["c_release_id"] for row in candidates], dtype=object)
-    symmetric = (
-        np.array_equal(query_tracks, candidate_tracks)
-        and np.array_equal(query_songs, candidate_songs)
-        and np.array_equal(query_artists, candidate_artists)
-        and np.array_equal(query_releases, candidate_releases)
-        and np.array_equal(query_matrix, candidate_matrix)
-    )
+    candidate_positions = {
+        track_id: index for index, track_id in enumerate(candidate_tracks)
+    }
+    shared_positions = []
+    if len(candidate_positions) == len(candidate_tracks):
+        for query_index, track_id in enumerate(query_tracks):
+            candidate_index = candidate_positions.get(track_id)
+            if candidate_index is None:
+                break
+            query_row = queries[query_index]
+            candidate_row = candidates[candidate_index]
+            if (
+                query_songs[query_index] != candidate_songs[candidate_index]
+                or query_artists[query_index] != candidate_artists[candidate_index]
+                or query_releases[query_index] != candidate_releases[candidate_index]
+                or query_row["q_norm"] != candidate_row["c_norm"]
+                or not np.array_equal(
+                    query_row["q_vector"], candidate_row["c_vector"]
+                )
+            ):
+                break
+            shared_positions.append(candidate_index)
+    shared_catalog = len(shared_positions) == len(queries)
+    candidate_matrix = normalized_matrix(candidates, "c_vector", "c_norm")
+    symmetric = shared_catalog and shared_positions == list(range(len(candidates)))
+    if symmetric:
+        query_matrix = candidate_matrix
+    elif shared_catalog:
+        query_matrix = candidate_matrix[np.asarray(shared_positions, dtype=np.int64)]
+    else:
+        query_matrix = normalized_matrix(queries, "q_vector", "q_norm")
 
     schema = pa.schema((
         pa.field("query_track_id", pa.string(), nullable=False),
