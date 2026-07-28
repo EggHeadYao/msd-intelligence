@@ -1,4 +1,4 @@
-"""Evaluate frozen Full MERLIN and baselines once on canonical Set-C candidates."""
+"""Evaluate Full MERLIN and baselines on the reusable Set-C development set."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ...artifacts.paths import InferenceArtifactPaths
 from ...recall.pool import load_candidate_pool_manifest
 from ...evaluation.metrics import (
     macro_metrics,
-    paired_bootstrap_ci,
+    paired_bootstrap_cis,
     random_ranking_expectation,
     score_query,
 )
@@ -27,7 +27,7 @@ from ...evaluation.protocol import (
     QUERY_BOOTSTRAP_SAMPLES,
     ROBUSTNESS_CONFIGS,
     SCORERS,
-    load_set_c_protocol,
+    load_development_protocol,
 )
 from ...artifacts.io import parquet_rows, read_row_artifact, write_json_atomic
 from ...ranking.features import FEATURE_ORDER, FILL_FEATURES, load_raw_feature_manifest
@@ -38,26 +38,59 @@ from ...training.validation_groups import (
 )
 
 
+CANDIDATE_COUNT_THRESHOLDS = (900, 800)
+
+
 def parse_args() -> argparse.Namespace:
     paths = InferenceArtifactPaths()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--protocol", type=Path, default=paths.set_c_protocol)
-    parser.add_argument("--candidate-pool", type=Path, default=paths.set_c_candidate_pool)
+    parser.add_argument("--protocol", type=Path, default=paths.development_protocol)
+    parser.add_argument("--candidate-pool", type=Path, default=paths.development_candidate_pool)
     parser.add_argument(
         "--candidate-pool-manifest",
         type=Path,
-        default=paths.set_c_candidate_pool_manifest,
+        default=paths.development_candidate_pool_manifest,
     )
-    parser.add_argument("--groups-manifest", type=Path, default=paths.set_c_groups_manifest)
-    parser.add_argument("--positives", type=Path, default=paths.set_c_positives)
-    parser.add_argument("--validation-pairs", type=Path, default=paths.set_c_validation_pairs)
-    parser.add_argument("--features", type=Path, default=paths.set_c_raw_features)
+    parser.add_argument("--groups-manifest", type=Path, default=paths.development_groups_manifest)
+    parser.add_argument("--positives", type=Path, default=paths.development_positives)
+    parser.add_argument("--validation-pairs", type=Path, default=paths.development_validation_pairs)
+    parser.add_argument("--features", type=Path, default=paths.development_raw_features)
     parser.add_argument(
-        "--features-manifest", type=Path, default=paths.set_c_raw_features_manifest
+        "--features-manifest", type=Path, default=paths.development_raw_features_manifest
     )
-    parser.add_argument("--output", type=Path, default=paths.set_c_evaluation_report)
+    parser.add_argument("--output", type=Path, default=paths.development_evaluation_report)
     parser.add_argument("--scope", choices=("formal", "smoke"), default="formal")
     return parser.parse_args()
+
+
+def _candidate_count_distribution(counts: Iterable[int]) -> dict[str, object]:
+    """Summarize deduplicated pool sizes without treating 1000 as a minimum."""
+    values = sorted(int(count) for count in counts)
+    if not values or values[0] <= 0:
+        raise ValueError("eligible candidate counts must be positive")
+
+    def nearest_rank(probability: float) -> int:
+        index = max(0, math.ceil(probability * len(values)) - 1)
+        return values[index]
+
+    return {
+        "query_count": len(values),
+        "canonical_maximum": 1000,
+        "minimum": values[0],
+        "p10": nearest_rank(0.10),
+        "median": nearest_rank(0.50),
+        "p90": nearest_rank(0.90),
+        "p99": nearest_rank(0.99),
+        "maximum": values[-1],
+        "mean": sum(values) / len(values),
+        "below_thresholds": {
+            str(threshold): {
+                "count": sum(value < threshold for value in values),
+                "fraction": sum(value < threshold for value in values) / len(values),
+            }
+            for threshold in CANDIDATE_COUNT_THRESHOLDS
+        },
+    }
 
 
 def _protocol_parents(paths: InferenceArtifactPaths) -> dict[str, str]:
