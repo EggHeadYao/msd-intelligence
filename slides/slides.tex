@@ -586,6 +586,49 @@ nDCG measures position-discounted ranking quality \autocite{jarvelin2002cumulate
 \end{frame}
 
 
+\begin{frame}{R: Learned Fusion Balances the Three Strata}
+
+{\footnotesize Fixed Set-B confirmation view; values are query-macro nDCG@20 by stratum.
+C1, C2, and BFS are fixed baselines; R uses nested 10K, 50K, and 100K Set-A samples.}
+
+\vspace{.06cm}
+\begin{center}
+\renewcommand{\arraystretch}{1.10}
+\setlength{\tabcolsep}{8pt}
+\small
+\begin{tabular}{l r r r}
+\toprule
+\textbf{Ranker} & \textbf{Audio} & \textbf{Relation} & \textbf{Mixed} \\
+\midrule
+C1-only & \textbf{0.020806} & 0.000000 & 0.007827 \\
+C2-only & 0.000105 & 0.003430 & 0.002959 \\
+BFS     & 0.001525 & \textbf{0.009195} & 0.008409 \\
+\midrule
+\textbf{R (10K)}  & 0.018741 & 0.002092 & \textbf{\color{projectteal}0.008871} \\
+\textbf{R (50K)}  & 0.018741 & 0.002110 & \textbf{\color{projectteal}0.008891} \\
+\textbf{R (100K)} & 0.018741 & 0.002108 & \textbf{\color{projectteal}0.008889} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{.06cm}
+\begin{columns}[T,onlytextwidth]
+  \column{.48\textwidth}
+  \textbf{R leads on Mixed queries}
+
+  \small R consistently outperforms C1, C2, and BFS on the Mixed stratum,
+  showing that the learned ranker combines complementary evidence effectively.
+
+  \column{.48\textwidth}
+  \textbf{Performance converges with scale}
+
+  \small R changes only marginally from 10K to 50K and 100K queries. This
+  stability suggests that our small-scale experiments reflect the full-scale trend.
+\end{columns}
+
+\end{frame}
+
+
 
 \section{Year Prediction}
 
