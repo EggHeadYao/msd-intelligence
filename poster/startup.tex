@@ -1,0 +1,270 @@
+\documentclass[hyperref={pdfpagelabels=false}]{beamer}
+
+\usepackage{focs-poster}
+\usetikzlibrary{arrows.meta,positioning}
+
+\definecolor{posterink}{HTML}{173A38}
+\definecolor{posterteal}{HTML}{236B65}
+\definecolor{posterblue}{HTML}{3E7198}
+\definecolor{posterpurple}{HTML}{76689A}
+\definecolor{postergold}{HTML}{C98B38}
+\definecolor{posterpaper}{HTML}{F4F0E8}
+\definecolor{postermuted}{HTML}{5F6C69}
+
+\setbeamercolor{normal text}{fg=posterink,bg=posterpaper}
+\setbeamercolor{structure}{fg=posterteal}
+\setbeamercolor{itemize item}{fg=posterteal}
+
+\newtcolorbox{posterpanel}[1][]{
+  enhanced,
+  colback=white,
+  opacityback=.78,
+  colframe=white,
+  opacityframe=.70,
+  boxrule=.55mm,
+  arc=2mm,
+  left=.78cm,
+  right=.78cm,
+  top=.66cm,
+  bottom=.66cm,
+  fontupper=\fontsize{24}{29}\selectfont,
+  #1
+}
+
+\newcommand{\sectiontitle}[1]{%
+  {\fontsize{36}{40}\selectfont\bfseries\color{posterink}#1\par}%
+}
+
+\newcommand{\smallnote}[1]{%
+  {\fontsize{21}{25}\selectfont\color{postermuted}#1\par}%
+}
+
+\newcommand{\yearbar}[4]{%
+  \node[anchor=east,font=\bfseries] at (0,#1+.34) {#2};
+  \fill[#4,rounded corners=.8mm] (.35,#1) rectangle ({.35+#3*.78},#1+.68);
+  \node[anchor=west,font=\bfseries] at ({.58+#3*.78},#1+.34) {#3};
+}
+
+\usebackgroundtemplate{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[inner sep=0] at (current page.center) {%
+      \includegraphics[height=\paperheight]{img/music-intelligence-background.png}%
+    };
+  \end{tikzpicture}%
+}
+
+\begin{document}
+
+\begin{frame}
+
+% Header ----------------------------------------------------------------------
+\begin{textblock}{76}(4,2.2)
+  {\fontsize{64}{68}\selectfont\bfseries\color{posterink}
+    Music Intelligence at Million-Song Scale\par}
+  \vspace{.25cm}
+  {\fontsize{31}{36}\selectfont\color{posterteal}
+    Beyond ``similar'': diverse discovery meets musical memory.\par}
+\end{textblock}
+
+% Product story ----------------------------------------------------------------
+\begin{textblock}{92}(4,12.4)
+  \begin{posterpanel}[height=15.2cm]
+    \sectiontitle{Our target: one song, three experiences.}
+    \vspace{.12cm}
+    {\fontsize{23}{27}\selectfont\color{postermuted}
+      Turn one query into catalog insight, diverse recommendations, and a journey through musical time.\par}
+    \vspace{.08cm}
+    \begin{center}
+      \begin{tikzpicture}[
+        >=Latex,
+        flow/.style={-{Latex[length=4mm,width=3mm]},line width=1.4mm},
+        query/.style={circle,minimum size=3.65cm,line width=1.4mm,
+          draw=posterteal,fill=white,fill opacity=.72,text opacity=1,
+          font=\fontsize{24}{27}\selectfont\bfseries,align=center,text=posterink},
+        outcome/.style={rounded corners=2mm,minimum width=13.8cm,minimum height=3.8cm,
+          line width=1.15mm,align=center,fill=white,fill opacity=.68,text opacity=1,
+          font=\fontsize{24}{28}\selectfont,text=posterink}
+      ]
+        \node[query] (song) at (0,2.35) {QUERY\\SONG};
+
+        \node[outcome,draw=posterblue] (explore) at (-15.3,-2.05) {
+          {\fontsize{29}{32}\selectfont\bfseries\color{posterblue}Explore}\\[.10cm]
+          Understand the catalog};
+        \node[outcome,draw=posterpurple] (discover) at (0,-2.05) {
+          {\fontsize{29}{32}\selectfont\bfseries\color{posterpurple}Discover}\\[.10cm]
+          Go beyond immediate similarity};
+        \node[outcome,draw=postergold] (remember) at (15.3,-2.05) {
+          {\fontsize{29}{32}\selectfont\bfseries\color{postergold}Remember}\\[.10cm]
+          Reconnect with an era};
+
+        \draw[flow,draw=posterblue!78] (song.south west) to[out=220,in=90] (explore.north);
+        \draw[flow,draw=posterpurple!82] (song.south) -- (discover.north);
+        \draw[flow,draw=postergold!88!black] (song.south east) to[out=320,in=90] (remember.north);
+      \end{tikzpicture}
+    \end{center}
+    \vspace{-.20cm}
+    \begin{center}
+      {\fontsize{22}{26}\selectfont\bfseries\color{posterink}
+        Big-data method: 267 GB HDF5 $\rightarrow$ Avro/Parquet $\rightarrow$ Drill + Spark $\rightarrow$ FAISS + learned models}
+    \end{center}
+  \end{posterpanel}
+\end{textblock}
+
+% Better discovery -------------------------------------------------------------
+\begin{textblock}{29.5}(4,40.3)
+  \begin{posterpanel}[height=20.0cm]
+    \sectiontitle{Better discovery}
+    \smallnote{Relation-aware vs. release-only retrieval}
+    \vspace{.65cm}
+
+    \begin{center}
+      \begin{tikzpicture}[x=1cm,y=1cm,font=\fontsize{19}{22}\selectfont]
+        \node[anchor=east,font=\bfseries] at (0,3.60) {Recall@20};
+        \node[anchor=east,font=\bfseries] at (0,.90) {nDCG@20};
+
+        \fill[posterink!14,rounded corners=1mm] (.45,3.60) rectangle (6.91,4.35);
+        \fill[posterpurple!82,rounded corners=1mm] (.45,2.68) rectangle (9.24,3.43);
+        \fill[posterink!14,rounded corners=1mm] (.45,.90) rectangle (7.92,1.65);
+        \fill[posterpurple!82,rounded corners=1mm] (.45,-.02) rectangle (10.10,.73);
+
+        \node[anchor=west] at (7.10,3.98) {43.1\%};
+        \node[anchor=west,font=\bfseries,text=posterpurple!90!black] at (9.43,3.06) {58.6\%};
+        \node[anchor=west] at (8.11,1.28) {49.8\%};
+        \node[anchor=west,font=\bfseries,text=posterpurple!90!black] at (10.29,.36) {64.3\%};
+
+        \fill[posterink!14] (.65,-1.00) rectangle (1.30,-.50);
+        \node[anchor=west] at (1.52,-.75) {Release-only};
+        \fill[posterpurple!82] (6.12,-1.00) rectangle (6.77,-.50);
+        \node[anchor=west] at (6.99,-.75) {Relation-aware};
+      \end{tikzpicture}
+    \end{center}
+
+    \vspace{.65cm}
+    \begin{center}
+      {\fontsize{48}{51}\selectfont\bfseries\color{posterpurple}+15.6 pp\par}
+      {\fontsize{25}{29}\selectfont\bfseries Recall@20\par}
+      \vspace{.35cm}
+      {\fontsize{25}{29}\selectfont\bfseries\color{posterink}+14.5 pp nDCG@20\par}
+    \end{center}
+
+    \vfill
+    \begin{center}
+      {\fontsize{21}{25}\selectfont\color{postermuted}10,000-query offline benchmark}
+    \end{center}
+  \end{posterpanel}
+\end{textblock}
+
+% Faster graph intelligence ----------------------------------------------------
+\begin{textblock}{29.5}(35.25,40.3)
+  \begin{posterpanel}[height=20.0cm]
+    \sectiontitle{Faster graph intelligence}
+    \smallnote{Same graph. Same verified answer.}
+    \vspace{.65cm}
+
+    \begin{center}
+      \begin{tikzpicture}[x=1cm,y=1cm,font=\fontsize{20}{24}\selectfont]
+        \node[anchor=west,font=\bfseries] at (0,4.45) {MapReduce};
+        \fill[posterink!14,rounded corners=1mm] (0,3.30) rectangle (11.7,4.15);
+        \node[anchor=east,font=\bfseries,text=posterink] at (11.42,3.73) {22.8--23.9 min};
+
+        \node[anchor=west,font=\bfseries] at (0,2.25) {Spark};
+        \fill[posterblue!84,rounded corners=1mm] (0,1.10) rectangle (.81,1.95);
+        \node[anchor=west,font=\bfseries,text=posterblue!80!black] at (1.08,1.53) {1.62--1.66 min};
+
+        \draw[line width=.55mm,draw=posterink!22] (0,.35) -- (11.7,.35);
+        \foreach \x/\lab in {0/0,2.93/6,5.85/12,8.78/18,11.7/24}
+          \draw[draw=posterink!28,line width=.4mm] (\x,.18) -- (\x,.52)
+            node[below=.14cm,text=postermuted] {\lab};
+        \node[below=.85cm,text=postermuted] at (5.85,.35) {wall time (minutes)};
+      \end{tikzpicture}
+    \end{center}
+
+    \vspace{.70cm}
+    \begin{center}
+      {\fontsize{48}{51}\selectfont\bfseries\color{posterblue}14.1--14.4$\times$\par}
+      {\fontsize{25}{29}\selectfont\bfseries faster with Spark\par}
+    \end{center}
+
+    \vfill
+    \begin{center}
+      {\fontsize{21}{25}\selectfont\color{postermuted}Five runs per combination . all outputs verified}
+    \end{center}
+  \end{posterpanel}
+\end{textblock}
+
+% Sharper era estimation -------------------------------------------------------
+\begin{textblock}{29.5}(66.5,40.3)
+  \begin{posterpanel}[height=20.0cm]
+    \sectiontitle{Sharper era estimation}
+    \smallnote{Progressive improvement on held-out artists}
+    \vspace{.55cm}
+
+    \begin{center}
+      \begin{tikzpicture}[x=1cm,y=1cm,font=\fontsize{18}{22}\selectfont]
+        \yearbar{3.65}{Constant}{10.80}{posterink!14}
+        \yearbar{2.45}{Ridge}{9.41}{posterblue!55}
+        \yearbar{1.25}{Audio + context}{7.33}{postergold!72}
+        \yearbar{.05}{Final blend}{7.24}{postergold!94!black}
+        \node[anchor=north,text=postermuted] at (5.0,-.78) {test RMSE . lower is better};
+      \end{tikzpicture}
+    \end{center}
+
+    \vspace{.60cm}
+    \begin{center}
+      {\fontsize{48}{51}\selectfont\bfseries\color{postergold}7.24 years\par}
+      {\fontsize{25}{29}\selectfont\bfseries final test RMSE\par}
+      \vspace{.35cm}
+      {\fontsize{25}{29}\selectfont\bfseries\color{posterink}23.0\% lower than Ridge\par}
+      \vspace{.28cm}
+      {\fontsize{22}{26}\selectfont\color{postermuted}Final MAE: 4.82 years\par}
+    \end{center}
+
+    \vfill
+    \begin{center}
+      {\fontsize{21}{25}\selectfont\color{postermuted}49,436 held-out-artist test songs}
+    \end{center}
+  \end{posterpanel}
+\end{textblock}
+
+% Investment close -------------------------------------------------------------
+\begin{textblock}{92}(4,76.4)
+  \begin{posterpanel}[height=9.0cm]
+    \sectiontitle{Why invest now?}
+    \vspace{.55cm}
+    \begin{columns}[T,totalwidth=\linewidth]
+      \begin{column}{.31\linewidth}
+        {\fontsize{28}{32}\selectfont\bfseries\color{posterpurple}Differentiated\par}
+        \vspace{.20cm}
+        Diverse discovery and era-aware experiences go beyond a standard similar-artist list.
+      \end{column}
+      \begin{column}{.02\linewidth}
+        \centering
+        {\color{posterink!22}\rule{.7mm}{5.0cm}}
+      \end{column}
+      \begin{column}{.31\linewidth}
+        {\fontsize{28}{32}\selectfont\bfseries\color{posterblue}Measured\par}
+        \vspace{.20cm}
+        The platform is validated over one million tracks with reproducible offline evidence.
+      \end{column}
+      \begin{column}{.02\linewidth}
+        \centering
+        {\color{posterink!22}\rule{.7mm}{5.0cm}}
+      \end{column}
+      \begin{column}{.31\linewidth}
+        {\fontsize{28}{32}\selectfont\bfseries\color{postergold}Ready to learn\par}
+        \vspace{.20cm}
+        The next milestone is online listener testing and a feedback-driven personalization loop.
+      \end{column}
+    \end{columns}
+  \end{posterpanel}
+\end{textblock}
+
+% Footer ----------------------------------------------------------------------
+\begin{textblock}{92}(4,94.2)
+  {\fontsize{21}{25}\selectfont\bfseries\color{posterink}
+    Jiang Ruiyu . Li Zhiyuan . Yao Yunxiang . Zhang Jingkai}
+\end{textblock}
+
+\end{frame}
+
+\end{document}
