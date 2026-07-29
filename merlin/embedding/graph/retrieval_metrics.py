@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 from collections.abc import Collection, Sequence
 
-
 DEFAULT_CUTOFFS = (10, 20, 50)
 
 

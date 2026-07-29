@@ -25,7 +25,6 @@ from merlin.embedding.graph.retrieval_metrics import (
     score_ranking,
 )
 
-
 REPORT_VERSION = "c2_l1_2_report_v1"
 REPORT_NAME = "report.json"
 QUERY_METRICS_NAME = "query_metrics.parquet"

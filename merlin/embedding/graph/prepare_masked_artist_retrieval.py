@@ -17,7 +17,6 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-
 EXPERIMENT_VERSION = "c2_l1_2_masked_relation_v1"
 STRATA = ("2", "3_5", "6_20", "21_plus")
 QUERY_COLUMNS = (
