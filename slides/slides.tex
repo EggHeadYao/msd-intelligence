@@ -305,19 +305,11 @@
   \bottomrule
 \end{tabular}
 
-\vspace{.28cm}
-\begin{columns}[T,onlytextwidth]
-  \begin{column}{.56\textwidth}
-    \textbf{Spark handles the distributed work}
-
-    ETL, feature transformation, partitioned walks, and representation learning.
-  \end{column}
-  \begin{column}{.40\textwidth}
-    \textbf{FAISS handles online retrieval}
-
-    Compact exact vector search; no distributed serving layer is required.
-  \end{column}
-\end{columns}
+\vspace{.5cm}
+\begin{itemize}
+    \item Spark handles the distributed work: ETL, feature transformation, partitioned walks, and representation learning.\\
+    \item FAISS handles online retrieval: Compact exact vector search; no distributed serving layer is required.
+\end{itemize}
 
 \end{frame}
 
@@ -343,8 +335,6 @@
 \vspace{.30cm}
 {\small\textbf{Evidence boundary.} Artist, release, year, and popularity never enter C1; each query contributes at most 250 audio candidates.}
 
-\vfill
-{\footnotesize PCA provides a fixed linear projection of the standardized acoustic view \autocite{jolliffe2016pca}.}
 
 \end{frame}
 
@@ -540,12 +530,12 @@ R cannot recover a track missing from the candidate pool.}
 \end{frame}
 
 \begin{frame}{R: Learned Ranker}
-
+\vspace{-.8cm}
 \begin{center}
   \includegraphics[width=1.0\textwidth]{img/c3/c3_pair_construction.pdf}
 \end{center}
 
-\vspace{.20cm}
+\vspace{-.50cm}
 \begin{columns}[T,onlytextwidth]
   \column{.31\textwidth}
   \textbf{1. Split first}
@@ -563,7 +553,7 @@ R cannot recover a track missing from the candidate pool.}
   \small Thirteen pair features train a weighted Logistic Regression model \autocite{cox1958regression}.
 \end{columns}
 
-\vfill
+\vspace{0.4cm}
 {\small\textbf{Output:}
 a learned score for ordering candidates; final serving details remain under optimization.}
 
@@ -575,7 +565,7 @@ a learned score for ordering candidates; final serving details remain under opti
   \includegraphics[width=1.0\textwidth]{img/c3/c3_selection_policy.pdf}
 \end{center}
 
-\vspace{-.20cm}
+\vspace{-.50cm}
 \begin{columns}[T,onlytextwidth]
   \column{.48\textwidth}
   \textbf{Two evaluation views}
