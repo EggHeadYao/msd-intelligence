@@ -323,11 +323,11 @@
         (\x,.20) -- (\x,.96);
     }
     \node[anchor=north,text=postermuted,
-      font=\fontsize{15}{17}\selectfont\bfseries] at (23.0,.08) {1920s};
+      font=\fontsize{20}{23}\selectfont\bfseries] at (23.0,.08) {1920s};
     \node[anchor=north,text=postermuted,
-      font=\fontsize{15}{17}\selectfont\bfseries] at (35.0,.08) {1960s};
+      font=\fontsize{20}{23}\selectfont\bfseries] at (35.0,.08) {1960s};
     \node[anchor=north,text=postermuted,
-      font=\fontsize{15}{17}\selectfont\bfseries] at (47.0,.08) {2000s};
+      font=\fontsize{20}{23}\selectfont\bfseries] at (47.0,.08) {2000s};
     \draw[posterpurple!92!posterink,line width=.92mm,line cap=round,line join=round]
       (37.4,1.48) -- ++(.60,0) -- ++(.24,.30) -- ++(.30,-.60)
       -- ++(.36,.90) -- ++(.42,-1.20) -- ++(.36,.90)
@@ -596,9 +596,9 @@
 \begin{textblock}{29.5}(4,24.8)
   \begin{targetcard}[height=22.3cm]
     \resizebox{\linewidth}{!}{\targetmark}
-    \vspace{-.42cm}
+    \vspace{-1.55cm}
     \begin{center}
-      {\fontsize{32}{37}\selectfont\bfseries
+      {\fontsize{38}{43}\selectfont\bfseries
         One query song.\\Three differentiated experiences.\par}
     \end{center}
     \vspace{-.02cm}
@@ -607,16 +607,16 @@
       \begin{tikzpicture}[
         x=1cm,y=1cm,>=Latex,
         flow/.style={-{Latex[length=3.8mm,width=2.7mm]},line width=1.15mm},
-        outcome/.style={circle,minimum size=3.35cm,line width=1.05mm,
+        outcome/.style={circle,minimum size=3.65cm,line width=1.05mm,
           fill=white,fill opacity=.50,text opacity=1,align=center,
-          font=\fontsize{24}{27}\selectfont\bfseries}
+          font=\fontsize{30}{33}\selectfont\bfseries}
       ]
-        \draw[posterteal!70!posterink,line width=.72mm] (12.35,6.60) circle (1.35cm);
-        \draw[posterteal!55!posterink,line width=.48mm] (12.35,6.60) circle (.90cm);
-        \fill[postergold!88!black] (12.35,6.60) circle (.38cm);
-        \fill[white] (12.35,6.60) circle (.10cm);
-        \node[font=\fontsize{20}{23}\selectfont\bfseries,text=posterteal!92!posterink]
-          at (12.35,4.72) {QUERY SONG};
+        \draw[posterteal!70!posterink,line width=.72mm] (12.35,7.35) circle (1.35cm);
+        \draw[posterteal!55!posterink,line width=.48mm] (12.35,7.35) circle (.90cm);
+        \fill[postergold!88!black] (12.35,7.35) circle (.38cm);
+        \fill[white] (12.35,7.35) circle (.10cm);
+        \node[anchor=west,font=\fontsize{25}{28}\selectfont\bfseries,
+          text=posterteal!92!posterink] at (14.05,7.35) {QUERY SONG};
 
         \node[outcome,draw=posterteal!84!posterink,text=posterteal!90!posterink]
           (catalog) at (3.7,1.75) {EXPLORE\\CATALOG};
@@ -626,22 +626,22 @@
           (remember) at (21.0,1.75) {REVISIT\\ERAS};
 
         \draw[flow,draw=posterteal!80!posterink]
-          (11.55,5.50) -| (catalog.north);
+          (11.55,6.00) -| (catalog.north);
         \draw[flow,draw=posterpurple!86!posterink]
-          (12.35,5.20) -- (discover.north);
+          (12.35,6.00) -- (discover.north);
         \draw[flow,draw=postergold!90!black]
-          (13.15,5.50) -| (remember.north);
+          (13.15,6.00) -| (remember.north);
       \end{tikzpicture}%
       }
     \end{center}
-    \vfill
+    \vspace{.12cm}
     \begin{center}
-      {\fontsize{21}{25}\selectfont\bfseries\color{postermuted}ONE REUSABLE DATA FOUNDATION\par}
+      {\fontsize{26}{30}\selectfont\bfseries\color{postermuted}ONE REUSABLE DATA FOUNDATION\par}
       \vspace{.18cm}
       \resizebox{.92\linewidth}{!}{%
       \begin{tikzpicture}[
         x=1cm,y=1cm,>=Latex,
-        data/.style={align=center,font=\fontsize{22}{25}\selectfont\bfseries},
+        data/.style={align=center,font=\fontsize{28}{31}\selectfont\bfseries},
         pipe/.style={-{Latex[length=3mm,width=2.2mm]},draw=posterteal!82!posterink,
           line width=.92mm}
       ]
@@ -659,32 +659,32 @@
 \begin{textblock}{29.5}(35.25,24.8)
   \begin{discoverycard}[height=22.3cm]
     \resizebox{\linewidth}{!}{\discoverymark}
-    \vspace{-.48cm}
+    \vspace{-.95cm}
     \begin{center}
       \resizebox{.94\linewidth}{!}{%
       \begin{tikzpicture}[
         x=1cm,y=1cm,>=Latex,
-        source/.style={circle,minimum size=2.48cm,line width=.92mm,
+        source/.style={circle,minimum size=2.85cm,line width=.92mm,
           draw=posterpurple!80!posterink,fill=white,fill opacity=.44,text opacity=1,
-          align=center,font=\fontsize{20}{23}\selectfont\bfseries},
+          align=center,font=\fontsize{25}{28}\selectfont\bfseries},
         flow/.style={-{Latex[length=3.4mm,width=2.5mm]},draw=posterpurple!76!posterink,
           line width=.92mm}
       ]
-        \node[align=center,font=\fontsize{26}{30}\selectfont\bfseries,text=posterink]
-          (catalog) at (1.55,4.40) {1M\\TRACKS};
+        \node[align=center,font=\fontsize{32}{36}\selectfont\bfseries,text=posterink]
+          (catalog) at (.45,5.35) {1M\\TRACKS};
 
-        \node[source] (audio) at (7.2,8.55) {AUDIO};
-        \node[source] (graph) at (7.2,5.78) {GRAPH};
-        \node[source] (bfs) at (7.2,3.02) {ARTIST\\DISTANCE};
-        \node[source] (tags) at (7.2,.25) {TAGS};
+        \node[source] (audio) at (7.2,10.60) {AUDIO};
+        \node[source] (graph) at (7.2,7.10) {GRAPH};
+        \node[source] (bfs) at (7.2,3.60) {ARTIST\\DISTANCE};
+        \node[source] (tags) at (7.2,.10) {TAGS};
 
-        \node[align=center,font=\fontsize{26}{30}\selectfont\bfseries,
-          text=posterpurple!94!posterink] (shortlist) at (15.9,4.40)
+        \node[align=center,font=\fontsize{32}{36}\selectfont\bfseries,
+          text=posterpurple!94!posterink] (shortlist) at (16.0,5.35)
           {$\leq$1,000\\CANDIDATES};
         \node[circle,minimum size=3.25cm,line width=1.2mm,
           draw=posterpurple!90!posterink,fill=posterpurple!13,
-          align=center,font=\fontsize{28}{31}\selectfont\bfseries,text=posterink]
-          (topk) at (22.35,4.40) {TOP\\20};
+          align=center,font=\fontsize{34}{38}\selectfont\bfseries,text=posterink]
+          (topk) at (23.75,5.35) {TOP\\20};
 
         \foreach \s in {audio,graph,bfs,tags}{
           \draw[flow] (catalog.east) -- (\s.west);
@@ -694,22 +694,22 @@
       \end{tikzpicture}%
       }
     \end{center}
-    \vspace{-.02cm}
+    \vspace{-.40cm}
     \begin{center}
       \resizebox{.94\linewidth}{!}{%
       \begin{tikzpicture}[x=1cm,y=1cm]
         \draw[posterpurple!35,line width=.5mm] (8.15,-.20) -- (8.15,2.05);
         \draw[posterpurple!35,line width=.5mm] (16.35,-.20) -- (16.35,2.05);
-        \node[align=center,font=\fontsize{33}{37}\selectfont\bfseries,
+        \node[align=center,font=\fontsize{41}{45}\selectfont\bfseries,
           text=posterpurple!94!posterink] at (4.0,1.08) {128D\\AUDIO};
-        \node[align=center,font=\fontsize{33}{37}\selectfont\bfseries,
+        \node[align=center,font=\fontsize{41}{45}\selectfont\bfseries,
           text=posterpurple!94!posterink] at (12.25,1.08) {10M\\WALKS};
-        \node[align=center,font=\fontsize{33}{37}\selectfont\bfseries,
+        \node[align=center,font=\fontsize{41}{45}\selectfont\bfseries,
           text=posterpurple!94!posterink] at (20.5,1.08) {400M\\TOKENS};
       \end{tikzpicture}%
       }
       \vspace{.58cm}
-      {\fontsize{23}{27}\selectfont\bfseries\color{postermuted}
+      {\fontsize{29}{33}\selectfont\bfseries\color{postermuted}
         SPARK ML \textbullet\ WORD2VEC \textbullet\ FAISS\par}
     \end{center}
   \end{discoverycard}
@@ -720,14 +720,14 @@
     \resizebox{\linewidth}{!}{\graphmark}
     \vspace{-.48cm}
     \begin{center}
-      {\fontsize{65}{68}\selectfont\bfseries\color{posterpurple!95!posterink}14.4$\times$\par}
+      {\fontsize{77}{80}\selectfont\bfseries\color{posterpurple!95!posterink}14.4$\times$\par}
       \vspace{-.08cm}
-      {\fontsize{30}{34}\selectfont\bfseries Spark acceleration\par}
+      {\fontsize{36}{40}\selectfont\bfseries Spark acceleration\par}
     \end{center}
     \vspace{.28cm}
     \begin{center}
-      \resizebox{.88\linewidth}{!}{%
-      \begin{tikzpicture}[x=1cm,y=1cm,font=\fontsize{21}{24}\selectfont]
+      \resizebox{.97\linewidth}{!}{%
+      \begin{tikzpicture}[x=1cm,y=1cm,font=\fontsize{28}{31}\selectfont]
         \node[anchor=east,font=\bfseries] at (5.1,5.75) {MapReduce / Parquet};
         \fill[posterpurple!24,rounded corners=.6mm] (5.5,5.35) rectangle (23.2,6.15);
         \node[anchor=west,font=\bfseries,text=posterink] at (23.55,5.75) {1436 s};
@@ -745,16 +745,15 @@
         \node[anchor=west,font=\bfseries,text=posterpurple!95!posterink] at (7.06,1.25) {97 s};
 
         \draw[posterink!28,line width=.48mm] (5.5,.25) -- (23.2,.25);
-        \node[anchor=north,text=postermuted] at (14.35,-.12) {median wall time \textperiodcentered\ lower is better};
       \end{tikzpicture}%
       }
     \end{center}
     \vfill
     \begin{center}
-      {\fontsize{25}{29}\selectfont\bfseries\color{posterink}
+      {\fontsize{31}{35}\selectfont\bfseries\color{posterink}
         5 RUNS $\times$ 4 COMBINATIONS\par}
       \vspace{.12cm}
-      {\fontsize{22}{26}\selectfont\color{postermuted}
+      {\fontsize{32}{36}\selectfont\bfseries\color{postermuted}
         Spark / MapReduce \textbullet\ Avro / Parquet\par}
     \end{center}
   \end{graphcard}
@@ -763,23 +762,23 @@
 \begin{textblock}{29.5}(4,66.2)
   \begin{investmentcard}[height=17cm]
     \resizebox{\linewidth}{!}{\investmentmark}
-    \vspace{-.45cm}
+    \vspace{-.85cm}
     \begin{center}
       \resizebox{.94\linewidth}{!}{%
       \begin{tikzpicture}[x=1cm,y=1cm]
-        \node[anchor=east,font=\fontsize{47}{51}\selectfont\bfseries,
+        \node[anchor=east,font=\fontsize{57}{61}\selectfont\bfseries,
           text=postergold!94!black] at (5.0,6.45) {1M};
-        \node[anchor=west,align=left,font=\fontsize{25}{29}\selectfont\bfseries,
+        \node[anchor=west,align=left,font=\fontsize{31}{35}\selectfont\bfseries,
           text=posterink] at (5.7,6.45) {TRACKS ON ONE\\REUSABLE DATA PLANE};
 
-        \node[anchor=east,font=\fontsize{47}{51}\selectfont\bfseries,
+        \node[anchor=east,font=\fontsize{57}{61}\selectfont\bfseries,
           text=postergold!94!black] at (5.0,3.55) {3};
-        \node[anchor=west,align=left,font=\fontsize{25}{29}\selectfont\bfseries,
+        \node[anchor=west,align=left,font=\fontsize{31}{35}\selectfont\bfseries,
           text=posterink] at (5.7,3.55) {DIFFERENTIATED\\PRODUCT EXPERIENCES};
 
-        \node[anchor=east,font=\fontsize{47}{51}\selectfont\bfseries,
+        \node[anchor=east,font=\fontsize{57}{61}\selectfont\bfseries,
           text=postergold!94!black] at (5.0,.65) {4};
-        \node[anchor=west,align=left,font=\fontsize{25}{29}\selectfont\bfseries,
+        \node[anchor=west,align=left,font=\fontsize{31}{35}\selectfont\bfseries,
           text=posterink] at (5.7,.65) {DRILL QUERIES FOR\\CATALOG INTELLIGENCE};
 
         \draw[postergold!46,line width=.52mm] (1.0,5.00) -- (23.0,5.00);
@@ -787,10 +786,11 @@
       \end{tikzpicture}%
       }
     \end{center}
-    \vfill
+    \vspace{.18cm}
     \begin{center}
-      {\fontsize{22}{26}\selectfont\bfseries\color{postermuted}
-        HADOOP \textbullet\ PARQUET \textbullet\ DRILL \textbullet\ SPARK \textbullet\ FAISS\par}
+      {\fontsize{27}{31}\selectfont\bfseries\color{postermuted}
+        HADOOP \textbullet\ PARQUET \textbullet\ DRILL\\
+        SPARK \textbullet\ FAISS\par}
     \end{center}
   \end{investmentcard}
 \end{textblock}
@@ -802,44 +802,44 @@
     \begin{center}
       \resizebox{.96\linewidth}{!}{%
       \begin{tikzpicture}[x=1cm,y=1cm]
-        \node[anchor=west,font=\fontsize{68}{71}\selectfont\bfseries,
-          text=posterpurple!95!posterink] at (0,6.45) {7.24};
-        \node[anchor=west,font=\fontsize{27}{31}\selectfont\bfseries,
-          text=posterink] at (.25,4.85) {TEST RMSE};
-        \node[anchor=west,font=\fontsize{43}{47}\selectfont\bfseries,
-          text=posterink] at (.15,2.85) {4.82};
-        \node[anchor=west,font=\fontsize{25}{29}\selectfont\bfseries,
+        \node[anchor=west,font=\fontsize{82}{85}\selectfont\bfseries,
+          text=posterpurple!95!posterink] at (0,7.05) {7.24};
+        \node[anchor=west,font=\fontsize{33}{37}\selectfont\bfseries,
+          text=posterink] at (.25,5.25) {TEST RMSE};
+        \node[anchor=west,font=\fontsize{52}{56}\selectfont\bfseries,
+          text=posterink] at (.15,3.05) {4.82};
+        \node[anchor=west,font=\fontsize{31}{35}\selectfont\bfseries,
           text=postermuted] at (.25,1.65) {TEST MAE};
-        \node[anchor=west,font=\fontsize{26}{30}\selectfont\bfseries,
-          text=posterpurple!92!posterink] at (.20,.35) {23\% LOWER RMSE};
+        \node[anchor=west,font=\fontsize{32}{36}\selectfont\bfseries,
+          text=posterpurple!92!posterink] at (.20,.05) {23\% LOWER RMSE};
 
         \draw[posterpurple!32,line width=.60mm] (12.6,-.15) -- (12.6,7.75);
 
-        \node[anchor=east,font=\fontsize{22}{25}\selectfont\bfseries] at (20.4,6.75) {Ridge};
-        \fill[posterpurple!24,rounded corners=.6mm] (21.0,6.35) rectangle (48.0,7.15);
-        \node[anchor=west,font=\fontsize{22}{25}\selectfont\bfseries] at (48.45,6.75) {9.41};
+        \node[anchor=east,font=\fontsize{28}{31}\selectfont\bfseries] at (20.4,7.10) {Ridge};
+        \fill[posterpurple!24,rounded corners=.6mm] (21.0,6.65) rectangle (48.0,7.55);
+        \node[anchor=west,font=\fontsize{28}{31}\selectfont\bfseries] at (48.45,7.10) {9.41};
 
-        \node[anchor=east,font=\fontsize{22}{25}\selectfont\bfseries] at (20.4,5.20) {Audio};
-        \fill[posterpurple!40,rounded corners=.6mm] (21.0,4.80) rectangle (44.98,5.60);
-        \node[anchor=west,font=\fontsize{22}{25}\selectfont\bfseries] at (45.43,5.20) {8.36};
+        \node[anchor=east,font=\fontsize{28}{31}\selectfont\bfseries] at (20.4,5.40) {Audio};
+        \fill[posterpurple!40,rounded corners=.6mm] (21.0,4.95) rectangle (44.98,5.85);
+        \node[anchor=west,font=\fontsize{28}{31}\selectfont\bfseries] at (45.43,5.40) {8.36};
 
-        \node[anchor=east,font=\fontsize{22}{25}\selectfont\bfseries] at (20.4,3.65) {Metadata};
-        \fill[posterpurple!55,rounded corners=.6mm] (21.0,3.25) rectangle (43.15,4.05);
-        \node[anchor=west,font=\fontsize{22}{25}\selectfont\bfseries] at (43.60,3.65) {7.72};
+        \node[anchor=east,font=\fontsize{28}{31}\selectfont\bfseries] at (20.4,3.70) {Metadata};
+        \fill[posterpurple!55,rounded corners=.6mm] (21.0,3.25) rectangle (43.15,4.15);
+        \node[anchor=west,font=\fontsize{28}{31}\selectfont\bfseries] at (43.60,3.70) {7.72};
 
-        \node[anchor=east,font=\fontsize{22}{25}\selectfont\bfseries] at (20.4,2.10) {Fused};
-        \fill[posterpurple!73,rounded corners=.6mm] (21.0,1.70) rectangle (42.04,2.50);
-        \node[anchor=west,font=\fontsize{22}{25}\selectfont\bfseries] at (42.49,2.10) {7.33};
+        \node[anchor=east,font=\fontsize{28}{31}\selectfont\bfseries] at (20.4,2.00) {Fused};
+        \fill[posterpurple!73,rounded corners=.6mm] (21.0,1.55) rectangle (42.04,2.45);
+        \node[anchor=west,font=\fontsize{28}{31}\selectfont\bfseries] at (42.49,2.00) {7.33};
 
-        \node[anchor=east,font=\fontsize{22}{25}\selectfont\bfseries,
-          text=posterpurple!95!posterink] at (20.4,.55) {Ensemble};
-        \fill[posterpurple!95!posterink,rounded corners=.6mm] (21.0,.15) rectangle (41.78,.95);
-        \node[anchor=west,font=\fontsize{22}{25}\selectfont\bfseries,
-          text=posterpurple!95!posterink] at (42.23,.55) {7.24};
+        \node[anchor=east,font=\fontsize{28}{31}\selectfont\bfseries,
+          text=posterpurple!95!posterink] at (20.4,.30) {Ensemble};
+        \fill[posterpurple!95!posterink,rounded corners=.6mm] (21.0,-.15) rectangle (41.78,.75);
+        \node[anchor=west,font=\fontsize{28}{31}\selectfont\bfseries,
+          text=posterpurple!95!posterink] at (42.23,.30) {7.24};
       \end{tikzpicture}%
       }
-      \vspace{.58cm}
-      {\fontsize{22}{26}\selectfont\bfseries\color{postermuted}
+      \vspace{2.25cm}
+      {\fontsize{28}{32}\selectfont\bfseries\color{postermuted}
         49,436 ARTIST-DISJOINT TEST SONGS \textbullet\ SPARK + LIGHTGBM\par}
     \end{center}
   \end{eracard}
