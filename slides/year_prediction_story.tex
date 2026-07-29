@@ -1,0 +1,231 @@
+\subsection{A Question-Driven Model Story}
+
+\begin{frame}{Year prediction: diagnose the bottleneck, then upgrade}
+
+\small
+
+\begin{center}
+\begin{tikzpicture}[
+	storybox/.style={
+		rounded corners=2pt,
+		draw=structbgcolor,
+		fill=structbgcolor!10,
+		align=center,
+		minimum height=1.05cm,
+		text width=2.05cm,
+		font=\scriptsize
+	},
+	arrow/.style={->,>=stealth,thick,draw=structbgcolor!75}
+]
+	\node[storybox] (ridge) at (0,1.3)
+		{\textbf{T90 Ridge}\\transparent baseline};
+	\node[storybox] (rff) at (3.0,1.3)
+		{\textbf{RFF + Ridge}\\test smooth nonlinearity};
+	\node[storybox] (tree) at (6.0,1.3)
+		{\textbf{LightGBM T90}\\change function family};
+	\node[storybox] (audio) at (9.0,1.3)
+		{\textbf{594 audio}\\restore information};
+	\node[storybox] (ordinal) at (7.5,-1.0)
+		{\textbf{Ordinal-MoE}\\target MAE and order};
+	\node[storybox] (fused) at (4.5,-1.0)
+		{\textbf{Audio + metadata}\\add context};
+	\node[storybox] (ensemble) at (1.5,-1.0)
+		{\textbf{Ensemble}\\combine residual errors};
+
+	\draw[arrow] (ridge) -- (rff);
+	\draw[arrow] (rff) -- (tree);
+	\draw[arrow] (tree) -- (audio);
+	\draw[arrow,rounded corners=5pt]
+		(audio.south) -- (9.0,0.05) -- (ordinal.east);
+	\draw[arrow] (ordinal) -- (fused);
+	\draw[arrow] (fused) -- (ensemble);
+\end{tikzpicture}
+\end{center}
+
+\begin{columns}[c,onlytextwidth]
+	\column{.32\textwidth}\centering
+	{\scriptsize\bfseries\color{black!55}EXECUTION}\par
+	{\large\bfseries\color{structbgcolor}Spark}
+	\column{.32\textwidth}\centering
+	{\scriptsize\bfseries\color{black!55}FUNCTION FAMILY}\par
+	{\large\bfseries\color{structbgcolor}Linear $\rightarrow$ Trees}
+	\column{.32\textwidth}\centering
+	{\scriptsize\bfseries\color{black!55}EVIDENCE}\par
+	{\large\bfseries\color{structbgcolor}Audio + Context}
+\end{columns}
+
+\note{
+Introduce the sequence as a chain of hypotheses, not a leaderboard.
+Each arrow changes one main assumption and is justified by the preceding result.
+}
+
+\end{frame}
+
+\begin{frame}{Problem and evidence contract}
+
+\centering
+\begin{tikzpicture}[
+	split/.style={rounded corners=2pt,draw=structbgcolor,line width=1.1pt,
+		minimum width=3.15cm,minimum height=1.45cm,align=center},
+	flow/.style={->,>=stealth,line width=1pt,draw=black!35}
+]
+	\node[split,fill=structbgcolor!12] (train) at (-4.0,1.25)
+		{\scriptsize\bfseries TRAIN\\[3pt]\Large\bfseries 420,013};
+	\node[split] (val) at (0,1.25)
+		{\scriptsize\bfseries VALIDATION\\[3pt]\Large\bfseries 46,127};
+	\node[split] (test) at (4.0,1.25)
+		{\scriptsize\bfseries TEST\\[3pt]\Large\bfseries 49,436};
+	\draw[flow] (train) -- (val);
+	\draw[flow] (val) -- (test);
+	\node[font=\large\bfseries,text=structbgcolor] at (0,-.35)
+		{Artist-disjoint: one artist, one split};
+\end{tikzpicture}
+
+\vspace{.35cm}
+
+\begin{columns}[c,onlytextwidth]
+	\column{.48\textwidth}\centering
+	{\scriptsize\bfseries\color{black!55}MAE}\par
+	{\Large\bfseries Typical error}
+	\column{.48\textwidth}\centering
+	{\scriptsize\bfseries\color{black!55}RMSE}\par
+	{\Large\bfseries Large-miss penalty}
+\end{columns}
+
+\note{
+Explain that artist isolation controls identity leakage, but later target-derived
+metadata still needs its own train-only and self-exclusion rules.
+}
+
+\end{frame}
+
+\begin{frame}{Sanity baselines: metrics prefer different constants}
+
+\centering
+\begin{tikzpicture}[
+	card/.style={rounded corners=2pt,minimum width=5.1cm,minimum height=3.1cm,
+		align=center,line width=1.1pt}
+]
+	\node[card,draw=audioblue,fill=audiofill] at (-2.9,.55) {
+		{\scriptsize\bfseries MEAN PREDICTOR}\\[7pt]
+		{\LARGE\bfseries 8.1435}\, {\scriptsize MAE}\\[5pt]
+		{\Large\bfseries 10.8019}\, {\scriptsize RMSE}
+	};
+	\node[card,draw=summaryred,fill=summaryfill] at (2.9,.55) {
+		{\scriptsize\bfseries MEDIAN PREDICTOR}\\[7pt]
+		{\LARGE\bfseries 7.5812}\, {\scriptsize MAE}\\[5pt]
+		{\Large\bfseries 11.3558}\, {\scriptsize RMSE}
+	};
+	\node[font=\large\bfseries,text=structbgcolor] at (0,-2.0)
+		{MSD reference reproduced: 8.13 MAE / 10.80 RMSE};
+\end{tikzpicture}
+
+\note{
+Use the two constants to explain why MAE and RMSE can rank models differently.
+This prepares the audience for the later Ordinal-MoE trade-off.
+}
+
+\end{frame}
+
+\begin{frame}{T90 Ridge: a distributed reference}
+
+\centering
+\begin{tikzpicture}[
+	part/.style={rounded corners=2pt,draw=audioblue,fill=audiofill,
+		minimum width=2.4cm,minimum height=1.15cm,align=center},
+	reduce/.style={rounded corners=2pt,draw=structbgcolor,fill=structbgcolor!14,
+		minimum width=2.5cm,minimum height=1.25cm,align=center},
+	flow/.style={->,>=stealth,line width=1.1pt,draw=black!45}
+]
+	\node[part] (p1) at (-4.3,1.2) {Partition 1\\local gradient};
+	\node[part] (p2) at (-4.3,-.3) {Partition 2\\local gradient};
+	\node[part] (p3) at (-4.3,-1.8) {Partition $P$\\local gradient};
+	\node[reduce] (sum) at (0,-.3) {treeReduce\\gradient sum};
+	\node[reduce] (update) at (4.0,-.3) {global Ridge\\update};
+	\draw[flow] (p1) -- (sum);
+	\draw[flow] (p2) -- (sum);
+	\draw[flow] (p3) -- (sum);
+	\draw[flow] (sum) -- (update);
+\end{tikzpicture}
+
+\vspace{.3cm}
+
+\begin{columns}[c,onlytextwidth]
+	\column{.45\textwidth}\centering
+	{\scriptsize\bfseries\color{black!55}PAPER-ALIGNED INPUT}\par\vspace{.10cm}
+	{\LARGE\bfseries\color{structbgcolor}90}\par
+	{\scriptsize timbre means + covariances}
+	\column{.45\textwidth}\centering
+	{\scriptsize\bfseries\color{black!55}TEST MAE / RMSE}\par
+	{\LARGE\bfseries\color{structbgcolor}6.7465 / 9.4074}
+\end{columns}
+
+\note{
+Clarify that this is paper-aligned, not an exact reproduction of the original
+Vowpal Wabbit configuration. L2 stabilizes correlated timbre statistics.
+}
+
+\end{frame}
+
+\begin{frame}{Mini-batch Ridge: same model, less gradient work}
+
+\centering
+\includegraphics[width=.94\textwidth]{ridge_batching_convergence.pdf}
+
+\vspace{.15cm}
+
+\begin{columns}[c,onlytextwidth]
+	\column{.32\textwidth}
+	\centering
+	{\scriptsize\bfseries FULL BATCH}\par
+	{\Large\bfseries 754.99 s}\par
+	{\scriptsize 100 equivalent passes}
+	\column{.32\textwidth}
+	\centering
+	{\scriptsize\bfseries 25\% MINI-BATCH}\par
+	{\Large\bfseries 577.82 s}\par
+	{\scriptsize 25 equivalent passes}
+	\column{.32\textwidth}
+	\centering
+	{\scriptsize\bfseries 10\% MINI-BATCH}\par
+	{\Large\bfseries 579.12 s}\par
+	{\scriptsize 10 equivalent passes}
+\end{columns}
+
+\vspace{.12cm}{\small Test quality remains effectively unchanged: $\mathrm{RMSE}\approx9.407$.}
+
+\note{
+Point to the right panel: both mini-batches reach the full-batch final
+validation MAE near update 95, after about 23.7 and 9.5 equivalent passes.
+Final metrics are recomputed on each complete split.
+}
+
+\end{frame}
+
+\begin{frame}{Mini-batching exposes Spark's fixed costs}
+
+\begin{columns}[c,onlytextwidth]
+	\column{.76\textwidth}
+	\includegraphics[width=\linewidth]{ridge_batching_tradeoff.pdf}
+	\column{.21\textwidth}
+	\centering
+	{\scriptsize\bfseries TOTAL TIME}\par\vspace{.10cm}
+	{\LARGE\bfseries\color{structbgcolor}76.5\%}\par
+	{\scriptsize with 25\% data passes}
+	\vspace{.55cm}
+	{\scriptsize\bfseries EXTRA GAIN AT 10\%}\par
+	{\LARGE\bfseries\color{summaryred}$\approx 0$}\par
+	{\scriptsize fixed costs dominate}
+\end{columns}
+
+\medskip
+
+\centering
+{\large\bfseries Less gradient work $\neq$ proportional wall-clock speedup}\par
+{\scriptsize Data traversal, job startup, scheduling, and validation set the floor.}
+\note{
+Do not claim cluster-wide linear speedup from one local[4] timing experiment.
+The evidence isolates useful gradient work from framework and pipeline overhead.
+}
+
+\end{frame}
