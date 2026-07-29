@@ -49,7 +49,7 @@ Q 154.47541 33.790279 154.47541 38.936785
 L 154.47541 170.601555 
 Q 154.47541 175.74806 159.963934 175.74806 
 z
-" clip-path="url(#p5164401346)" style="fill: #ffffff; stroke: #236b65; stroke-width: 2.3; stroke-linejoin: miter"/>
+" clip-path="url(#p5164401346)" style="fill: #e9f0ef; stroke: #236b65; stroke-width: 2.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_4">
     <path d="M 333.02258 107.985736 
@@ -82,7 +82,7 @@ C 27.56824 94.169962 24.580328 100.933911 24.580328 107.985736
 C 24.580328 115.03756 27.56824 121.80151 32.886011 126.787903 
 C 38.203783 131.774296 45.417241 134.576015 52.937705 134.576015 
 z
-" clip-path="url(#p5164401346)" style="fill: #ffffff; stroke: #173a38; stroke-width: 2.6; stroke-linejoin: miter"/>
+" clip-path="url(#p5164401346)" style="fill: #e9f0ef; stroke: #173a38; stroke-width: 2.6; stroke-linejoin: miter"/>
    </g>
    <g id="text_1">
     <text style="font-weight: 700; font-size: 15px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #236b65" x="240.462295" y="61.704376" transform="rotate(-0 240.462295 61.704376)">Eligible now</text>
@@ -114,7 +114,7 @@ C 398.429187 92.387281 395.055738 100.023999 395.055738 107.985736
 C 395.055738 115.947473 398.429187 123.58419 404.433122 129.213989 
 C 410.437058 134.843787 418.581284 138.007019 427.072131 138.007019 
 z
-" clip-path="url(#p5164401346)" style="fill: #ffffff; stroke: #3e7198; stroke-width: 2.6; stroke-linejoin: miter"/>
+" clip-path="url(#p5164401346)" style="fill: #e9f0ef; stroke: #3e7198; stroke-width: 2.6; stroke-linejoin: miter"/>
    </g>
    <g id="text_7">
     <text style="font-weight: 700; font-size: 13px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #d1495b" x="247.322951" y="228.070868" transform="rotate(-0 247.322951 228.070868)">recompute eligibility after every transition</text>

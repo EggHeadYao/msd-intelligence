@@ -327,7 +327,7 @@
   \includegraphics[width=.98\textwidth]{img/c1/c1_audio_pipeline.pdf}
 \end{center}
 
-\vspace{.12cm}
+\vspace{-.30cm}
 \begin{columns}[T,onlytextwidth]
   \column{.48\textwidth}
   \textbf{What C1 learns from}
@@ -575,7 +575,7 @@ a learned score for ordering candidates; final serving details remain under opti
   \includegraphics[width=1.0\textwidth]{img/c3/c3_selection_policy.pdf}
 \end{center}
 
-\vspace{.10cm}
+\vspace{-.20cm}
 \begin{columns}[T,onlytextwidth]
   \column{.48\textwidth}
   \textbf{Two evaluation views}
@@ -588,14 +588,10 @@ a learned score for ordering candidates; final serving details remain under opti
   \small Baselines share queries, candidate pools, filters, budgets, and metrics. Results are stratified into Audio, Mixed, and Relation queries.
 \end{columns}
 
-\vspace{.22cm}
+\vspace{.52cm}
 {\small\textbf{Optimization target:}
-R is selected by three-strata macro nDCG@20 under MERLIN-specific per-stratum guards.}
-
-\vfill
-{\footnotesize nDCG measures position-discounted ranking quality \autocite{jarvelin2002cumulated}.\par
-\textbf{Current status:}
-Selection is ongoing; Set C supports development comparison, not unbiased generalization.}
+R is selected by three-strata macro nDCG@20 under MERLIN-specific per-stratum guards.
+nDCG measures position-discounted ranking quality \autocite{jarvelin2002cumulated}.}
 
 \end{frame}
 
