@@ -1,0 +1,196 @@
+\subsection{Diagnosing Model Error}
+
+\begin{frame}{RFF: more smooth nonlinearity, little gain}
+
+\centering
+$z_j(\mathbf x)=\sqrt{2/D}\cos(\boldsymbol\omega_j^\mathsf{T}\mathbf x+b_j)$
+
+\vspace{.55cm}
+\begin{tikzpicture}[
+	point/.style={rounded corners=2pt,draw=structbgcolor,minimum width=2.35cm,
+		minimum height=1.3cm,align=center},
+	flow/.style={->,>=stealth,line width=1pt,draw=black!40}
+]
+	\node[point,fill=structbgcolor!12] (ridge) at (-4.2,0) {T90 Ridge\\\textbf{9.4074}};
+	\node[point] (d256) at (-1.4,0) {$D=256$\\\textbf{9.3707}};
+	\node[point] (d512) at (1.4,0) {$D=512$\\\textbf{9.3635}};
+	\node[point] (d1024) at (4.2,0) {$D=1024$\\\textbf{9.3633}};
+	\draw[flow] (ridge) -- (d256);
+	\draw[flow] (d256) -- (d512);
+	\draw[flow] (d512) -- (d1024);
+\end{tikzpicture}
+
+\vspace{.55cm}
+{\LARGE\bfseries\color{structbgcolor}Only 0.47\% RMSE improvement}\par
+{\small The gain saturates as $D$ grows; smooth nonlinearity is not the main bottleneck.}
+
+\note{
+RFF avoids an $N\times N$ Gram matrix. The important experimental control is
+that the source T90 data and scalable optimizer remain unchanged.
+}
+\end{frame}
+
+\begin{frame}{Why LightGBM fits this bottleneck}
+
+\centering
+\[
+	F_M(\mathbf x)=F_0(\mathbf x)+\eta\sum_{m=1}^{M}h_m(\mathbf x)
+\]
+{\small Each tree corrects residual structure left by the current ensemble.}
+
+\vspace{.45cm}
+\begin{tikzpicture}[
+	adv/.style={rounded corners=2pt,draw=structbgcolor,minimum width=3.25cm,
+		minimum height=2.0cm,align=center,line width=1.1pt}
+]
+	\node[adv,fill=structbgcolor!10] at (-3.8,0)
+		{\scriptsize\bfseries THRESHOLDS\\[6pt]\large Nonlinear splits\\[-1pt]\scriptsize without feature maps};
+	\node[adv,fill=structbgcolor!10] at (0,0)
+		{\scriptsize\bfseries INTERACTIONS\\[6pt]\large Conditional effects\\[-1pt]\scriptsize learned automatically};
+	\node[adv,fill=structbgcolor!10] at (3.8,0)
+		{\scriptsize\bfseries SCALE\\[6pt]\large Histogram search\\[-1pt]\scriptsize distributed by SynapseML};
+\end{tikzpicture}
+
+\vspace{.35cm}
+{\large\bfseries Same T90 evidence; a stronger function family.}
+
+\note{
+Boosting is additive: at each round a shallow regression tree is fitted to the
+remaining error and added with shrinkage $\eta$. Trees express thresholds and
+feature interactions directly. LightGBM searches split candidates over
+histogram bins, while SynapseML supplies the distributed training path used in
+this experiment. Do not attribute the gain to GOSS because it was not isolated.
+}
+\end{frame}
+
+
+\begin{frame}{Same T90, stronger function family}
+
+\centering
+\begin{tikzpicture}[
+	model/.style={rounded corners=2pt,draw=structbgcolor,minimum width=2.7cm,
+		minimum height=1.55cm,align=center,line width=1.1pt},
+	flow/.style={->,>=stealth,line width=1pt,draw=black!40}
+]
+	\node[font=\large\bfseries] (data) at (0,1.7) {Same T90 + same artist split};
+	\node[model] (ridge) at (-3.4,-.3) {Ridge\\\textbf{9.4074 RMSE}};
+	\node[model] (rff) at (0,-.3) {RFF\\\textbf{9.3633 RMSE}};
+	\node[model,fill=structbgcolor!14] (tree) at (3.4,-.3) {LightGBM\\\textbf{8.8073 RMSE}};
+	\draw[flow] (data) -- (ridge);
+	\draw[flow] (data) -- (rff);
+	\draw[flow] (data) -- (tree);
+\end{tikzpicture}
+
+\vspace{.65cm}
+{\LARGE\bfseries\color{structbgcolor}6.38\% RMSE reduction}\par
+{\small Thresholds and interactions matter more than a larger smooth random map.}
+
+\note{
+Do not attribute this result to GOSS: the implementation uses SynapseML's
+histogram-based LightGBM path, but the experiment did not isolate GOSS.
+}
+\end{frame}
+
+\begin{frame}{From T90 summaries to 594 audio predictors}
+
+\centering
+\begin{tikzpicture}[
+	group/.style={rounded corners=2pt,draw=audioblue,fill=audiofill,
+		minimum width=2.25cm,minimum height=.82cm,align=center},
+	core/.style={circle,draw=structbgcolor,fill=structbgcolor!16,
+		minimum size=2.3cm,align=center,line width=1.2pt}
+]
+	\node[core] (all) at (0,0) {\LARGE\bfseries 594\\\scriptsize audio predictors};
+	\node[group] (timbre) at (-4.2,1.7) {Timbre\\90};
+	\node[group] (tonal) at (0,2.2) {Tonality\\88};
+	\node[group] (temporal) at (4.2,1.7) {Temporal\\156};
+	\node[group] (rhythm) at (-4.2,-1.7) {Rhythm\\52};
+	\node[group] (dynamics) at (0,-2.2) {Dynamics\\46};
+	\node[group] (robust) at (4.2,-1.7) {Robust summaries\\140};
+	\foreach \g in {timbre,tonal,temporal,rhythm,dynamics,robust}
+		\draw[black!30,line width=1pt] (\g) -- (all);
+\end{tikzpicture}
+
+\begin{columns}[c,onlytextwidth]
+	\column{.44\textwidth}\centering
+	{\scriptsize\bfseries T90 LIGHTGBM}\par {\Large\bfseries 8.8073 RMSE}
+	\column{.08\textwidth}\centering {\Large$\rightarrow$}
+	\column{.44\textwidth}\centering
+	{\scriptsize\bfseries 594-AUDIO LIGHTGBM}\par {\Large\bfseries 8.3621 RMSE}
+\end{columns}
+
+\vspace{.15cm}{\large\bfseries\color{structbgcolor}Same model family, 0.4451-year RMSE gain}
+
+\note{
+The 594-dimensional view is selected by a manifest with fixed order and
+semantics. Train-only preprocessing is reused unchanged on validation and test.
+}
+\end{frame}
+
+\begin{frame}{Ordinal-MoE: two views of an ordered target}
+
+\centering
+\resizebox{.95\textwidth}{!}{%
+\begin{tikzpicture}[
+	head/.style={rounded corners=2pt,draw=structbgcolor,minimum width=3.1cm,
+		minimum height=1.5cm,align=center,line width=1.1pt},
+	flow/.style={->,>=stealth,line width=1.1pt,draw=black!45}
+]
+	\node[head,fill=audiofill,draw=audioblue] (input) at (-4.2,0) {594 audio\\predictors};
+	\node[head] (ord) at (0,1.25) {Ordinal head\\89 ordered thresholds};
+	\node[head] (moe) at (0,-1.25) {MoE head\\10 decade experts};
+	\node[head,fill=structbgcolor!15] (blend) at (4.2,0) {Fixed blend\\$20\%$ ordinal $+80\%$ MoE};
+	\draw[flow] (input) -- (ord);
+	\draw[flow] (input) -- (moe);
+	\draw[flow] (ord) -- (blend);
+	\draw[flow] (moe) -- (blend);
+\end{tikzpicture}
+}
+
+\vspace{.30cm}
+\[
+\widehat y_{\rm ord}=1922+\sum_{k=1}^{89}
+\underbrace{\sigma\!\left(s(\mathbf x)-\theta_k\right)}_{\Pr(y>r_k\mid\mathbf x)}
+\]
+{\scriptsize Each probability asks whether the release year exceeds one ordered threshold.}
+\note{
+The ordinal head replaces one unconstrained regression output with 89 ordered
+threshold questions. Spark mini-batches aggregate analytic gradients with
+treeReduce. The auxiliary direct head and Huber terms stabilize training; the
+inference blend weights are fixed in the model, not fitted on test predictions.
+}
+\end{frame}
+
+\begin{frame}{Ordinal-MoE trades tail risk for typical accuracy}
+
+\centering
+\begin{tikzpicture}[
+	card/.style={rounded corners=2pt,minimum width=4.4cm,minimum height=2.5cm,
+		align=center,line width=1.2pt},
+	arrow/.style={->,>=stealth,line width=1.3pt}
+]
+	\node[card,draw=audioblue,fill=audiofill] (tree) at (-3.25,0)
+		{\scriptsize 594-AUDIO LIGHTGBM\\[5pt]\Large\bfseries 5.8299 MAE\\8.3621 RMSE};
+	\node[card,draw=summaryred,fill=summaryfill] (moe) at (3.25,0)
+		{\scriptsize ORDINAL-MOE BLEND\\[5pt]\Large\bfseries 5.4745 MAE\\8.8143 RMSE};
+	\draw[arrow,draw=structbgcolor] (tree) -- (moe);
+\end{tikzpicture}
+
+\vspace{.3cm}
+\begin{columns}[c,onlytextwidth]
+	\column{.48\textwidth}\centering
+	{\scriptsize\bfseries TYPICAL ERROR}\par
+	{\Large\bfseries\color{structbgcolor}MAE $-6.10\%$}
+	\column{.48\textwidth}\centering
+	{\scriptsize\bfseries LARGE MISSES}\par
+	{\Large\bfseries\color{summaryred}RMSE $+5.41\%$}
+\end{columns}
+
+\vspace{.2cm}
+{\small Better typical accuracy, but higher tail risk.}
+
+\note{
+All values cover the same 49,436 test tracks. Emphasize that ``best'' depends
+on the operational metric: typical absolute error versus sensitivity to outliers.
+}
+\end{frame}
