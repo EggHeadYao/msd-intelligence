@@ -555,7 +555,7 @@ R cannot recover a track missing from the candidate pool.}
 
 \vspace{0.4cm}
 {\small\textbf{Output:}
-a learned score for ordering candidates; final serving details remain under optimization.}
+a guarded C1/LR interleave that preserves acoustic quality while admitting relation evidence.}
 
 \end{frame}
 
@@ -578,7 +578,11 @@ a learned score for ordering candidates; final serving details remain under opti
   \small Baselines share queries, candidate pools, filters, budgets, and metrics. Results are stratified into Audio, Mixed, and Relation queries.
 \end{columns}
 
-\vspace{.52cm}
+\vspace{.18cm}
+{\footnotesize\color{projectteal}\textbf{Reference positives:}
+Audio = acoustic; Relation = metadata; Mixed = 50/50.}
+
+\vspace{.18cm}
 {\small\textbf{Optimization target:}
 R is selected by three-strata macro nDCG@20 under MERLIN-specific per-stratum guards.
 nDCG measures position-discounted ranking quality \autocite{jarvelin2002cumulated}.}
@@ -586,45 +590,58 @@ nDCG measures position-discounted ranking quality \autocite{jarvelin2002cumulate
 \end{frame}
 
 
-\begin{frame}{R: Learned Fusion Balances the Three Strata}
+\begin{frame}{R: Fusion Wins on Mixed and Macro}
 
-{\footnotesize Fixed Set-B confirmation view; values are query-macro nDCG@20 by stratum.
-C1, C2, and BFS are fixed baselines; R uses nested 10K, 50K, and 100K Set-A samples.}
+{\footnotesize Fixed Set-B confirmation against frozen weak-label positives; equal-strata query-macro nDCG@20.
+C1, C2, and Full share the same queries, candidates, filters, and budget.}
 
-\vspace{.06cm}
+\vspace{.08cm}
 \begin{center}
 \renewcommand{\arraystretch}{1.10}
-\setlength{\tabcolsep}{8pt}
+\setlength{\tabcolsep}{10pt}
 \small
-\begin{tabular}{l r r r}
+\begin{tabular}{l r r r r}
 \toprule
-\textbf{Ranker} & \textbf{Audio} & \textbf{Relation} & \textbf{Mixed} \\
+\textbf{Scorer} & \textbf{Audio} & \textbf{Relation} & \textbf{Mixed} & \textbf{Macro} \\
 \midrule
-C1-only & \textbf{0.020806} & 0.000000 & 0.007827 \\
-C2-only & 0.000105 & 0.003430 & 0.002959 \\
-BFS     & 0.001525 & \textbf{0.009195} & 0.008409 \\
+C1-only & \textbf{0.020806} & 0.000000 & 0.007827 & 0.009544 \\
+C2-only & 0.000105 & \textbf{0.003430} & 0.002959 & 0.002165 \\
 \midrule
-\textbf{R (10K)}  & 0.018741 & 0.002092 & \textbf{\color{projectteal}0.008871} \\
-\textbf{R (50K)}  & 0.018741 & 0.002110 & \textbf{\color{projectteal}0.008891} \\
-\textbf{R (100K)} & 0.018741 & 0.002108 & \textbf{\color{projectteal}0.008889} \\
+\textbf{Full (100K)} & 0.018741 & 0.002108 & \textbf{\color{projectteal}0.008889} & \textbf{\color{projectteal}0.009913} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\vspace{.06cm}
+\vspace{.24cm}
 \begin{columns}[T,onlytextwidth]
-  \column{.48\textwidth}
-  \textbf{R leads on Mixed queries}
+  \column{.47\textwidth}
+  \textbf{Specialists retain their strengths}
 
-  \small R consistently outperforms C1, C2, and BFS on the Mixed stratum,
-  showing that the learned ranker combines complementary evidence effectively.
+  \small C1 leads Audio; C2 leads Relation.
 
-  \column{.48\textwidth}
-  \textbf{Performance converges with scale}
+  \column{.49\textwidth}
+  \textbf{Fusion improves overall balance}
 
-  \small R changes only marginally from 10K to 50K and 100K queries. This
-  stability suggests that our small-scale experiments reflect the full-scale trend.
+  \small Full leads Mixed and Macro while retaining \textbf{90.1\%} of C1 Audio.
 \end{columns}
+
+\vfill
+{\small\textbf{MERLIN improves Mixed by 13.57\% and Macro by 3.86\% over C1.}}
+
+\end{frame}
+
+
+\begin{frame}{R: Performance Stabilizes by 50K}
+
+{\footnotesize Fixed Set-B confirmation and selected policy at every training scale; exact raw scores are shown.}
+
+\vspace{.10cm}
+\begin{center}
+  \includegraphics[width=.90\textwidth]{img/c3/c3_query_scale.pdf}
+\end{center}
+
+\vfill
+{\small 50K score differs from 100K by only 0.014\%, while even 10K retains 99.88\% of 100K performance.}
 
 \end{frame}
 
