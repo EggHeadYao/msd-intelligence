@@ -1,4 +1,4 @@
-![Build badge](https://focs.gc.sjtu.edu.cn/git/ece472/p1team02/actions/workflows/push.yaml/badge.svg?branch=master) ![Build badge](https://focs.gc.sjtu.edu.cn/git/ece472/p1team02/actions/workflows/release.yaml/badge.svg?tag=p1m1)
+![Build badge](https://focs.gc.sjtu.edu.cn/git/ece472/p1team02/actions/workflows/push.yaml/badge.svg?branch=master) ![Build badge](https://focs.gc.sjtu.edu.cn/git/ece472/p1team02/actions/workflows/release.yaml/badge.svg?tag=p1m2)
 
 
 # p1team02
