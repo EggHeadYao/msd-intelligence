@@ -164,32 +164,32 @@
 
 \newtcolorbox{graphcard}[1][]{
   evidencecard,
-  colframe=posterblue!78!posterink,
-  borderline={4.4mm}{0mm}{posterblue!13!white},
-  borderline={1.55mm}{0mm}{posterblue!84!posterink},
-  borderline={.38mm}{-1.30mm}{white!88!posterblue},
+  colframe=posterpurple!78!posterink,
+  borderline={4.4mm}{0mm}{posterpurple!13!white},
+  borderline={1.55mm}{0mm}{posterpurple!84!posterink},
+  borderline={.38mm}{-1.30mm}{white!88!posterpurple},
   overlay={
-    \draw[posterblue!95!posterink,line width=3.15mm,line cap=round]
+    \draw[posterpurple!95!posterink,line width=3.15mm,line cap=round]
       ([xshift=.72cm]frame.north west) -- ([xshift=7.8cm]frame.north west);
-    \draw[posterblue!90!posterink,line width=1.34mm,line cap=round]
+    \draw[posterpurple!90!posterink,line width=1.34mm,line cap=round]
       ([xshift=1.7cm,yshift=.56cm]frame.south west) -- ++(8.6cm,0)
       -- ++(3.0cm,-.56cm) -- ++(7.0cm,0);
-    \draw[posterblue!90!posterink,line width=1.34mm,line cap=round]
+    \draw[posterpurple!90!posterink,line width=1.34mm,line cap=round]
       ([xshift=1.7cm]frame.south west) -- ++(19.2cm,0);
-    \draw[posterblue!90!posterink,line width=1.34mm,line cap=round]
+    \draw[posterpurple!90!posterink,line width=1.34mm,line cap=round]
       ([xshift=1.7cm,yshift=-.56cm]frame.south west) -- ++(8.6cm,0)
       -- ++(3.0cm,.56cm) -- ++(7.0cm,0);
     \foreach \x/\y in {4.2/.56,7.4/0,10.3/.56,13.3/0,17.0/0,20.0/0}{
-      \fill[posterblue!95!posterink]
+      \fill[posterpurple!95!posterink]
         ([xshift=\x cm,yshift=\y cm]frame.south west) circle (.20cm);
     }
-    \draw[posterblue!82!posterink,line width=1.15mm]
+    \draw[posterpurple!82!posterink,line width=1.15mm]
       ([yshift=-4.0cm]frame.north east)
       -- ([xshift=-.65cm,yshift=-7.0cm]frame.north east)
       -- ([yshift=-10.0cm]frame.north east)
       -- ([xshift=-.65cm,yshift=-13.0cm]frame.north east);
     \foreach \dy in {-4.0,-10.0}{
-      \fill[posterblue!94!posterink]
+      \fill[posterpurple!94!posterink]
         ([yshift=\dy cm]frame.north east) circle (.20cm);
     }
   },
@@ -198,27 +198,27 @@
 
 \newtcolorbox{eracard}[1][]{
   evidencecard,
-  colframe=postergold!82!posterink,
-  borderline={4.4mm}{0mm}{postergold!13!white},
-  borderline={1.55mm}{0mm}{postergold!86!posterink},
-  borderline={.38mm}{-1.30mm}{white!88!postergold},
+  colframe=posterpurple!78!posterink,
+  borderline={4.4mm}{0mm}{posterpurple!13!white},
+  borderline={1.55mm}{0mm}{posterpurple!84!posterink},
+  borderline={.38mm}{-1.30mm}{white!88!posterpurple},
   overlay={
-    \draw[postergold!95!black,line width=3.15mm,line cap=round]
+    \draw[posterpurple!95!posterink,line width=3.15mm,line cap=round]
       ([xshift=.72cm]frame.north west) -- ([xshift=8.4cm]frame.north west);
-    \draw[postergold!92!black,line width=1.35mm,line cap=round]
+    \draw[posterpurple!92!posterink,line width=1.35mm,line cap=round]
       ([xshift=1.5cm]frame.south west) -- ([xshift=-4.0cm]frame.south east);
     \foreach \f in {.08,.18,.28,.38,.48,.58,.68,.78,.88}{
-      \draw[postergold!90!black,line width=1.05mm]
+      \draw[posterpurple!90!posterink,line width=1.05mm]
         ($(frame.south west)!\f!(frame.south east)+(0,-.46cm)$)
         -- ($(frame.south west)!\f!(frame.south east)+(0,.46cm)$);
     }
-    \draw[postergold!92!black,line width=1.38mm,line cap=round,line join=round]
+    \draw[posterpurple!92!posterink,line width=1.38mm,line cap=round,line join=round]
       ([xshift=-15.0cm]frame.north east)
       -- ++(1.1cm,0) -- ++(.45cm,.42cm) -- ++(.52cm,-.84cm)
       -- ++(.58cm,1.26cm) -- ++(.64cm,-1.68cm) -- ++(.58cm,1.26cm)
       -- ++(.52cm,-.84cm) -- ++(.45cm,.42cm) -- ++(1.1cm,0);
     \foreach \dy in {-4.0,-7.2,-10.4,-13.6}{
-      \draw[postergold!78!posterink,line width=1.2mm]
+      \draw[posterpurple!78!posterink,line width=1.2mm]
         ([xshift=-.54cm,yshift=\dy cm]frame.north east)
         -- ([xshift=.54cm,yshift=\dy cm]frame.north east);
     }
@@ -274,11 +274,11 @@
 \newcommand{\graphmark}{%
   \begin{tikzpicture}[x=1cm,y=1cm]
     \useasboundingbox (0,-.15) rectangle (24.7,3.65);
-    \node[anchor=west,text=posterblue!94!posterink,
+    \node[anchor=west,text=posterpurple!94!posterink,
       font=\fontsize{22}{24}\selectfont\bfseries] at (0,2.90) {FASTER};
     \node[anchor=west,text=posterink,
       font=\fontsize{43}{45}\selectfont\bfseries] at (0,1.32) {GRAPH};
-    \node[anchor=west,text=posterblue!88!posterink,
+    \node[anchor=west,text=posterpurple!88!posterink,
       font=\fontsize{29}{32}\selectfont\bfseries] at (8.7,1.28) {INTELLIGENCE};
     \coordinate (g1) at (1.0,.34);
     \coordinate (g2) at (5.0,.68);
@@ -286,12 +286,12 @@
     \coordinate (g4) at (12.6,.72);
     \coordinate (g5) at (17.0,.32);
     \coordinate (g6) at (22.8,.56);
-    \draw[posterblue!86!posterink,line width=1.02mm,line cap=round]
+    \draw[posterpurple!86!posterink,line width=1.02mm,line cap=round]
       (g1) -- (g2) -- (g4) -- (g6)
       (g1) -- (g3) -- (g4)
       (g3) -- (g5) -- (g6);
     \foreach \p/\r in {g1/.14,g2/.18,g3/.15,g4/.22,g5/.17,g6/.20}
-      \fill[posterblue!94!posterink] (\p) circle (\r cm);
+      \fill[posterpurple!94!posterink] (\p) circle (\r cm);
   \end{tikzpicture}%
 }
 
@@ -312,14 +312,14 @@
 \newcommand{\eramark}{%
   \begin{tikzpicture}[x=1cm,y=1cm]
     \useasboundingbox (0,-.15) rectangle (55.0,3.45);
-    \node[anchor=west,text=postergold!92!black,
+    \node[anchor=west,text=posterpurple!92!posterink,
       font=\fontsize{22}{24}\selectfont\bfseries] at (0,2.72) {SHARPER};
     \node[anchor=west,text=posterink,
       font=\fontsize{52}{54}\selectfont\bfseries] at (0,1.08) {ERA ESTIMATION};
-    \draw[postergold!90!black,line width=1.18mm,line cap=round]
+    \draw[posterpurple!90!posterink,line width=1.18mm,line cap=round]
       (22.0,.58) -- (50.8,.58);
     \foreach \x in {23.0,27.0,31.0,35.0,39.0,43.0,47.0,50.0}{
-      \draw[postergold!88!black,line width=.86mm]
+      \draw[posterpurple!88!posterink,line width=.86mm]
         (\x,.20) -- (\x,.96);
     }
     \node[anchor=north,text=postermuted,
@@ -328,7 +328,7 @@
       font=\fontsize{15}{17}\selectfont\bfseries] at (35.0,.08) {1960s};
     \node[anchor=north,text=postermuted,
       font=\fontsize{15}{17}\selectfont\bfseries] at (47.0,.08) {2000s};
-    \draw[postergold!92!black,line width=.92mm,line cap=round,line join=round]
+    \draw[posterpurple!92!posterink,line width=.92mm,line cap=round,line join=round]
       (37.4,1.48) -- ++(.60,0) -- ++(.24,.30) -- ++(.30,-.60)
       -- ++(.36,.90) -- ++(.42,-1.20) -- ++(.36,.90)
       -- ++(.30,-.60) -- ++(.24,.30) -- ++(.60,0);
