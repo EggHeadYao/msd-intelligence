@@ -91,7 +91,7 @@ Q 505.215 43.104 505.215 48.384
 L 505.215 118.08 
 Q 505.215 123.36 510.795 123.36 
 z
-" clip-path="url(#pe1ec1f25fc)" style="fill: #f8f0e4; stroke: #c98b38; stroke-width: 2.2; stroke-linejoin: miter"/>
+" clip-path="url(#pe1ec1f25fc)" style="fill: #f7e4e7; stroke: #d1495b; stroke-width: 2.2; stroke-linejoin: miter"/>
    </g>
    <g id="patch_7">
     <path d="M 114.659343 83.232 
@@ -167,7 +167,7 @@ L 465.876 37.296
     <text style="font-size: 11.5px; font-family: 'DejaVu Sans'; fill: #173a38" transform="translate(394.637969 109.960781)">whitening</text>
    </g>
    <g id="text_9">
-    <text style="font-weight: 700; font-size: 15px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #c98b38" x="579.15" y="79.208484" transform="rotate(-0 579.15 79.208484)">Serve</text>
+    <text style="font-weight: 700; font-size: 15px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #d1495b" x="579.15" y="79.208484" transform="rotate(-0 579.15 79.208484)">Serve</text>
    </g>
    <g id="text_10">
     <text style="font-size: 11.5px; font-family: 'DejaVu Sans'; fill: #173a38" transform="translate(518.195508 96.699844)">L2-normalized vector</text>
@@ -180,7 +180,7 @@ L 465.876 37.296
     <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #173a38" x="63" y="147.995754" transform="rotate(-0 63 147.995754)">audio only</text>
    </g>
    <g id="text_13">
-    <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #c98b38" x="579.15" y="147.995754" transform="rotate(-0 579.15 147.995754)">1M x 128D unit vectors</text>
+    <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #d1495b" x="579.15" y="147.995754" transform="rotate(-0 579.15 147.995754)">1M x 128D unit vectors</text>
    </g>
   </g>
  </g>

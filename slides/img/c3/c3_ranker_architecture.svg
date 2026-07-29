@@ -79,7 +79,7 @@ Q 459.61416 50.691456 459.61416 53.485632
 L 459.61416 107.506368
 Q 459.61416 110.300544 471.06432 110.300544
 z
-" clip-path="url(#p76a2a94fa3)" style="fill: #f8f0e4; stroke: #c98b38; stroke-width: 1.8; stroke-linejoin: miter"/>
+" clip-path="url(#p76a2a94fa3)" style="fill: #f7e4e7; stroke: #d1495b; stroke-width: 1.8; stroke-linejoin: miter"/>
    </g>
    <g id="patch_6">
     <path d="M 585.56592 105.643584
@@ -127,12 +127,12 @@ z
    <g id="patch_10">
     <path d="M 551.942723 80.496
 Q 565.847197 80.496 577.851013 80.496
-" clip-path="url(#p76a2a94fa3)" style="fill: none; stroke: #c98b38; stroke-width: 1.7; stroke-linecap: round"/>
+" clip-path="url(#p76a2a94fa3)" style="fill: none; stroke: #d1495b; stroke-width: 1.7; stroke-linecap: round"/>
     <path d="M 573.051013 78.096
 L 577.851013 80.496
 L 573.051013 82.896
 z
-" clip-path="url(#p76a2a94fa3)" style="fill: #c98b38; stroke: #c98b38; stroke-width: 1.7; stroke-linecap: round"/>
+" clip-path="url(#p76a2a94fa3)" style="fill: #d1495b; stroke: #d1495b; stroke-width: 1.7; stroke-linecap: round"/>
    </g>
    <g id="text_1">
     <text style="font-weight: 700; font-size: 10.5px; font-family: 'DejaVu Sans'; fill: #173a38" transform="translate(25.037334 77.315033)">Canonical</text>

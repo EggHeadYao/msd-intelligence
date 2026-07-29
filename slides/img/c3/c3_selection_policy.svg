@@ -92,7 +92,7 @@ Q 529.58736 28.9368 529.58736 31.4316
 L 529.58736 74.1204
 Q 529.58736 76.6152 541.03752 76.6152
 z
-" clip-path="url(#p364836d56d)" style="fill: #f8f0e4; stroke: #c98b38; stroke-width: 1.8; stroke-linejoin: miter"/>
+" clip-path="url(#p364836d56d)" style="fill: #f7e4e7; stroke: #d1495b; stroke-width: 1.8; stroke-linejoin: miter"/>
    </g>
    <g id="patch_7">
     <path d="M 119.380346 52.776
@@ -127,12 +127,12 @@ z
    <g id="patch_10">
     <path d="M 501.052346 52.776
 Q 518.136554 52.776 533.320104 52.776
-" clip-path="url(#p364836d56d)" style="fill: none; stroke: #c98b38; stroke-width: 1.7; stroke-linecap: round"/>
+" clip-path="url(#p364836d56d)" style="fill: none; stroke: #d1495b; stroke-width: 1.7; stroke-linecap: round"/>
     <path d="M 528.520104 50.376
 L 533.320104 52.776
 L 528.520104 55.176
 z
-" clip-path="url(#p364836d56d)" style="fill: #c98b38; stroke: #c98b38; stroke-width: 1.7; stroke-linecap: round"/>
+" clip-path="url(#p364836d56d)" style="fill: #d1495b; stroke: #d1495b; stroke-width: 1.7; stroke-linecap: round"/>
    </g>
    <g id="text_1">
     <text style="font-weight: 700; font-size: 11.5px; font-family: 'DejaVu Sans'; fill: #173a38" transform="translate(55.612184 49.292084)">Set A</text>
