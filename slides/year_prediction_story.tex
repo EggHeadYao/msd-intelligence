@@ -1,67 +1,92 @@
 \subsection{A Question-Driven Model Story}
 
-\begin{frame}{Year prediction: diagnose the bottleneck, then upgrade}
+\begin{frame}{Modeling Roadmap}
 
-\small
-
-\begin{center}
+\centering
+\resizebox{.98\textwidth}{!}{%
 \begin{tikzpicture}[
-	storybox/.style={
-		rounded corners=2pt,
-		draw=structbgcolor,
-		fill=structbgcolor!10,
-		align=center,
-		minimum height=1.05cm,
-		text width=2.05cm,
-		font=\scriptsize
-	},
-	arrow/.style={->,>=stealth,thick,draw=structbgcolor!75}
+	core/.style={draw=black!45,minimum width=3.25cm,minimum height=.92cm,
+		align=center,line width=.8pt,inner sep=3pt},
+	stage/.style={draw=black!50,minimum width=2.42cm,minimum height=3.65cm,
+		line width=.85pt,inner sep=0pt},
+	head/.style={font=\scriptsize\bfseries,align=center,text=black!70},
+	item/.style={font=\scriptsize,align=center,text=black},
+	flow/.style={->,>=stealth,line width=1.05pt,draw=structbgcolor!80},
+	inside/.style={->,>=stealth,line width=.8pt,draw=black!55}
 ]
-	\node[storybox] (ridge) at (0,1.3)
-		{\textbf{T90 Ridge}\\transparent baseline};
-	\node[storybox] (rff) at (3.0,1.3)
-		{\textbf{RFF + Ridge}\\test smooth nonlinearity};
-	\node[storybox] (tree) at (6.0,1.3)
-		{\textbf{LightGBM T90}\\change function family};
-	\node[storybox] (audio) at (9.0,1.3)
-		{\textbf{594 audio}\\restore information};
-	\node[storybox] (ordinal) at (7.5,-1.0)
-		{\textbf{Ordinal-MoE}\\target MAE and order};
-	\node[storybox] (fused) at (4.5,-1.0)
-		{\textbf{Audio + metadata}\\add context};
-	\node[storybox] (ensemble) at (1.5,-1.0)
-		{\textbf{Ensemble}\\combine residual errors};
+	\node[anchor=west,font=\scriptsize\bfseries,text=black!65]
+		at (-5.85,2.88) {CORE COMPONENTS};
+	\node[core] at (-4.05,2.10) {
+		{\tiny\color{black!55}EXECUTION SUBSTRATE}\\[2pt]
+		{\normalsize\bfseries Spark}
+	};
+	\node[core] at (0,2.10) {
+		{\tiny\color{black!55}MODEL FAMILY}\\[2pt]
+		{\normalsize\bfseries Linear $\rightarrow$ Trees}
+	};
+	\node[core] at (4.05,2.10) {
+		{\tiny\color{black!55}EVIDENCE SPACE}\\[2pt]
+		{\normalsize\bfseries Audio + Context}
+	};
 
-	\draw[arrow] (ridge) -- (rff);
-	\draw[arrow] (rff) -- (tree);
-	\draw[arrow] (tree) -- (audio);
-	\draw[arrow,rounded corners=5pt]
-		(audio.south) -- (9.0,0.05) -- (ordinal.east);
-	\draw[arrow] (ordinal) -- (fused);
-	\draw[arrow] (fused) -- (ensemble);
+	\node[anchor=west,font=\scriptsize\bfseries,text=black!65]
+		at (-5.85,1.20) {ANALYTICAL PIPELINE};
+
+	\begin{scope}[yshift=-4mm]
+	\node[stage] (s1) at (-4.65,-.72) {};
+	\node[stage] (s2) at (-1.55,-.72) {};
+	\node[stage] (s3) at (1.55,-.72) {};
+	\node[stage] (s4) at (4.65,-.72) {};
+	\foreach \x in {-4.65,-1.55,1.55,4.65}
+		\draw[black!35,line width=.7pt] (\x-1.21,.43) -- (\x+1.21,.43);
+
+	\node[head] at (-4.65,.78)
+		{\color{structbgcolor}1\quad\color{black!70} Function-form\\diagnosis};
+	\node[head] at (-1.55,.78)
+		{\color{structbgcolor}2\quad\color{black!70} Evidence\\expansion};
+	\node[head] at (1.55,.78)
+		{\color{structbgcolor}3\quad\color{black!70} Order-aware\\target};
+	\node[head] at (4.65,.78)
+		{\color{structbgcolor}4\quad\color{black!70} Residual\\output};
+
+	\node[item] at (-4.65,.05) {\bfseries T90 Ridge\\[-1pt]\tiny transparent reference};
+	\node[item] at (-4.65,-.93) {\bfseries RFF + Ridge\\[-1pt]\tiny smooth nonlinearity};
+	\node[item] at (-4.65,-1.91) {\bfseries LightGBM T90\\[-1pt]\tiny tree interactions};
+	\draw[inside] (-4.65,-.28) -- (-4.65,-.58);
+	\draw[inside] (-4.65,-1.26) -- (-4.65,-1.56);
+
+	\node[item] at (-1.55,.05) {\bfseries 594 audio\\[-1pt]\tiny acoustic evidence};
+	\node[item] at (-1.55,-1.03) {\bfseries Metadata +\\context\\[-1pt]\tiny cultural evidence};
+	\node[item] at (-1.55,-2.08) {\bfseries 762-d fusion\\[-1pt]\tiny strongest single model};
+	\draw[inside] (-1.55,-.28) -- (-1.55,-.50);
+	\draw[inside] (-1.55,-1.48) -- (-1.55,-1.78);
+
+	\node[item] at (1.55,-.20) {\bfseries Ordinal-MoE\\[-1pt]\tiny ordered year target};
+	\node[item] at (1.55,-1.43) {\bfseries MAE + ordering\\[-1pt]\tiny typical-error objective};
+	\draw[inside] (1.55,-.60) -- (1.55,-1.02);
+
+	\node[item] at (4.65,.05) {\bfseries Cross-model\\residuals};
+	\node[item] at (4.65,-.93) {\bfseries Linear ensemble};
+	\node[item] at (4.65,-1.91) {\bfseries Final prediction};
+	\draw[inside] (4.65,-.28) -- (4.65,-.58);
+	\draw[inside] (4.65,-1.26) -- (4.65,-1.56);
+
+	\draw[flow] (-3.44,-.18) -- (-2.76,-.18);
+	\draw[flow] (-.34,-.18) -- (.34,-.18);
+	\draw[flow] (2.76,-.18) -- (3.44,-.18);
+	\end{scope}
 \end{tikzpicture}
-\end{center}
-
-\begin{columns}[c,onlytextwidth]
-	\column{.32\textwidth}\centering
-	{\scriptsize\bfseries\color{black!55}EXECUTION}\par
-	{\large\bfseries\color{structbgcolor}Spark}
-	\column{.32\textwidth}\centering
-	{\scriptsize\bfseries\color{black!55}FUNCTION FAMILY}\par
-	{\large\bfseries\color{structbgcolor}Linear $\rightarrow$ Trees}
-	\column{.32\textwidth}\centering
-	{\scriptsize\bfseries\color{black!55}EVIDENCE}\par
-	{\large\bfseries\color{structbgcolor}Audio + Context}
-\end{columns}
+}
 
 \note{
-Introduce the sequence as a chain of hypotheses, not a leaderboard.
-Each arrow changes one main assumption and is justified by the preceding result.
+Use the four panels as a map of the experiment sequence. The first diagnoses
+function form; the second expands evidence; the third tests an order-aware
+objective; the fourth combines residuals. Spark is the common execution layer.
 }
 
 \end{frame}
 
-\begin{frame}{Problem and evidence contract}
+\begin{frame}{Dataset Split}
 
 \centering
 \begin{tikzpicture}[
@@ -81,7 +106,13 @@ Each arrow changes one main assumption and is justified by the preceding result.
 		{Artist-disjoint: one artist, one split};
 \end{tikzpicture}
 
-\vspace{.35cm}
+\vspace{-.02cm}
+{\footnotesize\autocite{flexer2007artist,bertinmahieux2011million,msdYearTask}}\par
+{\scriptsize
+Every artist stays in one split; we hash-split official-train artists 90/10 for validation.
+}\par
+
+\vspace{.65cm}
 
 \begin{columns}[c,onlytextwidth]
 	\column{.48\textwidth}\centering
@@ -93,13 +124,16 @@ Each arrow changes one main assumption and is justified by the preceding result.
 \end{columns}
 
 \note{
+MSD holds out 2,822 of 28,223 artists with dated tracks, keeping every artist
+entirely in train or test. We preserve that test and hash the remaining artists
+90/10 into train and validation.
 Explain that artist isolation controls identity leakage, but later target-derived
 metadata still needs its own train-only and self-exclusion rules.
 }
 
 \end{frame}
 
-\begin{frame}{Sanity baselines: metrics prefer different constants}
+\begin{frame}{Constant Baselines}
 
 \centering
 \begin{tikzpicture}[
@@ -127,7 +161,7 @@ This prepares the audience for the later Ordinal-MoE trade-off.
 
 \end{frame}
 
-\begin{frame}{T90 Ridge: a distributed reference}
+\begin{frame}{Distributed T90 Ridge}
 
 \centering
 \begin{tikzpicture}[
@@ -148,7 +182,7 @@ This prepares the audience for the later Ordinal-MoE trade-off.
 	\draw[flow] (sum) -- (update);
 \end{tikzpicture}
 
-\vspace{.3cm}
+\vspace{.55cm}
 
 \begin{columns}[c,onlytextwidth]
 	\column{.45\textwidth}\centering
@@ -159,6 +193,8 @@ This prepares the audience for the later Ordinal-MoE trade-off.
 	{\scriptsize\bfseries\color{black!55}TEST MAE / RMSE}\par
 	{\LARGE\bfseries\color{structbgcolor}6.7465 / 9.4074}
 \end{columns}
+\vspace{.28cm}
+{\scriptsize\autocite{hoerl1970ridge,zaharia2012rdd}}
 
 \note{
 Clarify that this is paper-aligned, not an exact reproduction of the original
@@ -167,12 +203,12 @@ Vowpal Wabbit configuration. L2 stabilizes correlated timbre statistics.
 
 \end{frame}
 
-\begin{frame}{Mini-batch Ridge: same model, less gradient work}
+\begin{frame}{Mini-Batch Ridge}
 
 \centering
 \includegraphics[width=.94\textwidth]{ridge_batching_convergence.pdf}
 
-\vspace{.15cm}
+\vspace{.50cm}
 
 \begin{columns}[c,onlytextwidth]
 	\column{.32\textwidth}
@@ -192,7 +228,8 @@ Vowpal Wabbit configuration. L2 stabilizes correlated timbre statistics.
 	{\scriptsize 10 equivalent passes}
 \end{columns}
 
-\vspace{.12cm}{\small Test quality remains effectively unchanged: $\mathrm{RMSE}\approx9.407$.}
+\vspace{.22cm}
+{\small Test quality remains effectively unchanged: $\mathrm{RMSE}\approx9.407$.}
 
 \note{
 Point to the right panel: both mini-batches reach the full-batch final
@@ -202,23 +239,25 @@ Final metrics are recomputed on each complete split.
 
 \end{frame}
 
-\begin{frame}{Mini-batching exposes Spark's fixed costs}
+\begin{frame}{Spark Batching Costs}
 
 \begin{columns}[c,onlytextwidth]
 	\column{.76\textwidth}
 	\includegraphics[width=\linewidth]{ridge_batching_tradeoff.pdf}
 	\column{.21\textwidth}
 	\centering
+	\tikz[baseline=-.5ex]\node[rounded corners=2pt,fill=structbgcolor,text=white,inner xsep=3pt,inner ysep=2pt,font=\tiny\bfseries]{SELECTED 25\%};\par
+	\vspace{.18cm}
 	{\scriptsize\bfseries TOTAL TIME}\par\vspace{.10cm}
 	{\LARGE\bfseries\color{structbgcolor}76.5\%}\par
-	{\scriptsize with 25\% data passes}
-	\vspace{.55cm}
+	{\scriptsize\shortstack{with 25\% data\\[-2pt]passes}}\par
+	\vspace{.38cm}
 	{\scriptsize\bfseries EXTRA GAIN AT 10\%}\par
 	{\LARGE\bfseries\color{summaryred}$\approx 0$}\par
-	{\scriptsize fixed costs dominate}
+	{\scriptsize\shortstack{fixed costs\\[-2pt]dominate}}
 \end{columns}
 
-\medskip
+\vspace{.42cm}
 
 \centering
 {\large\bfseries Less gradient work $\neq$ proportional wall-clock speedup}\par

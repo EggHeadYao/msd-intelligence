@@ -1,6 +1,6 @@
 \subsection{Diagnosing Model Error}
 
-\begin{frame}{RFF: more smooth nonlinearity, little gain}
+\begin{frame}{Random Fourier Features}
 
 \centering
 $z_j(\mathbf x)=\sqrt{2/D}\cos(\boldsymbol\omega_j^\mathsf{T}\mathbf x+b_j)$
@@ -22,7 +22,9 @@ $z_j(\mathbf x)=\sqrt{2/D}\cos(\boldsymbol\omega_j^\mathsf{T}\mathbf x+b_j)$
 
 \vspace{.55cm}
 {\LARGE\bfseries\color{structbgcolor}Only 0.47\% RMSE improvement}\par
-{\small The gain saturates as $D$ grows; smooth nonlinearity is not the main bottleneck.}
+
+\vspace{.18cm}
+{\small The gain saturates as $D$ grows; smooth nonlinearity is not the main bottleneck.~{\scriptsize\autocite{rahimi2007random}}}
 
 \note{
 RFF avoids an $N\times N$ Gram matrix. The important experimental control is
@@ -30,9 +32,11 @@ that the source T90 data and scalable optimizer remain unchanged.
 }
 \end{frame}
 
-\begin{frame}{Why LightGBM fits this bottleneck}
+\begin{frame}{LightGBM}
 
 \centering
+
+\vspace{-.35cm}
 \[
 	F_M(\mathbf x)=F_0(\mathbf x)+\eta\sum_{m=1}^{M}h_m(\mathbf x)
 \]
@@ -52,7 +56,10 @@ that the source T90 data and scalable optimizer remain unchanged.
 \end{tikzpicture}
 
 \vspace{.35cm}
-{\large\bfseries Same T90 evidence; a stronger function family.}
+{\large\bfseries Same T90 evidence; a stronger function family.}\par
+{\scriptsize\autocite{friedman2001greedy,ke2017lightgbm,hamilton2018mmlspark}}
+
+\vspace{.35cm}
 
 \note{
 Boosting is additive: at each round a shallow regression tree is fitted to the
@@ -64,7 +71,7 @@ this experiment. Do not attribute the gain to GOSS because it was not isolated.
 \end{frame}
 
 
-\begin{frame}{Same T90, stronger function family}
+\begin{frame}{T90 Model Families}
 
 \centering
 \begin{tikzpicture}[
@@ -83,6 +90,8 @@ this experiment. Do not attribute the gain to GOSS because it was not isolated.
 
 \vspace{.65cm}
 {\LARGE\bfseries\color{structbgcolor}6.38\% RMSE reduction}\par
+
+\vspace{.18cm}
 {\small Thresholds and interactions matter more than a larger smooth random map.}
 
 \note{
@@ -91,7 +100,7 @@ histogram-based LightGBM path, but the experiment did not isolate GOSS.
 }
 \end{frame}
 
-\begin{frame}{From T90 summaries to 594 audio predictors}
+\begin{frame}{594-D Audio Features}
 
 \centering
 \begin{tikzpicture}[
@@ -111,6 +120,7 @@ histogram-based LightGBM path, but the experiment did not isolate GOSS.
 		\draw[black!30,line width=1pt] (\g) -- (all);
 \end{tikzpicture}
 
+\vspace{.30cm}
 \begin{columns}[c,onlytextwidth]
 	\column{.44\textwidth}\centering
 	{\scriptsize\bfseries T90 LIGHTGBM}\par {\Large\bfseries 8.8073 RMSE}
@@ -119,7 +129,7 @@ histogram-based LightGBM path, but the experiment did not isolate GOSS.
 	{\scriptsize\bfseries 594-AUDIO LIGHTGBM}\par {\Large\bfseries 8.3621 RMSE}
 \end{columns}
 
-\vspace{.15cm}{\large\bfseries\color{structbgcolor}Same model family, 0.4451-year RMSE gain}
+\vspace{.15cm}{\large\bfseries\color{structbgcolor}Same model family, 0.4451-year RMSE gain}\par{\scriptsize\autocite{serra2012evolution}}
 
 \note{
 The 594-dimensional view is selected by a manifest with fixed order and
@@ -127,7 +137,7 @@ semantics. Train-only preprocessing is reused unchanged on validation and test.
 }
 \end{frame}
 
-\begin{frame}{Ordinal-MoE: two views of an ordered target}
+\begin{frame}{Ordinal-MoE}
 
 \centering
 \resizebox{.95\textwidth}{!}{%
@@ -147,12 +157,13 @@ semantics. Train-only preprocessing is reused unchanged on validation and test.
 \end{tikzpicture}
 }
 
-\vspace{.30cm}
+\vspace{-.45cm}
 \[
 \widehat y_{\rm ord}=1922+\sum_{k=1}^{89}
 \underbrace{\sigma\!\left(s(\mathbf x)-\theta_k\right)}_{\Pr(y>r_k\mid\mathbf x)}
 \]
-{\scriptsize Each probability asks whether the release year exceeds one ordered threshold.}
+{\scriptsize Each probability asks whether the release year exceeds one ordered threshold.}\par
+{\tiny Ordered thresholds, local experts, and Huber-stabilized training.~\autocite{cao2020coral,jacobs1991experts,huber1964robust}}
 \note{
 The ordinal head replaces one unconstrained regression output with 89 ordered
 threshold questions. Spark mini-batches aggregate analytic gradients with
@@ -161,7 +172,7 @@ inference blend weights are fixed in the model, not fitted on test predictions.
 }
 \end{frame}
 
-\begin{frame}{Ordinal-MoE trades tail risk for typical accuracy}
+\begin{frame}{MAE--RMSE Trade-Off}
 
 \centering
 \begin{tikzpicture}[
@@ -186,8 +197,12 @@ inference blend weights are fixed in the model, not fitted on test predictions.
 	{\Large\bfseries\color{summaryred}RMSE $+5.41\%$}
 \end{columns}
 
-\vspace{.2cm}
-{\small Better typical accuracy, but higher tail risk.}
+\vspace{.45cm}
+\tikz[baseline=-.5ex]\node[
+	rounded corners=2pt,fill=structbgcolor,draw=structbgcolor,
+	text=white,line width=1pt,
+	inner xsep=9pt,inner ysep=4pt,font=\normalsize
+]{Better typical accuracy, but higher tail risk.};
 
 \note{
 All values cover the same 49,436 test tracks. Emphasize that ``best'' depends

@@ -1,6 +1,6 @@
 \subsection{Context, Attribution, and Scale}
 
-\begin{frame}{Audio and cultural context are complementary}
+\begin{frame}{Audio + Cultural Context}
 
 \centering
 \begin{tikzpicture}[
@@ -14,8 +14,10 @@
 	\draw[flow] (meta) -- (fused);
 \end{tikzpicture}
 
-\vspace{.45cm}
+\vspace{.65cm}
 {\Large\bfseries\color{structbgcolor}Best single model: 762-d fused LightGBM}\par
+
+\vspace{.16cm}
 {\large\bfseries 4.8456 MAE / 7.3333 RMSE}\par
 {\scriptsize Train artists only; self-priors and similarity self-edges removed.}
 \note{
@@ -24,35 +26,33 @@ the leakage controls before stating the substantial performance improvement.
 }
 \end{frame}
 
-\begin{frame}{Where the improvement came from}
+\begin{frame}{Model Improvement Path}
 
 \centering
-\begin{tikzpicture}[
-	stage/.style={rounded corners=2pt,draw=structbgcolor,text width=2.05cm,
-		minimum height=1.85cm,align=center,font=\scriptsize},
-	flow/.style={->,>=stealth,line width=1.1pt,draw=black!40}
-]
-	\node[stage] (ridge) at (-4.35,0) {T90 Ridge\\[3pt]
-		\textbf{6.7465 MAE}\\\textbf{9.4074 RMSE}};
-	\node[stage] (tree) at (-1.45,0) {Tree family\\[3pt]
-		\textbf{6.1760 MAE}\\\textbf{8.8073 RMSE}};
-	\node[stage] (audio) at (1.45,0) {Audio evidence\\[3pt]
-		\textbf{5.8299 MAE}\\\textbf{8.3621 RMSE}};
-	\node[stage,fill=structbgcolor!15] (fused) at (4.35,0) {Fused context\\[3pt]
-		\textbf{4.8456 MAE}\\\textbf{7.3333 RMSE}};
-	\draw[flow] (ridge) -- (tree); \draw[flow] (tree) -- (audio); \draw[flow] (audio) -- (fused);
-\end{tikzpicture}
+\includegraphics[width=.98\textwidth]{model_improvement_journey.pdf}
+
+\vspace{.35cm}
+{\Large\bfseries\color{structbgcolor}$-28.18\%$ MAE \quad $-22.05\%$ RMSE}\par
 
 \vspace{.45cm}
-{\Large\bfseries\color{structbgcolor}$-28.18\%$ MAE \quad $-22.05\%$ RMSE}\par
-{\small Ensemble is only the final refinement: 4.8195 / 7.2405.}
+{\small
+\begin{itemize}
+	\setlength{\topsep}{0pt}
+	\setlength{\itemsep}{2pt}
+	\setlength{\parsep}{0pt}
+	\item Model family and richer evidence drive most of the gain.
+	\item The ensemble is only a small finish.
+\end{itemize}
+}
 \note{
-The ensemble fits an intercept and three coefficients on validation predictions;
-it is not strict OOF stacking. Keep the fused model as the main claimed result.
+Read the chart from left to right. RFF barely moves either metric; changing the
+function family matters, richer audio helps again, and cultural context produces
+the largest single step. The validation-fitted ensemble is not strict OOF
+stacking, so keep fused LightGBM as the main claimed single-model result.
 }
 \end{frame}
 
-\begin{frame}{Spark is the shared data plane}
+\begin{frame}{Spark Data Plane}
 \small
 \begin{center}
 \resizebox{.96\textwidth}{!}{%
@@ -74,31 +74,12 @@ it is not strict OOF stacking. Keep the fused model as the main claimed result.
 \vspace{.55cm}
 \centering
 {\LARGE\bfseries\color{structbgcolor}25\% mini-batch: $-23.47\%$ local time}\par
-{\small Same test quality; Parquet contracts keep every model comparable.}
+{\small Same test quality; Parquet contracts keep every model comparable.}\par
+{\scriptsize\autocite{armbrust2015spark,hamilton2018mmlspark}}
 
 \note{
 Spark is valuable because the same data plane supports ETL, validation,
 iterative optimization, and model integration. Do not equate local timings
 with a multi-node speedup claim.
-}
-\end{frame}
-
-\begin{frame}{What the result does not claim}
-
-\centering
-\begin{tikzpicture}[
-	card/.style={rounded corners=2pt,draw=structbgcolor,text width=3.0cm,
-		minimum height=2.45cm,align=center,line width=1.1pt}
-]
-	\node[card] at (-3.8,.45) {\scriptsize EARLY DECADES\\[6pt]\Large\bfseries 8 / 15\\\scriptsize tracks in 1920s / 1930s};
-	\node[card] at (0,.45) {\scriptsize EVALUATION\\[6pt]\large\bfseries Test-guided\\tuning\\[3pt]\scriptsize course-approved protocol};
-	\node[card] at (3.8,.45) {\scriptsize DEPLOYMENT\\[6pt]\large\bfseries Rebuild\\metadata state\\[3pt]\scriptsize same train-only state};
-\end{tikzpicture}
-
-\vspace{.4cm}
-{\large\bfseries\color{structbgcolor}Comparable experiments reveal the next bottleneck.}
-\note{
-End by repeating the causal story. The project result is a controlled sequence
-of diagnoses, not a claim that one architecture wins universally.
 }
 \end{frame}
