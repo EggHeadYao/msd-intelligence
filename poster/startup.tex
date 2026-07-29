@@ -48,8 +48,291 @@
   #1
 }
 
+\tcbset{
+  narrativecard/.style={
+    enhanced,
+    colback=white,
+    opacityback=.34,
+    opacityframe=0,
+    boxrule=1.45mm,
+    arc=7mm,
+    left=.88cm,
+    right=.88cm,
+    top=.78cm,
+    bottom=.78cm,
+    fontupper=\fontsize{31}{37}\selectfont
+  },
+  evidencecard/.style={
+    enhanced,
+    colback=white,
+    opacityback=.24,
+    opacityframe=0,
+    boxrule=1.55mm,
+    arc=1.8mm,
+    left=.88cm,
+    right=.88cm,
+    top=.78cm,
+    bottom=.78cm,
+    fontupper=\fontsize{31}{37}\selectfont
+  }
+}
+
+\newtcolorbox{targetcard}[1][]{
+  narrativecard,
+  colframe=posterteal!76!posterink,
+  borderline={5.0mm}{0mm}{posterteal!12!white},
+  borderline={1.45mm}{0mm}{posterteal!82!posterink},
+  borderline={.34mm}{-1.25mm}{white!88!posterteal},
+  overlay={
+    \draw[posterteal!94!posterink,line width=3.6mm,line cap=round]
+      ([xshift=.85cm]frame.north west) -- ([xshift=8.2cm]frame.north west);
+    \draw[posterteal!94!posterink,line width=3.6mm,line cap=round]
+      ([yshift=-.85cm]frame.north west) -- ([yshift=-8.1cm]frame.north west);
+    \draw[posterteal!92!posterink,line width=1.45mm,line cap=round,line join=round]
+      ([xshift=-9.7cm]frame.north east)
+      -- ++(.85cm,0) -- ++(.30cm,.42cm) -- ++(.36cm,-.84cm)
+      -- ++(.42cm,1.26cm) -- ++(.46cm,-1.68cm) -- ++(.42cm,1.26cm)
+      -- ++(.36cm,-.84cm) -- ++(.30cm,.42cm) -- ++(.85cm,0);
+    \foreach \dy in {-5.0,-9.0,-13.0}{
+      \draw[posterteal!90!posterink,line width=1.35mm,line cap=round]
+        ([xshift=-.58cm,yshift=\dy cm]frame.north east)
+        -- ([xshift=.72cm,yshift=\dy cm]frame.north east);
+      \fill[posterteal!92!posterink]
+        ([yshift=\dy cm]frame.north east) circle (.22cm);
+    }
+  },
+  #1
+}
+
+\newtcolorbox{investmentcard}[1][]{
+  narrativecard,
+  colframe=postergold!82!posterink,
+  borderline={5.0mm}{0mm}{postergold!14!white},
+  borderline={1.45mm}{0mm}{postergold!86!posterink},
+  borderline={.34mm}{-1.25mm}{white!88!postergold},
+  overlay={
+    \draw[postergold!94!black,line width=3.6mm,line cap=round]
+      ([xshift=.85cm]frame.north west) -- ([xshift=8.2cm]frame.north west);
+    \draw[postergold!94!black,line width=3.6mm,line cap=round]
+      ([yshift=-.85cm]frame.north west) -- ([yshift=-7.8cm]frame.north west);
+    \draw[-{Latex[length=4.2mm,width=3.0mm]},postergold!90!black,
+      line width=1.42mm,line cap=round,line join=round]
+      ([xshift=2.5cm,yshift=-1.10cm]frame.south west)
+      -- ++(4.0cm,0) -- ++(0,.42cm) -- ++(4.0cm,0)
+      -- ++(0,.43cm) -- ++(4.0cm,0) -- ++(0,.44cm) -- ++(4.8cm,0);
+    \foreach \x in {3.2,7.2,11.2,15.2}{
+      \draw[postergold!82!posterink,line width=1.05mm]
+        ([xshift=\x cm,yshift=-.28cm]frame.south west)
+        -- ([xshift=\x cm,yshift=.28cm]frame.south west);
+    }
+  },
+  #1
+}
+
+\newtcolorbox{discoverycard}[1][]{
+  evidencecard,
+  colframe=posterpurple!78!posterink,
+  borderline={4.4mm}{0mm}{posterpurple!13!white},
+  borderline={1.55mm}{0mm}{posterpurple!84!posterink},
+  borderline={.38mm}{-1.30mm}{white!88!posterpurple},
+  overlay={
+    \draw[posterpurple!95!posterink,line width=3.15mm,line cap=round]
+      ([xshift=.72cm]frame.north west) -- ([xshift=7.8cm]frame.north west);
+    \foreach \dy in {-.34,-.17,0,.17,.34}{
+      \draw[posterpurple!70!posterink,line width=.52mm,line cap=round]
+        ([xshift=-11.7cm,yshift=\dy cm]frame.north east)
+        -- ([xshift=-.75cm,yshift=\dy cm]frame.north east);
+    }
+    \coordinate (discoverRoot) at ([xshift=-10.6cm]frame.north east);
+    \coordinate (discoverUpper) at ([xshift=-7.8cm,yshift=.52cm]frame.north east);
+    \coordinate (discoverMiddle) at ([xshift=-7.5cm]frame.north east);
+    \coordinate (discoverLower) at ([xshift=-7.8cm,yshift=-.52cm]frame.north east);
+    \coordinate (discoverMerge) at ([xshift=-3.5cm]frame.north east);
+    \draw[posterpurple!94!posterink,line width=1.40mm,line cap=round]
+      (discoverRoot) -- (discoverUpper) -- (discoverMerge)
+      (discoverRoot) -- (discoverMiddle) -- (discoverMerge)
+      (discoverRoot) -- (discoverLower) -- (discoverMerge);
+    \foreach \p in {discoverRoot,discoverUpper,discoverMiddle,discoverLower,discoverMerge}
+      \fill[posterpurple!94!posterink] (\p) circle (.22cm);
+    \foreach \dy in {-5.0,-9.0,-13.0}{
+      \fill[posterpurple!86!posterink]
+        ([yshift=\dy cm]frame.north east) circle (.20cm);
+    }
+  },
+  #1
+}
+
+\newtcolorbox{graphcard}[1][]{
+  evidencecard,
+  colframe=posterblue!78!posterink,
+  borderline={4.4mm}{0mm}{posterblue!13!white},
+  borderline={1.55mm}{0mm}{posterblue!84!posterink},
+  borderline={.38mm}{-1.30mm}{white!88!posterblue},
+  overlay={
+    \draw[posterblue!95!posterink,line width=3.15mm,line cap=round]
+      ([xshift=.72cm]frame.north west) -- ([xshift=7.8cm]frame.north west);
+    \draw[posterblue!90!posterink,line width=1.34mm,line cap=round]
+      ([xshift=1.7cm,yshift=.56cm]frame.south west) -- ++(8.6cm,0)
+      -- ++(3.0cm,-.56cm) -- ++(7.0cm,0);
+    \draw[posterblue!90!posterink,line width=1.34mm,line cap=round]
+      ([xshift=1.7cm]frame.south west) -- ++(19.2cm,0);
+    \draw[posterblue!90!posterink,line width=1.34mm,line cap=round]
+      ([xshift=1.7cm,yshift=-.56cm]frame.south west) -- ++(8.6cm,0)
+      -- ++(3.0cm,.56cm) -- ++(7.0cm,0);
+    \foreach \x/\y in {4.2/.56,7.4/0,10.3/.56,13.3/0,17.0/0,20.0/0}{
+      \fill[posterblue!95!posterink]
+        ([xshift=\x cm,yshift=\y cm]frame.south west) circle (.20cm);
+    }
+    \draw[posterblue!82!posterink,line width=1.15mm]
+      ([yshift=-4.0cm]frame.north east)
+      -- ([xshift=-.65cm,yshift=-7.0cm]frame.north east)
+      -- ([yshift=-10.0cm]frame.north east)
+      -- ([xshift=-.65cm,yshift=-13.0cm]frame.north east);
+    \foreach \dy in {-4.0,-10.0}{
+      \fill[posterblue!94!posterink]
+        ([yshift=\dy cm]frame.north east) circle (.20cm);
+    }
+  },
+  #1
+}
+
+\newtcolorbox{eracard}[1][]{
+  evidencecard,
+  colframe=postergold!82!posterink,
+  borderline={4.4mm}{0mm}{postergold!13!white},
+  borderline={1.55mm}{0mm}{postergold!86!posterink},
+  borderline={.38mm}{-1.30mm}{white!88!postergold},
+  overlay={
+    \draw[postergold!95!black,line width=3.15mm,line cap=round]
+      ([xshift=.72cm]frame.north west) -- ([xshift=8.4cm]frame.north west);
+    \draw[postergold!92!black,line width=1.35mm,line cap=round]
+      ([xshift=1.5cm]frame.south west) -- ([xshift=-4.0cm]frame.south east);
+    \foreach \f in {.08,.18,.28,.38,.48,.58,.68,.78,.88}{
+      \draw[postergold!90!black,line width=1.05mm]
+        ($(frame.south west)!\f!(frame.south east)+(0,-.46cm)$)
+        -- ($(frame.south west)!\f!(frame.south east)+(0,.46cm)$);
+    }
+    \draw[postergold!92!black,line width=1.38mm,line cap=round,line join=round]
+      ([xshift=-15.0cm]frame.north east)
+      -- ++(1.1cm,0) -- ++(.45cm,.42cm) -- ++(.52cm,-.84cm)
+      -- ++(.58cm,1.26cm) -- ++(.64cm,-1.68cm) -- ++(.58cm,1.26cm)
+      -- ++(.52cm,-.84cm) -- ++(.45cm,.42cm) -- ++(1.1cm,0);
+    \foreach \dy in {-4.0,-7.2,-10.4,-13.6}{
+      \draw[postergold!78!posterink,line width=1.2mm]
+        ([xshift=-.54cm,yshift=\dy cm]frame.north east)
+        -- ([xshift=.54cm,yshift=\dy cm]frame.north east);
+    }
+  },
+  #1
+}
+
 \newcommand{\sectiontitle}[1]{%
   {\fontsize{44}{49}\selectfont\bfseries\color{posterink}#1\par}%
+}
+
+\newcommand{\targetmark}{%
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \useasboundingbox (0,-.15) rectangle (24.7,3.45);
+    \node[anchor=west,text=posterteal!92!posterink,
+      font=\fontsize{22}{24}\selectfont\bfseries] at (0,2.72) {OUR};
+    \node[anchor=west,text=posterink,
+      font=\fontsize{54}{56}\selectfont\bfseries] at (0,1.08) {TARGET};
+    \draw[posterteal!88!posterink,line width=1.25mm,line cap=round]
+      (9.0,1.02) -- (21.3,1.02);
+    \fill[posterteal!92!posterink] (9.0,1.02) circle (.18cm);
+    \draw[-{Latex[length=5mm,width=3.5mm]},posterteal!92!posterink,
+      line width=1.25mm,line cap=round] (18.8,1.02) -- (22.6,1.02);
+    \draw[posterteal!88!posterink,line width=.86mm,line cap=round]
+      (14.4,1.02) -- ++(.35,.40) -- ++(.42,-.80)
+      -- ++(.50,1.20) -- ++(.58,-1.60) -- ++(.50,1.20)
+      -- ++(.42,-.80) -- ++(.35,.40);
+  \end{tikzpicture}%
+}
+
+\newcommand{\discoverymark}{%
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \useasboundingbox (0,-.15) rectangle (24.7,3.65);
+    \node[anchor=west,text=posterpurple!92!posterink,
+      font=\fontsize{22}{24}\selectfont\bfseries] at (0,2.90) {BETTER};
+    \node[anchor=west,text=posterink,
+      font=\fontsize{50}{52}\selectfont\bfseries] at (0,1.28) {DISCOVERY};
+    \coordinate (titleRoot) at (12.4,.42);
+    \coordinate (titleUpper) at (16.0,.88);
+    \coordinate (titleMiddle) at (16.2,.42);
+    \coordinate (titleLower) at (16.0,-.04);
+    \coordinate (titleMerge) at (20.2,.42);
+    \draw[posterpurple!90!posterink,line width=1.05mm,line cap=round]
+      (10.5,.42) -- (titleRoot)
+      (titleRoot) -- (titleUpper) -- (titleMerge)
+      (titleRoot) -- (titleMiddle) -- (titleMerge)
+      (titleRoot) -- (titleLower) -- (titleMerge) -- (23.0,.42);
+    \foreach \p in {titleRoot,titleUpper,titleMiddle,titleLower,titleMerge}
+      \fill[posterpurple!94!posterink] (\p) circle (.16cm);
+  \end{tikzpicture}%
+}
+
+\newcommand{\graphmark}{%
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \useasboundingbox (0,-.15) rectangle (24.7,3.65);
+    \node[anchor=west,text=posterblue!94!posterink,
+      font=\fontsize{22}{24}\selectfont\bfseries] at (0,2.90) {FASTER};
+    \node[anchor=west,text=posterink,
+      font=\fontsize{43}{45}\selectfont\bfseries] at (0,1.32) {GRAPH};
+    \node[anchor=west,text=posterblue!88!posterink,
+      font=\fontsize{29}{32}\selectfont\bfseries] at (8.7,1.28) {INTELLIGENCE};
+    \coordinate (g1) at (1.0,.34);
+    \coordinate (g2) at (5.0,.68);
+    \coordinate (g3) at (8.4,.18);
+    \coordinate (g4) at (12.6,.72);
+    \coordinate (g5) at (17.0,.32);
+    \coordinate (g6) at (22.8,.56);
+    \draw[posterblue!86!posterink,line width=1.02mm,line cap=round]
+      (g1) -- (g2) -- (g4) -- (g6)
+      (g1) -- (g3) -- (g4)
+      (g3) -- (g5) -- (g6);
+    \foreach \p/\r in {g1/.14,g2/.18,g3/.15,g4/.22,g5/.17,g6/.20}
+      \fill[posterblue!94!posterink] (\p) circle (\r cm);
+  \end{tikzpicture}%
+}
+
+\newcommand{\investmentmark}{%
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \useasboundingbox (0,-.15) rectangle (24.7,3.45);
+    \node[anchor=west,text=postergold!92!black,
+      font=\fontsize{22}{24}\selectfont\bfseries] at (0,2.72) {WHY};
+    \node[anchor=west,text=posterink,
+      font=\fontsize{48}{50}\selectfont\bfseries] at (0,1.08) {INVEST NOW?};
+    \draw[-{Latex[length=4.8mm,width=3.4mm]},postergold!92!black,
+      line width=1.16mm,line cap=round,line join=round]
+      (12.7,.28) -- (15.0,.28) -- (15.0,.58) -- (17.3,.58)
+      -- (17.3,.94) -- (19.6,.94) -- (19.6,1.36) -- (22.7,1.36);
+  \end{tikzpicture}%
+}
+
+\newcommand{\eramark}{%
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \useasboundingbox (0,-.15) rectangle (55.0,3.45);
+    \node[anchor=west,text=postergold!92!black,
+      font=\fontsize{22}{24}\selectfont\bfseries] at (0,2.72) {SHARPER};
+    \node[anchor=west,text=posterink,
+      font=\fontsize{52}{54}\selectfont\bfseries] at (0,1.08) {ERA ESTIMATION};
+    \draw[postergold!90!black,line width=1.18mm,line cap=round]
+      (22.0,.58) -- (50.8,.58);
+    \foreach \x in {23.0,27.0,31.0,35.0,39.0,43.0,47.0,50.0}{
+      \draw[postergold!88!black,line width=.86mm]
+        (\x,.20) -- (\x,.96);
+    }
+    \node[anchor=north,text=postermuted,
+      font=\fontsize{15}{17}\selectfont\bfseries] at (23.0,.08) {1920s};
+    \node[anchor=north,text=postermuted,
+      font=\fontsize{15}{17}\selectfont\bfseries] at (35.0,.08) {1960s};
+    \node[anchor=north,text=postermuted,
+      font=\fontsize{15}{17}\selectfont\bfseries] at (47.0,.08) {2000s};
+    \draw[postergold!92!black,line width=.92mm,line cap=round,line join=round]
+      (37.4,1.48) -- ++(.60,0) -- ++(.24,.30) -- ++(.30,-.60)
+      -- ++(.36,.90) -- ++(.42,-1.20) -- ++(.36,.90)
+      -- ++(.30,-.60) -- ++(.24,.30) -- ++(.60,0);
+  \end{tikzpicture}%
 }
 
 \newcommand{\smallnote}[1]{%
@@ -176,6 +459,8 @@
 }
 
 % Better discovery -------------------------------------------------------------
+% Disabled while the five-panel visual system is being designed.
+\newcommand{\disabledevidencepanels}{%
 \begin{textblock}{29.5}(4,59.2)
   \begin{musicpanel}[height=19.0cm]{posterpurple}
     \sectiontitle{Better discovery}
@@ -286,6 +571,7 @@
 
   \end{musicpanel}
 \end{textblock}
+}
 
 % Investment close -------------------------------------------------------------
 % Disabled while the title artwork is being designed.
@@ -306,11 +592,44 @@
 \end{textblock}
 }
 
+% Five-panel visual skeleton ---------------------------------------------------
+\begin{textblock}{29.5}(4,24.8)
+  \begin{targetcard}[height=22.3cm]
+    \resizebox{\linewidth}{!}{\targetmark}
+  \end{targetcard}
+\end{textblock}
+
+\begin{textblock}{29.5}(35.25,24.8)
+  \begin{discoverycard}[height=22.3cm]
+    \resizebox{\linewidth}{!}{\discoverymark}
+  \end{discoverycard}
+\end{textblock}
+
+\begin{textblock}{29.5}(66.5,24.8)
+  \begin{graphcard}[height=22.3cm]
+    \resizebox{\linewidth}{!}{\graphmark}
+  \end{graphcard}
+\end{textblock}
+
+\begin{textblock}{29.5}(4,66.2)
+  \begin{investmentcard}[height=17cm]
+    \resizebox{\linewidth}{!}{\investmentmark}
+  \end{investmentcard}
+\end{textblock}
+
+\begin{textblock}{60.75}(35.25,66.2)
+  \begin{eracard}[height=17cm]
+    \resizebox{\linewidth}{!}{\eramark}
+  \end{eracard}
+\end{textblock}
+
 % Footer ----------------------------------------------------------------------
+\newcommand{\disabledauthorline}{%
 \begin{textblock}{92}(4,95.4)
   {\fontsize{25}{30}\selectfont\bfseries\color{posterink}
     Jiang Ruiyu . Li Zhiyuan . Yao Yunxiang . Zhang Jingkai}
 \end{textblock}
+}
 
 \end{frame}
 
