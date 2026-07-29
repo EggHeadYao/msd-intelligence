@@ -1,0 +1,104 @@
+\subsection{Context, Attribution, and Scale}
+
+\begin{frame}{Audio and cultural context are complementary}
+
+\centering
+\begin{tikzpicture}[
+	view/.style={rounded corners=2pt,draw=structbgcolor,minimum width=3.3cm,minimum height=1.7cm,align=center,line width=1.2pt},
+	flow/.style={->,>=stealth,line width=1.2pt,draw=black!45}
+]
+	\node[view,fill=audiofill,draw=audioblue] (audio) at (-3.8,0) {594-d audio\\LightGBM\\\textbf{5.8299 / 8.3621}};
+	\node[view,fill=summaryfill,draw=summaryred] (meta) at (0,2.0) {392-d metadata\\LightGBM\\\textbf{5.2909 / 7.7190}};
+	\node[view,fill=structbgcolor!15] (fused) at (3.8,0) {762-d fused\\LightGBM\\\textbf{4.8456 / 7.3333}};
+	\draw[flow] (audio) -- (fused);
+	\draw[flow] (meta) -- (fused);
+\end{tikzpicture}
+
+\vspace{.45cm}
+{\Large\bfseries\color{structbgcolor}Best single model: 762-d fused LightGBM}\par
+{\large\bfseries 4.8456 MAE / 7.3333 RMSE}\par
+{\scriptsize Train artists only; self-priors and similarity self-edges removed.}
+\note{
+This is a supervised metadata extension, not an audio-only benchmark. Explain
+the leakage controls before stating the substantial performance improvement.
+}
+\end{frame}
+
+\begin{frame}{Where the improvement came from}
+
+\centering
+\begin{tikzpicture}[
+	stage/.style={rounded corners=2pt,draw=structbgcolor,text width=2.05cm,
+		minimum height=1.85cm,align=center,font=\scriptsize},
+	flow/.style={->,>=stealth,line width=1.1pt,draw=black!40}
+]
+	\node[stage] (ridge) at (-4.35,0) {T90 Ridge\\[3pt]
+		\textbf{6.7465 MAE}\\\textbf{9.4074 RMSE}};
+	\node[stage] (tree) at (-1.45,0) {Tree family\\[3pt]
+		\textbf{6.1760 MAE}\\\textbf{8.8073 RMSE}};
+	\node[stage] (audio) at (1.45,0) {Audio evidence\\[3pt]
+		\textbf{5.8299 MAE}\\\textbf{8.3621 RMSE}};
+	\node[stage,fill=structbgcolor!15] (fused) at (4.35,0) {Fused context\\[3pt]
+		\textbf{4.8456 MAE}\\\textbf{7.3333 RMSE}};
+	\draw[flow] (ridge) -- (tree); \draw[flow] (tree) -- (audio); \draw[flow] (audio) -- (fused);
+\end{tikzpicture}
+
+\vspace{.45cm}
+{\Large\bfseries\color{structbgcolor}$-28.18\%$ MAE \quad $-22.05\%$ RMSE}\par
+{\small Ensemble is only the final refinement: 4.8195 / 7.2405.}
+\note{
+The ensemble fits an intercept and three coefficients on validation predictions;
+it is not strict OOF stacking. Keep the fused model as the main claimed result.
+}
+\end{frame}
+
+\begin{frame}{Spark is the shared data plane}
+\small
+\begin{center}
+\resizebox{.96\textwidth}{!}{%
+\begin{tikzpicture}[
+	box/.style={rounded corners=2pt,draw=structbgcolor,fill=structbgcolor!10,
+		align=center,minimum height=1.1cm,text width=2.15cm,font=\scriptsize},
+	arrow/.style={->,>=stealth,thick,draw=structbgcolor!75}
+]
+	\node[box] (raw) at (-4.8,0) {HDF5 / SQLite\\raw sources};
+	\node[box] (parquet) at (-1.6,0) {Parquet + manifests\\typed contracts};
+	\node[box] (dataframe) at (1.6,0) {Spark DataFrame\\join / split / validate};
+	\node[box] (train) at (4.8,0) {RDD / SynapseML\\distributed training};
+	\draw[arrow] (raw) -- (parquet);
+	\draw[arrow] (parquet) -- (dataframe);
+	\draw[arrow] (dataframe) -- (train);
+\end{tikzpicture}
+}
+\end{center}
+\vspace{.55cm}
+\centering
+{\LARGE\bfseries\color{structbgcolor}25\% mini-batch: $-23.47\%$ local time}\par
+{\small Same test quality; Parquet contracts keep every model comparable.}
+
+\note{
+Spark is valuable because the same data plane supports ETL, validation,
+iterative optimization, and model integration. Do not equate local timings
+with a multi-node speedup claim.
+}
+\end{frame}
+
+\begin{frame}{What the result does not claim}
+
+\centering
+\begin{tikzpicture}[
+	card/.style={rounded corners=2pt,draw=structbgcolor,text width=3.0cm,
+		minimum height=2.45cm,align=center,line width=1.1pt}
+]
+	\node[card] at (-3.8,.45) {\scriptsize EARLY DECADES\\[6pt]\Large\bfseries 8 / 15\\\scriptsize tracks in 1920s / 1930s};
+	\node[card] at (0,.45) {\scriptsize EVALUATION\\[6pt]\large\bfseries Test-guided\\tuning\\[3pt]\scriptsize course-approved protocol};
+	\node[card] at (3.8,.45) {\scriptsize DEPLOYMENT\\[6pt]\large\bfseries Rebuild\\metadata state\\[3pt]\scriptsize same train-only state};
+\end{tikzpicture}
+
+\vspace{.4cm}
+{\large\bfseries\color{structbgcolor}Comparable experiments reveal the next bottleneck.}
+\note{
+End by repeating the causal story. The project result is a controlled sequence
+of diagnoses, not a claim that one architecture wins universally.
+}
+\end{frame}

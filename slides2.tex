@@ -1,14 +1,17 @@
 \documentclass{beamer}
 
-\usepackage{focs-slides}
+\usepackage{slides/focs-slides}
 \usepackage{listings}
+\graphicspath{{slides/img/}{slides/}}
 
 \title{Music Intelligence at Million-Song Scale}
 \author{p1team02 $-$ Jiang Ruiyu, Li Zhiyuan, Yao Yunxiang, Zhang Jingkai}
 \date{Summer 2026}
 \course{ECE472}
 
-\addbibresource{slides.bib}
+\addbibresource{slides/slides.bib}
+\addbibresource{slides/model_refs.bib}
+\addbibresource{slides/model_refs_story.bib}
 
 
 % Section 1, 2, 4 -----------------------------
@@ -192,7 +195,7 @@
 
 \section{Artist Distance}
 
-\input{artistdistance_slides.tex}
+\input{slides/artistdistance_slides.tex}
 
 
 
@@ -589,8 +592,9 @@ nDCG measures position-discounted ranking quality \autocite{jarvelin2002cumulate
 
 \section{Year Prediction}
 
-\begin{frame}{Year Prediction}
-\end{frame}
+\input{slides/year_prediction_story.tex}
+\input{slides/year_prediction_story_part2.tex}
+\input{slides/year_prediction_story_part3.tex}
 
 \section{Bibliography}
 
