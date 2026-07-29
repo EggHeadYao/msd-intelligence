@@ -556,6 +556,20 @@ def main() -> None:
 
         q_tracks = q_columns(query_b)
         c_tracks = c_columns(set_b)
+        valid_q_audio = (
+            q_tracks.where(
+                F.col("q_artist_id").isNotNull()
+                & (F.length("q_artist_id") > 0)
+                & F.col("q_release_id").isNotNull()
+                & (F.col("q_release_id") > 0)
+                & (F.col("q_norm") > 0.0)
+            )
+            .join(
+                F.broadcast(tagged_artists.select(F.col("artist_id").alias("q_artist_id"))),
+                "q_artist_id",
+                "inner",
+            )
+        )
         valid_c_audio = (
             c_tracks.where(
                 F.col("c_artist_id").isNotNull()
