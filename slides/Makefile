@@ -1,35 +1,22 @@
 LATEXMK ?= latexmk
-OUTPUT_ROOT ?= ../../docs_output
-OUTDIR ?= $(OUTPUT_ROOT)/build
+OUTDIR := build
 TARGET := slides
-OUTPUT_PDF := $(OUTPUT_ROOT)/$(TARGET).pdf
-C1_FIGURES := img/c1/c1_audio_pipeline.pdf \
-	img/c1/c1_audio_pipeline.svg \
-	img/c1/c1_similarity_intervals.pdf \
-	img/c1/c1_similarity_intervals.svg
-C2_FIGURES := img/c2/c2_graph_schema.pdf \
-	img/c2/c2_walk_policy.pdf \
-	img/c2/c2_masked_results.pdf \
-	img/c2/c2_figures_metadata.json
-C3_FIGURES := img/c3/c3_candidate_pipeline.pdf \
-	img/c3/c3_pair_construction.pdf \
-	img/c3/c3_selection_policy.pdf
+TEX_SOURCES := $(TARGET).tex artistdistance_slides.tex
+BIB_SOURCES := $(TARGET).bib model_refs.bib model_refs_story.bib
+STYLE_SOURCES := focs-slides.sty
 
 .PHONY: all clean
 
-all: $(OUTPUT_PDF)
+all: $(TARGET).pdf
 
-$(OUTPUT_PDF): $(OUTDIR)/$(TARGET).pdf | $(OUTPUT_ROOT)
-	cp $(OUTDIR)/$(TARGET).pdf $(OUTPUT_PDF)
+$(TARGET).pdf: $(OUTDIR)/$(TARGET).pdf
+	cp $(OUTDIR)/$(TARGET).pdf $(TARGET).pdf
 
-$(OUTDIR)/$(TARGET).pdf: $(TARGET).tex $(TARGET).bib focs-slides.sty $(C1_FIGURES) $(C2_FIGURES) $(C3_FIGURES) | $(OUTDIR)
+$(OUTDIR)/$(TARGET).pdf: $(TEX_SOURCES) $(BIB_SOURCES) $(STYLE_SOURCES) | $(OUTDIR)
 	$(LATEXMK) -pdf -interaction=nonstopmode -halt-on-error -outdir=$(OUTDIR) $(TARGET).tex
 
 $(OUTDIR):
 	mkdir -p $(OUTDIR)
 
-$(OUTPUT_ROOT):
-	mkdir -p $(OUTPUT_ROOT)
-
 clean:
-	rm -rf $(OUTDIR) $(OUTPUT_PDF)
+	rm -rf $(OUTDIR)

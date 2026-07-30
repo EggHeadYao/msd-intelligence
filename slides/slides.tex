@@ -9,6 +9,8 @@
 \course{ECE472}
 
 \addbibresource{slides.bib}
+\addbibresource{model_refs.bib}
+\addbibresource{model_refs_story.bib}
 
 
 % Section 1, 2, 4 -----------------------------
@@ -198,450 +200,501 @@
 
 \section{Recommendation System}
 
-\begin{frame}{MERLIN: Why Two Stages?}
+\begin{frame}{MERLIN: One Query, One Million Choices}
 
 \begin{center}
-  \small \textbf{MERLIN} = \alert{Meta-path Embedding Ranker with Learned Integration}\\[-1pt]
-  \footnotesize A scalable, explainable, multi-view similar-track retrieval system.
+  {\large Given one query track, retrieve the \textbf{Top-20 similar tracks} from the known MSD catalog.}
+
+  \vspace{.20cm}
+  \begin{tabular}{c@{\hspace{.25cm}}c@{\hspace{.25cm}}c@{\hspace{.25cm}}c@{\hspace{.25cm}}c}
+    {\LARGE\bfseries\color{projectteal}1,000,000} & $\longrightarrow$ & {\Large\bfseries$\leq 1,000$} & $\longrightarrow$ & {\LARGE\bfseries\color{projectgold}Top-20} \\
+    {\small catalog tracks} & & {\small candidates} & & {\small returned tracks}
+  \end{tabular}
 \end{center}
 
-\vspace{-.08cm}
-\begin{center}
-  \large \alert{1M tracks}
-  \quad $\longrightarrow$ \quad
-  \alert{$\leq 1{,}000$ candidates}
-  \quad $\longrightarrow$ \quad
-  \alert{Top-20}
-\end{center}
-
-\vspace{-.02cm}
-\small
+\vspace{.25cm}
 \begin{columns}[T,onlytextwidth]
-  \begin{column}{.48\textwidth}
-    \begin{block}{Stage 1: Candidate generation}
-      \begin{itemize}
-        \item Search four views: audio, graph, artist distance, and tags.
-        \item Favor \textbf{coverage and recall} before fine-grained ordering.
-        \item Preserve coverage when one view is unavailable.
-      \end{itemize}
-    \end{block}
-  \end{column}
-  \begin{column}{.48\textwidth}
-    \begin{block}{Stage 2: Learned ranking}
-      \begin{itemize}
-        \item Score the merged pool instead of the full catalog.
-        \item Fuse 13 pair features and availability masks.
-        \item Learn which evidence should dominate the final order.
-      \end{itemize}
-    \end{block}
-  \end{column}
+  \column{.47\textwidth}
+  \textbf{Full-catalog scoring is wasteful}
+
+  \small Scoring 13 pair features against all 1M tracks repeats expensive graph and metadata work.
+
+  \column{.47\textwidth}
+  \textbf{Similarity has many forms}
+
+  \small Audio, graph, artist-distance, and tag signals may disagree. Relation signals may also be missing.
 \end{columns}
 
-\vspace{.24cm}
+\vfill
+{\small MSD has no listener histories or relevance labels. MERLIN retrieves \textbf{similar tracks}, not personalized recommendations.}
+
+\vspace{.18cm}
+{\footnotesize\textbf{MERLIN}: Meta-path Embedding Ranker with Learned Integration.}
+
+\end{frame}
+
+\begin{frame}{MERLIN: Workload Shapes the Architecture}
+
+\small
+\renewcommand{\arraystretch}{1.17}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.65cm}>{\raggedright\arraybackslash}p{3.10cm}>{\raggedright\arraybackslash}p{2.35cm}>{\raggedright\arraybackslash}p{3.55cm}@{}}
+  \toprule
+  \textbf{Stage} & \textbf{Observed scale} & \textbf{Main bottleneck} & \textbf{Engine} \\
+  \midrule
+  Extract & 267 GB across 1M HDF5 files & file / network I/O & checkpointed\newline multiprocessing \\
+  \cmidrule(lr){1-4}
+  Prepare + C1 & 1M $\times$ 563 features, joins + compression & shuffle + linear algebra & Spark DataFrames\newline Spark ML \\
+  \cmidrule(lr){1-4}
+  C2 & 10M walks with 399.86M tokens & CPU + worker locality & partition-local Spark\newline Word2Vec \\
+  \cmidrule(lr){1-4}
+  Ranker & 12.57M training pairs & repeated pair scoring & Spark Logistic Regression \\
+  \cmidrule(lr){1-4}
+  Search & 1M $\times$ 128D vectors & memory + query latency & exact vector search \\
+  \bottomrule
+\end{tabular}
+
+\vspace{.35cm}
 \begin{center}
-  \bfseries Candidate generation protects recall; the Ranker concentrates precision.
+  \large\bfseries Each engine follows the access pattern of its workload.
 \end{center}
 
 \end{frame}
 
-\begin{frame}{MERLIN: System Overview}
+\begin{frame}{MERLIN: Retrieve, Merge, Rank}
 
+\begin{center}
+  \includegraphics[width=.90\textwidth]{img/merlin/merlin_two_stage.pdf}
+\end{center}
+
+\vspace{-.10cm}
+\begin{center}
+  \small Four retrievers propose candidates. Logistic Regression ranks their deduplicated union.
+
+  Source identity is kept for auditing. The score uses query--candidate features.
+\end{center}
+
+\end{frame}
+
+\begin{frame}{C1: Raw Features Need Preprocessing}
+
+{\small The 1M-track audio view has 563 features with uneven coverage and scale.}
+
+\vspace{.12cm}
+\begin{center}
+  \includegraphics[width=.94\textwidth]{img/c1/c1_input_profile.pdf}
+\end{center}
+
+\vspace{-.04cm}
+\begin{center}
+  \large\bfseries Impute missing values, retain masks, drop constant fields, then standardize.
+\end{center}
+
+\end{frame}
+
+\begin{frame}{C1: Standardize Before PCA}
+
+{\small The measured missingness and scale spread require a deterministic pipeline before Principal Component Analysis (PCA).}
+
+\vspace{.05cm}
+\begin{center}
+  \includegraphics[width=.90\textwidth]{img/c1/c1_audio_pipeline.pdf}
+\end{center}
+
+\vspace{-.10cm}
+\small
 \begin{columns}[T,onlytextwidth]
-  \begin{column}{.55\textwidth}
-    \textbf{Stage 1: four specialized retrievers}
+  \column{.48\textwidth}
+  \textbf{Why standardize?}
 
-    \vspace{.14cm}
-    \small
-    \begin{tabular}{@{}ll@{}}
-      \toprule
-      \textbf{Source} & \textbf{Evidence retrieved} \\
-      \midrule
-      C1 Audio & acoustic similarity \\
-      C2 Graph & learned relational context \\
-      BFS & explicit artist proximity \\
-      Tag & semantic overlap \\
-      \bottomrule
-    \end{tabular}
+  \small Missing flags retain availability. StandardScaler prevents large-unit features from dominating.
 
-    \vspace{.3cm}
-    Filter, merge, and deduplicate while preserving which sources recalled each track.
-  \end{column}
-  \begin{column}{.40\textwidth}
-    \textbf{Stage 2: R --- Learned Ranker}
+  \column{.48\textwidth}
+  \textbf{Why PCA-128?}
 
-    \vspace{.1cm}
-    \begin{enumerate}
-      \item Build the union of at most 1,000 candidates.
-      \item Compute 13 pair features and availability masks.
-      \item Apply one LR scorer to produce the Top-20.
-    \end{enumerate}
-  \end{column}
+  \small PCA removes correlated redundancy. No whitening avoids amplifying low-variance noise \autocite{jolliffe2016pca}.
+\end{columns}
+
+\vfill
+{\small FAISS searches L2-normalized audio embeddings. Artist, release, year, and popularity do not enter C1.}
+
+\end{frame}
+
+\begin{frame}{C1: PCA-128 Preserves Neighborhoods}
+
+{\small The analysis uses 30K controlled pairs, with 10K in each group.}
+
+\vspace{.05cm}
+\begin{center}
+  \includegraphics[width=.88\textwidth]{img/c1/c1_similarity_intervals.pdf}
+\end{center}
+
+\vspace{-.10cm}
+\begin{center}
+  {\large\bfseries\color{projectteal}90.80\% variance at 128D}
+  \quad $\vert$ \quad
+  {\large\bfseries\color{projectpurple}pre/post cosine $r=0.9981$--$0.9988$}
+\end{center}
+
+\end{frame}
+
+\begin{frame}{C2: Restore Entity-Level Relations}
+
+\begin{center}
+  {\small 134.69M expanded track-level rows $\longrightarrow$ \textbf{5.31M entity-level edges} over 1.23M typed nodes}
+
+  \vspace{.10cm}
+  \includegraphics[width=.96\textwidth]{img/c2/c2_graph_schema.pdf}
+\end{center}
+
+\vspace{-.08cm}
+{\small Artist-level terms and capped inverse document frequency (IDF) support typed meta-paths \autocite{sun2011pathsim}.}
+
+\end{frame}
+
+\begin{frame}{C2: Relation Coverage Varies by Track}
+
+\vspace{.05cm}
+\begin{center}
+  \includegraphics[width=.98\textwidth]{img/c2/c2_route_profile.pdf}
+\end{center}
+
+\vspace{.02cm}
+\begin{center}
+  \large\bfseries At every step, the walk samples only from relations available to the current track.
+\end{center}
+
+\end{frame}
+
+\begin{frame}{C2: Sample Only Eligible Relations}
+
+\begin{center}
+  \small Four semantic routes are possible: \textbf{same artist, similar artist, shared term,} and \textbf{same release}.
+\end{center}
+
+\vspace{.02cm}
+\begin{center}
+  \includegraphics[width=.98\textwidth]{img/c2/c2_walk_policy.pdf}
+\end{center}
+
+\vspace{-.12cm}
+\begin{center}
+  \small At each step, unavailable routes receive probability zero. The remaining routes are sampled uniformly.
+\end{center}
+
+\end{frame}
+
+\begin{frame}{C2: Learn from 399.86M Walk Tokens}
+
+\begin{center}
+  \small Graph walks become Word2Vec sentences.
+
+  \vspace{.25cm}
+  {\large graph
+  $\longrightarrow$
+  10M walks
+  $\longrightarrow$
+  Word2Vec
+  $\longrightarrow$
+  \mbox{1M $\times$ 128D vectors}}
+\end{center}
+
+\vspace{.45cm}
+\begin{columns}[c,onlytextwidth]
+  \column{.31\textwidth}
+  \centering
+  {\huge\bfseries\color{projectteal}10M}\par
+  {\large walks}\par
+  {\small 10 walks per track, maximum length 40}
+
+  \column{.34\textwidth}
+  \centering
+  {\huge\bfseries\color{projectblue}399.86M}\par
+  {\large observed track tokens}\par
+  {\small mean walk length 39.986}
+
+  \column{.31\textwidth}
+  \centering
+  {\huge\bfseries\color{projectgold}1M}\par
+  {\large vector rows exported}\par
+  {\small 999,862 roots have graph context}
+\end{columns}
+
+\vspace{.48cm}
+{\small Load adjacency once per Spark partition, then train Word2Vec on 20 partitions \autocite{perozzi2014deepwalk,mikolov2013efficient}.}
+
+\end{frame}
+
+\begin{frame}{C2: Masking Removes the Artist Shortcut}
+
+\small
+\begin{columns}[T,onlytextwidth]
+  \column{.48\textwidth}
+  {\large\bfseries\color{projectteal}1. Sample queries}
+
+  One query from each of 10K artists, stratified by catalog size.
+
+  \vspace{.32cm}
+  {\large\bfseries\color{projectteal}2. Remove the shortcut}
+
+  Delete only the query's Track--Artist link before learning.
+
+  \column{.48\textwidth}
+  {\large\bfseries\color{projectteal}3. Freeze the answers}
+
+  The artist's other tracks are positives. Exclude self and same-song variants.
+
+  \vspace{.32cm}
+  {\large\bfseries\color{projectteal}4. Rebuild C2}
+
+  Rebuild adjacency, walks, Word2Vec, and the index from the masked graph.
 \end{columns}
 
 \vspace{.35cm}
-\begin{block}{End-to-end path}
+\begin{block}{Same test for every method}
   \centering
-  Query track $\rightarrow$ specialized retrieval $\rightarrow$ canonical union
-  $\rightarrow$ learned late fusion $\rightarrow$ Top-20
+  Both methods share queries, positives, filters, and $K=20$. All \textbf{829 disconnected queries} count as failures.
 \end{block}
 
 \end{frame}
 
-\begin{frame}{MERLIN: Scaling by Access Pattern}
+\begin{frame}{C2: Multiple Relations Recover More Tracks}
+
+{\small We evaluate 10K queries at $K=20$ and report 2K-bootstrap 95\% confidence intervals.}
+
+\vspace{.05cm}
+\begin{center}
+  \includegraphics[width=.84\textwidth]{img/c2/c2_masked_results.pdf}
+\end{center}
+
+\vspace{-.08cm}
+{\small C2 gains \textbf{+15.6 pp Recall@20} and \textbf{+14.5 pp nDCG@20}. nDCG rewards higher-ranked positives \autocite{jarvelin2002cumulated}.}
+
+\end{frame}
+
+\begin{frame}{Candidate: Four Views Barely Overlap}
+
+{\small We analyze 1,000 label-free queries, allowing each source to nominate up to 250 tracks under identical filters.}
+
+\vspace{.08cm}
+\begin{center}
+  \includegraphics[width=.98\textwidth]{img/candidate/candidate_nomination_diversity.pdf}
+\end{center}
+
+\vspace{-.04cm}
+\begin{center}
+  \large\bfseries 96.25\% of nominations appear in only one source. The median union contains 969 candidates.
+\end{center}
+
+\end{frame}
+
+\begin{frame}{Candidate: Four Views, At Most 1,000 Tracks}
 
 \small
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.75cm}>{\raggedright\arraybackslash}p{8.75cm}@{}}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{6pt}
+\begin{center}
+\begin{tabular}{@{}lll@{}}
   \toprule
-  \textbf{Workload} & \textbf{Execution pattern and rationale} \\
+  \textbf{Retriever} & \textbf{Signal} & \textbf{Base quota} \\
   \midrule
-  HDF5 scan & \textbf{Python multiprocessing}: parallel I/O over $\sim$267 GB of small files, with batch checkpoints for restart. \\
-  \addlinespace
-  Prepare + C1 & \textbf{Spark DataFrames + ML}: distributed schema checks, joins, scaling, and PCA over one million rows. \\
-  \addlinespace
-  C2 learning & \textbf{\texttt{mapPartitions} + Spark Word2Vec}: reuse adjacency per worker; train over $\sim$10M walks and $\sim$400M tokens. \\
-  \addlinespace
-  Retrieval & \textbf{FAISS \texttt{IndexFlatIP}}: exact search over compact, normalized 128D vectors on one serving machine. \\
+  C1 acoustic & normalized audio cosine & 250 \\
+  C2 graph context & learned relation-space cosine & 250 \\
+  Artist-distance BFS & directed artist proximity & 250 \\
+  Artist-term similarity & weighted term overlap & 250 \\
   \bottomrule
 \end{tabular}
-
-\vspace{.5cm}
-\begin{itemize}
-    \item Spark handles the distributed work: ETL, feature transformation, partitioned walks, and representation learning.\\
-    \item FAISS handles online retrieval: Compact exact vector search; no distributed serving layer is required.
-\end{itemize}
-
-\end{frame}
-
-\begin{frame}{C1: Audio to 128D Retrieval}
-
-\begin{center}
-  \includegraphics[width=.98\textwidth]{img/c1/c1_audio_pipeline.pdf}
 \end{center}
 
-\vspace{-.30cm}
+\vspace{.18cm}
+{\small BFS denotes breadth-first search.}
+
+\vspace{.25cm}
+\begin{center}
+  {\large 1M catalog
+  $\longrightarrow$ four lists
+  $\longrightarrow$ filter
+  $\longrightarrow$ \mbox{merge + deduplicate}}
+
+  \vspace{.08cm}
+  {\large\bfseries $\leq 1{,}000$ unique candidates per query}
+\end{center}
+
+\vspace{.35cm}
 \begin{columns}[T,onlytextwidth]
   \column{.48\textwidth}
-  \textbf{What C1 learns from}
+  \textbf{Deterministic budget}
 
-  \small Timbre and pitch; rhythm, tempo, and duration; loudness, confidence, and temporal segment summaries.
+  \small Up to 250 per source. No random padding.
 
   \column{.48\textwidth}
-  \textbf{What C1 publishes}
+  \textbf{Serving filters}
 
-  \small One million finite unit vectors, a frozen preprocessing/scaler/PCA bundle, and an exact FAISS index with explicit track mapping.
+  \small Remove self and same-song variants. Require valid graph context.
 \end{columns}
-
-\vspace{.30cm}
-{\small\textbf{Evidence boundary.} Artist, release, year, and popularity never enter C1; each query contributes at most 250 audio candidates.}
-
 
 \end{frame}
 
-\begin{frame}{C1: PCA Retains Acoustic Structure}
+\begin{frame}{Ranker: Single Views Specialize}
 
-{\small 10K pairs per cohort; whiskers = P5--P95, boxes = IQR, dots = mean.\\
-Matched-random controls use exact year and feature-coverage keys; 2K bootstrap samples.}
+{\small All three reference-positive sets use the same queries and candidate pools. Scores are nDCG@20.}
 
-\vspace{.05cm}
-\begin{columns}[c,onlytextwidth]
-  \column{.67\textwidth}
-  \centering
-  \includegraphics[width=\linewidth]{img/c1/c1_similarity_intervals.pdf}
-
-  \column{.29\textwidth}
-  {\fontsize{22}{24}\selectfont\bfseries\color{projectteal}90.80\%}\par
-  {\small cumulative variance at 128D}
-
-  \vspace{.28cm}
-  {\large\bfseries\color{projectpurple}$r=0.9981$--$0.9988$}\par
-  {\small pre/post-PCA cosine correlation}
-
-  \vspace{.28cm}
-  {\large\bfseries\color{projectgold}$g=1.06$ artist}\par
-  {\large\bfseries\color{projectgold}$g=1.35$ release}\par
-  {\small vs. matched random}
-\end{columns}
-
-\vfill
-{\small\textbf{Claim boundary:}
-PCA-128 preserves metadata-correlated acoustic structure---not user preference or perceptual similarity.}
-
-\end{frame}
-
-\begin{frame}{C2: Canonical Relations}
-
-\begin{columns}[T,onlytextwidth]
-  \column{.62\textwidth}
-  \centering
-  \includegraphics[width=\linewidth]{img/c2/c2_graph_schema.pdf}
-
-  \column{.33\textwidth}
-  \vspace{.35cm}
-  {\fontsize{25}{27}\selectfont\bfseries\color{projectteal}5.31M}\par
-  {\large canonical edges}\par
-
-  \vspace{.45cm}
-  {\fontsize{25}{27}\selectfont\bfseries\color{projectblue}1.23M}\par
-  {\large typed nodes}\par
-
-  \vspace{.55cm}
-  {\small
-  Four track-rooted views:\par
-  \vspace{.12cm}
-  \textbf{artist}, similar artist,\par
-  term, and release.}
-\end{columns}
-
-\vfill
-{\footnotesize Meta-paths specify typed semantic routes through a heterogeneous graph \autocite{sun2011pathsim}.}
-
-\end{frame}
-
-\begin{frame}{C2: Eligibility-Aware Walks}
-
-\begin{center}
-  \includegraphics[width=.92\textwidth]{img/c2/c2_walk_policy.pdf}
-\end{center}
-
-\vspace{-.15cm}
+\vspace{.28cm}
 \begin{columns}[T,onlytextwidth]
   \column{.31\textwidth}
-  \textbf{\color{projectteal}1. Check}\par
-  {\small Derive the paths available at the current track.}
+  {\large\bfseries\color{projectblue}Audio}
+
+  \small Acoustically similar across artists and releases, with low tag similarity.
+
+  \vspace{.16cm}
+  C1 \textbf{0.0208}\par
+  C2 0.0001
 
   \column{.31\textwidth}
-  \textbf{\color{projectteal}2. Sample}\par
-  {\small Choose uniformly only among eligible paths.}
+  {\large\bfseries\color{projectpurple}Relation}
+
+  \small Artist, release, similar-artist, or tag evidence with low audio similarity.
+
+  \vspace{.16cm}
+  C1 0.0000\par
+  C2 \textbf{0.0034}
 
   \column{.31\textwidth}
-  \textbf{\color{projectteal}3. Repeat}\par
-  {\small Move to another track and recompute eligibility.}
+  {\large\bfseries\color{projectteal}Mixed}
+
+  \small Equal Audio and Relation positives per query.
+
+  \vspace{.16cm}
+  C1 \textbf{0.0078}\par
+  C2 0.0030
 \end{columns}
-
-\vfill
-{\footnotesize No fixed path order, wasted probability, or self-transition padding.}
-
-\end{frame}
-
-\begin{frame}{C2: Distributed Walk2Vec}
-
-\vspace{.05cm}
-\begin{center}
-  {\large
-  canonical graph
-  \(\longrightarrow\)
-  10M mixed walks
-  \(\longrightarrow\)
-  Spark ML Word2Vec
-  \(\longrightarrow\)
-  normalized track vectors}
-\end{center}
 
 \vspace{.38cm}
-\begin{columns}[c,onlytextwidth]
-  \column{.31\textwidth}
+\begin{block}{Why learn a fusion score?}
   \centering
-  {\fontsize{25}{27}\selectfont\bfseries\color{projectteal}10M}\par
-  {\large walks}\par
-  {\small \(r=10,\ L=40\)}
-
-  \column{.34\textwidth}
-  \centering
-  {\fontsize{25}{27}\selectfont\bfseries\color{projectblue}399.86M}\par
-  {\large observed tokens}\par
-  {\small mean length \(39.986\)}
-
-  \column{.31\textwidth}
-  \centering
-  {\fontsize{25}{27}\selectfont\bfseries\color{projectgold}1M}\par
-  {\large 128D encoder exports}\par
-  {\small finite, unit normalized}
-\end{columns}
-
-\vspace{.42cm}
-{\small
-\textbf{Distributed execution.}
-Walk generation batches roots with \texttt{repartition(track\_id)} and \texttt{mapPartitions}; Word2Vec trains with 20 final partitions, window 5, and 5 iterations.}
-
-\vfill
-{\footnotesize DeepWalk motivates treating graph walks as sentences; Word2Vec learns their local contexts \autocite{perozzi2014deepwalk,mikolov2013efficient}. Encoder export is verified; serving still filters contextless roots.}
+  C1 wins Audio and C2 wins Relation. Neither leads across all three views.
+\end{block}
 
 \end{frame}
 
-\begin{frame}{C2: Masked-Artist Recovery}
+\begin{frame}{Ranker: Weak Labels Create Training Rows}
 
-{\small
-\textbf{10K queries, one per artist}
-\(\rightarrow\) mask query Track--Artist
-\(\rightarrow\) rebuild + retrain
-\(\rightarrow\) same-artist retrieval at \(K=20\).}
+\small From 100K queries, we construct 12.57M training pairs with three negatives per positive.
 
-\vspace{.08cm}
+\vspace{.35cm}
 \begin{columns}[T,onlytextwidth]
-  \column{.64\textwidth}
-  \centering
-  \includegraphics[width=\linewidth]{img/c2/c2_masked_results.pdf}
+  \column{.48\textwidth}
+  \textbf{One query--candidate pair per row}
 
-  \column{.32\textwidth}
-  \vspace{.04cm}
-  {\fontsize{22}{24}\selectfont\bfseries\color{projectpurple}91.71\%}\par
-  {\large connectable}\par
-  {\small 9,171 of 10,000 queries}
+  \small
+  \begin{align*}
+    x &= \text{13 standardized pair features} \\
+    y &= \text{deterministic weak-positive label}
+  \end{align*}
 
-  \vspace{.20cm}
-  {\large\bfseries 829 disconnected}\par
-  {\small Counted as zero in all-query metrics.}
+  \vspace{-.18cm}
+  \small Weak labels are deterministic rules derived from artist, audio, and tag evidence.
+
+  \column{.48\textwidth}
+  \textbf{Negatives teach difficult distinctions}
+
+  \small 75\% retrieved candidates, 25\% random tracks. Reject invalid or duplicate pairs.
 
   \vspace{.22cm}
-  {\small
-  \textbf{Hit@20}: .700 vs .691\par
-  \textbf{MRR@50}: .632 vs .642}
+  \small Song-safe split before pair construction.
 \end{columns}
 
 \vfill
-{\small\textbf{Claim boundary:}
-Evidence supports transductive metadata reconstruction only---not user relevance or inductive cold-start generalization.}
-
-\end{frame}
-\begin{frame}{Multi-View Candidate Pool}
-
 \begin{center}
-  \includegraphics[width=.98\textwidth]{img/c3/c3_candidate_pipeline.pdf}
+  \small 13 pair features $\longrightarrow$ L2 Logistic Regression $\longrightarrow$ rank score \autocite{cox1958regression}
 \end{center}
 
-\vspace{.10cm}
-\begin{columns}[T,onlytextwidth]
-  \column{.48\textwidth}
-  \textbf{Recall first}
-
-  \small Four complementary views provide bounded candidate lists; short sources are never randomly padded.
-
-  \column{.48\textwidth}
-  \textbf{One serving contract}
-
-  \small Filter, merge, and deduplicate before ranking; preserve source evidence for auditing.
-\end{columns}
-
-\vfill
-{\small\textbf{Design principle:}
-R cannot recover a track missing from the candidate pool.}
-
 \end{frame}
 
-\begin{frame}{R: Learned Ranker}
-\vspace{-.8cm}
+\begin{frame}{Ranker: Select Once, Confirm Separately}
+
+\small
+\setlength{\tabcolsep}{1.5pt}
+\renewcommand{\arraystretch}{1.20}
 \begin{center}
-  \includegraphics[width=1.0\textwidth]{img/c3/c3_pair_construction.pdf}
+\begin{tabular}{>{\centering\arraybackslash}p{2.05cm} c >{\centering\arraybackslash}p{2.15cm} c >{\centering\arraybackslash}p{1.95cm} c >{\centering\arraybackslash}p{2.15cm}}
+  \textbf{100K training queries} & $\longrightarrow$ & \textbf{11,385 configurations on tune} & $\longrightarrow$ & \textbf{freeze one policy} & $\longrightarrow$ & \textbf{evaluate once on confirmation} \\
+\end{tabular}
 \end{center}
 
-\vspace{-.50cm}
+\vspace{.45cm}
+\textbf{Predeclared balance guards on the tune fold}
+
+\vspace{.12cm}
 \begin{columns}[T,onlytextwidth]
-  \column{.31\textwidth}
-  \textbf{1. Split first}
+  \column{.48\textwidth}
+  \begin{itemize}
+    \item Audio at least 90\% of C1
+    \item Relation strictly above C1
+  \end{itemize}
 
-  \small Same-song variants remain in one fold.
-
-  \column{.31\textwidth}
-  \textbf{2. Sample pairs}
-
-  \small Weak positives plus candidate-aware and random negatives.
-
-  \column{.31\textwidth}
-  \textbf{3. Fit the scorer}
-
-  \small Thirteen pair features train a weighted Logistic Regression model \autocite{cox1958regression}.
+  \column{.48\textwidth}
+  \begin{itemize}
+    \item Mixed matches or exceeds C1
+    \item One fixed policy for all query types
+  \end{itemize}
 \end{columns}
 
-\vspace{0.4cm}
-{\small\textbf{Output:}
-a guarded C1/LR interleave that preserves acoustic quality while admitting relation evidence.}
+\vspace{.32cm}
+\begin{block}{Independent acceptance check}
+  \centering
+  Frozen policy $\geq 101\%$ of C1 Macro on confirmation.
+\end{block}
 
 \end{frame}
 
-\begin{frame}{R: Selection and Evaluation}
+\begin{frame}{Ranker: The Same Policy Emerges by 50K}
 
+{\small Every training scale is evaluated on the same development queries.}
+
+\vspace{.05cm}
 \begin{center}
-  \includegraphics[width=1.0\textwidth]{img/c3/c3_selection_policy.pdf}
+  \includegraphics[width=.82\textwidth]{img/c3/c3_query_scale.pdf}
 \end{center}
 
-\vspace{-.50cm}
-\begin{columns}[T,onlytextwidth]
-  \column{.48\textwidth}
-  \textbf{Two evaluation views}
+\vspace{-.08cm}
+\begin{center}
+  \large\bfseries All three scales select the same regularization, acoustic quota, and relation thresholds.
 
-  \small Candidate recall audits Stage 1; end-to-end nDCG@20 evaluates the complete pipeline.
-
-  \column{.48\textwidth}
-  \textbf{Fair comparison}
-
-  \small Baselines share queries, candidate pools, filters, budgets, and metrics. Results are stratified into Audio, Mixed, and Relation queries.
-\end{columns}
-
-\vspace{.18cm}
-{\footnotesize\color{projectteal}\textbf{Reference positives:}
-Audio = acoustic; Relation = metadata; Mixed = 50/50.}
-
-\vspace{.18cm}
-{\small\textbf{Optimization target:}
-R is selected by three-strata macro nDCG@20 under MERLIN-specific per-stratum guards.
-nDCG measures position-discounted ranking quality \autocite{jarvelin2002cumulated}.}
+  \vspace{.08cm}
+  \small From 50K to 100K, development macro changes by only 0.014\%.
+\end{center}
 
 \end{frame}
 
+\begin{frame}{Ranker: Fusion Balances Three Views}
 
-\begin{frame}{R: Fusion Wins on Mixed and Macro}
+{\small The comparison uses the same candidates, filters, $K=20$, and positives after the fusion policy is frozen.}
 
-{\footnotesize Fixed Set-B confirmation against frozen weak-label positives; equal-strata query-macro nDCG@20.
-C1, C2, and Full share the same queries, candidates, filters, and budget.}
-
-\vspace{.08cm}
+\vspace{.16cm}
 \begin{center}
-\renewcommand{\arraystretch}{1.10}
+\renewcommand{\arraystretch}{1.16}
 \setlength{\tabcolsep}{10pt}
 \small
 \begin{tabular}{l r r r r}
-\toprule
-\textbf{Scorer} & \textbf{Audio} & \textbf{Relation} & \textbf{Mixed} & \textbf{Macro} \\
-\midrule
-C1-only & \textbf{0.020806} & 0.000000 & 0.007827 & 0.009544 \\
-C2-only & 0.000105 & \textbf{0.003430} & 0.002959 & 0.002165 \\
-\midrule
-\textbf{Full (100K)} & 0.018741 & 0.002108 & \textbf{\color{projectteal}0.008889} & \textbf{\color{projectteal}0.009913} \\
-\bottomrule
+  \toprule
+  \textbf{Scorer} & \textbf{Audio} & \textbf{Relation} & \textbf{Mixed} & \textbf{Macro} \\
+  \midrule
+  C1 acoustic only & \textbf{0.0208} & 0.0000 & 0.0078 & 0.0095 \\
+  C2 graph only & 0.0001 & \textbf{0.0034} & 0.0030 & 0.0022 \\
+  \midrule
+  \textbf{Full fusion} & 0.0187 & 0.0021 & \textbf{\color{projectteal}0.0089} & \textbf{\color{projectteal}0.0099} \\
+  \bottomrule
 \end{tabular}
 \end{center}
 
 \vspace{.24cm}
-\begin{columns}[T,onlytextwidth]
-  \column{.47\textwidth}
-  \textbf{Specialists retain their strengths}
-
-  \small C1 leads Audio; C2 leads Relation.
-
-  \column{.49\textwidth}
-  \textbf{Fusion improves overall balance}
-
-  \small Full leads Mixed and Macro while retaining \textbf{90.1\%} of C1 Audio.
-\end{columns}
-
-\vfill
-{\small\textbf{MERLIN improves Mixed by 13.57\% and Macro by 3.86\% over C1.}}
-
-\end{frame}
-
-
-\begin{frame}{R: Performance Stabilizes by 50K}
-
-{\footnotesize Fixed Set-B confirmation and selected policy at every training scale; exact raw scores are shown.}
-
-\vspace{.10cm}
 \begin{center}
-  \includegraphics[width=.90\textwidth]{img/c3/c3_query_scale.pdf}
+  \large\bfseries The frozen policy retains 90.08\% of C1 Audio, while improving Mixed by 13.57\% and Macro by 3.86\% over C1.
 \end{center}
 
 \vfill
-{\small 50K score differs from 100K by only 0.014\%, while even 10K retains 99.88\% of 100K performance.}
+{\footnotesize Absolute nDCG is low because the reference-positive sets are sparse. The comparison is meaningful only within this shared protocol.}
 
 \end{frame}
 
