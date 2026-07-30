@@ -4,7 +4,7 @@
 
 **Million-song-scale analytics, graph intelligence, recommendation, and year estimation.**
 
-[![Release](https://img.shields.io/badge/release-P1M2-6f42c1)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v1.0.0-6f42c1)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/EggHeadYao/msd-intelligence)
 
