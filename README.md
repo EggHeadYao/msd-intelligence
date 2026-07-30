@@ -15,7 +15,7 @@
 
 MSD Intelligence turns the raw Million Song Dataset into a shared, contract-driven Parquet foundation and builds four systems on top of it: SQL analytics with Apache Drill, distributed shortest paths with Hadoop and Spark, MERLIN catalog-level similar-track recommendation, and artist-disjoint release-year estimation.
 
-The repository is designed as an end-to-end data and ML systems project rather than a collection of isolated notebooks. Pipelines persist ordered schemas, hashes, seeds, lineage, validation reports, and stable row mappings so that large external artifacts can be rebuilt and checked independently.
+The repository is designed as an end-to-end data and ML systems project rather than a collection of isolated notebooks. Its ML pipelines persist ordered schemas, hashes, seeds, lineage, validation reports, and stable row mappings so that large external artifacts can be rebuilt and checked stage by stage.
 
 ## Highlights
 
@@ -24,7 +24,7 @@ The repository is designed as an end-to-end data and ML systems project rather t
 | **Apache Drill analytics** | Four deterministic SQL queries over Parquet | All four query outputs are published and independently inspectable |
 | **Artist distance** | Directed BFS with MapReduce/Spark over Avro/Parquet | Spark is **14.07x-14.44x faster** than MapReduce by median wall time; all 20 formal runs passed the reference verifier |
 | **MERLIN graph retrieval** | 10M typed walks, Spark Word2Vec, normalized 128D vectors, exact FAISS search | Masked-artist **Recall@20 = 0.5861** and **nDCG@20 = 0.6431**, versus 0.4305 and 0.4984 for release-only retrieval |
-| **Year prediction** | Artist-disjoint Ridge, RFF-Ridge, LightGBM, Ordinal-MoE, and model fusion | Final LightGBM ensemble: **MAE = 4.8195 years**, **RMSE = 7.2405 years** |
+| **Year prediction** | Artist-disjoint Ridge, RFF-Ridge, LightGBM, Ordinal-MoE, and model fusion | Validation-fitted linear ensemble of three LightGBM predictors: **MAE = 4.8195 years**, **RMSE = 7.2405 years** |
 
 The Ridge batching study additionally reduced total training time by about **23%** with 10% and 25% sampled updates while keeping test quality effectively unchanged.
 
@@ -65,9 +65,9 @@ The artist graph preserves the direction of `artist_similarity.db`. A shared lev
 
 MERLIN is a non-personalized, multi-view retrieval and ranking pipeline:
 
-1. **C1 Audio** fits a 128D PCA encoder over cleaned segment-level audio summaries and builds an exact cosine FAISS index.
+1. **C1 Audio** fits a 128D PCA encoder over cleaned global and segment-level audio summaries and builds an exact cosine FAISS index.
 2. **C2 Graph** generates deterministic typed meta-path walks over track, artist, release, and term relations, trains Spark Word2Vec, and builds an independent graph index.
-3. **C3 Fusion** combines Audio, Graph, artist-distance BFS, and Tag candidates, computes canonical pair features, and applies a frozen logistic ranker with guarded Top-20 selection.
+3. **C3 Fusion** combines Audio, Graph, artist-distance BFS, and Tag candidates, computes canonical pair features, and uses a frozen relation-evidence gate to choose between C1 order and an LR/C1 quota interleave for Top-20 selection.
 
 - Prepared contracts: [`src/merlin/prepare/`](src/merlin/prepare/README.md)
 - Audio representation: [`src/merlin/embedding/audio/`](src/merlin/embedding/audio/README.md)
@@ -76,7 +76,7 @@ MERLIN is a non-personalized, multi-view retrieval and ranking pipeline:
 
 ### Artist-disjoint year prediction
 
-The year pipeline separates artists across train, validation, and test splits, then evaluates increasingly expressive models under one feature and metric contract. It moves from constant and custom Spark SGD Ridge baselines through RFF-Ridge and LightGBM to audio/metadata fusion and a validation-fitted prediction ensemble.
+The year pipeline separates artists across train, validation, and test splits, then evaluates increasingly expressive models under one feature and metric contract. It moves from constant and custom Spark SGD Ridge baselines through RFF-Ridge, LightGBM, and Ordinal-MoE to audio/metadata fusion and a validation-fitted prediction ensemble. The final ensemble is an ordinary least-squares combination of frozen audio-only, metadata-only, and fused LightGBM predictions.
 
 - Dataset contracts: [`src/year_prediction/src/data/`](src/year_prediction/src/data/README.md)
 - Feature views: [`src/year_prediction/src/features/`](src/year_prediction/src/features/README.md)
@@ -131,11 +131,13 @@ ARTIST_SIMILARITY_DB=/absolute/path/to/artist_similarity.db \
   ./benchmark/run_experiment.sh 5
 ```
 
-Run the Year Prediction unit and integration suite from the repository root:
+Run the top-level Year Prediction Ridge oracle checks from the repository root:
 
 ```bash
 python3 -m unittest discover -s src/year_prediction/tests -p 'test_*.py'
 ```
+
+Additional feature, training, evaluation, and integration tests are organized under [`src/year_prediction/tests/`](src/year_prediction/tests/README.md). Spark worker tests require PyArrow in the worker environment; SynapseML integration tests additionally require the Python package and matching JVM jars documented in the [LightGBM training guide](src/year_prediction/src/training/lightgbm/README.md).
 
 Build the presentation artifacts:
 
@@ -165,6 +167,7 @@ ARM64 LightGBM requires the pinned native libraries described in the [LightGBM t
 - The masked C2 experiment is transductive: each query's direct artist edge is removed and the representation is rebuilt, but other catalog tracks retain their relations. Structurally unconnectable queries are counted as failures in the all-query metrics.
 - The Year Prediction test results follow the course-approved test-guided tuning protocol. They are artist-disjoint, but they are not estimates from an untouched test set.
 - Artist-distance timing is specific to the recorded YARN environment. Correctness is portable; absolute runtime and speedup depend on cluster resources.
+- Ridge batching timings are single `local[4]` runs. They support an engineering comparison under controlled resources, not a cluster-scale speedup claim.
 
 These boundaries are part of the artifact contracts and are intentionally retained in the public reports.
 
