@@ -3,38 +3,39 @@
 !.gitea/
 !.gitea/**
 
-!artistdistance/
-!artistdistance/**
-artistdistance/target/
+!src/artistdistance/
+!src/artistdistance/**
+src/artistdistance/target/
 
-!merlin/
-!merlin/**
+!src/merlin/
+!src/merlin/**
 
-!year_prediction/
-!year_prediction/**
+!src/year_prediction/
+!src/year_prediction/**
 
-!drill/
-!drill/**
+!src/drill/
+!src/drill/**
 
-!slides/
-!slides/img
-!slides/img/**
-!slides/*.sty
-!slides/*.bib
-!slides/*.tex
-!slides/*.pdf
-!slides/Makefile
+!src/slides/
+!src/slides/img
+!src/slides/img/**
+!src/slides/*.sty
+!src/slides/*.bib
+!src/slides/*.tex
+!src/slides/*.pdf
+!src/slides/Makefile
 
-!poster/
-!poster/img
-!poster/img/**
-!poster/*.sty
-!poster/*.tex
-!poster/*.pdf
-!poster/Makefile
+!src/poster/
+!src/poster/img
+!src/poster/img/**
+!src/poster/*.sty
+!src/poster/*.tex
+!src/poster/*.pdf
+!src/poster/Makefile
 
 !tools/
 !tools/**
+!src/
 !README.md
 !CHANGELOG.md
 !LICENSE
