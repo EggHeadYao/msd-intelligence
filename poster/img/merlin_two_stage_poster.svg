@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="390" viewBox="0 0 1700 390">
+  <defs>
+    <marker id="arrow-purple" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#76689A"/>
+    </marker>
+    <marker id="arrow-teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#236B65"/>
+    </marker>
+  </defs>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="20" y="130" width="150" height="130" rx="24"
+          fill="#F4F0E8" fill-opacity=".86" stroke="#236B65" stroke-width="6"/>
+    <text x="95" y="185" text-anchor="middle" fill="#173A38" font-size="30" font-weight="800">QUERY</text>
+    <text x="95" y="225" text-anchor="middle" fill="#173A38" font-size="30" font-weight="800">TRACK</text>
+
+    <line x1="185" y1="195" x2="235" y2="195" stroke="#76689A" stroke-width="6"
+          marker-end="url(#arrow-purple)"/>
+
+    <rect x="260" y="42" width="535" height="306" rx="28"
+          fill="#EDE8F3" fill-opacity=".78" stroke="#76689A" stroke-width="6"/>
+    <text x="527" y="91" text-anchor="middle" fill="#76689A" font-size="31" font-weight="800">
+      FOUR RETRIEVAL VIEWS
+    </text>
+
+    <rect x="305" y="122" width="205" height="72" rx="17"
+          fill="#F8F6FA" stroke="#9A8CB5" stroke-width="4"/>
+    <text x="407" y="168" text-anchor="middle" fill="#5F557D" font-size="31" font-weight="800">AUDIO</text>
+
+    <rect x="545" y="122" width="205" height="72" rx="17"
+          fill="#F8F6FA" stroke="#9A8CB5" stroke-width="4"/>
+    <text x="647" y="168" text-anchor="middle" fill="#5F557D" font-size="31" font-weight="800">GRAPH</text>
+
+    <rect x="305" y="225" width="205" height="72" rx="17"
+          fill="#F8F6FA" stroke="#9A8CB5" stroke-width="4"/>
+    <text x="407" y="271" text-anchor="middle" fill="#5F557D" font-size="28" font-weight="800">ARTIST BFS</text>
+
+    <rect x="545" y="225" width="205" height="72" rx="17"
+          fill="#F8F6FA" stroke="#9A8CB5" stroke-width="4"/>
+    <text x="647" y="271" text-anchor="middle" fill="#5F557D" font-size="31" font-weight="800">TAGS</text>
+
+    <line x1="815" y1="195" x2="865" y2="195" stroke="#76689A" stroke-width="6"
+          marker-end="url(#arrow-purple)"/>
+
+    <rect x="890" y="112" width="215" height="166" rx="24"
+          fill="#EDE8F3" stroke="#76689A" stroke-width="6"/>
+    <text x="997" y="171" text-anchor="middle" fill="#173A38" font-size="38" font-weight="800">&#8804;1,000</text>
+    <text x="997" y="216" text-anchor="middle" fill="#76689A" font-size="27" font-weight="700">MERGED</text>
+    <text x="997" y="251" text-anchor="middle" fill="#76689A" font-size="27" font-weight="700">CANDIDATES</text>
+
+    <line x1="1125" y1="195" x2="1175" y2="195" stroke="#236B65" stroke-width="6"
+          marker-end="url(#arrow-teal)"/>
+
+    <rect x="1200" y="92" width="245" height="206" rx="27"
+          fill="#DCEBE8" stroke="#236B65" stroke-width="7"/>
+    <text x="1322" y="159" text-anchor="middle" fill="#173A38" font-size="42" font-weight="800">MERLIN</text>
+    <text x="1322" y="211" text-anchor="middle" fill="#236B65" font-size="29" font-weight="700">LEARNED</text>
+    <text x="1322" y="250" text-anchor="middle" fill="#236B65" font-size="29" font-weight="700">RANKING</text>
+
+    <line x1="1465" y1="195" x2="1515" y2="195" stroke="#236B65" stroke-width="6"
+          marker-end="url(#arrow-teal)"/>
+
+    <rect x="1540" y="130" width="140" height="130" rx="22"
+          fill="#F8EEDC" stroke="#C98B38" stroke-width="6"/>
+    <text x="1610" y="184" text-anchor="middle" fill="#C98B38" font-size="30" font-weight="800">TOP</text>
+    <text x="1610" y="226" text-anchor="middle" fill="#C98B38" font-size="34" font-weight="800">20</text>
+  </g>
+</svg>

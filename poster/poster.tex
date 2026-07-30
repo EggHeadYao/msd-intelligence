@@ -659,59 +659,40 @@
 \begin{textblock}{29.5}(35.25,24.8)
   \begin{discoverycard}[height=22.3cm]
     \resizebox{\linewidth}{!}{\discoverymark}
-    \vspace{-.95cm}
+    \vspace{-1.15cm}
     \begin{center}
-      \resizebox{.94\linewidth}{!}{%
-      \begin{tikzpicture}[
-        x=1cm,y=1cm,>=Latex,
-        source/.style={circle,minimum size=2.85cm,line width=.92mm,
-          draw=posterpurple!80!posterink,fill=white,fill opacity=.44,text opacity=1,
-          align=center,font=\fontsize{25}{28}\selectfont\bfseries},
-        flow/.style={-{Latex[length=3.4mm,width=2.5mm]},draw=posterpurple!76!posterink,
-          line width=.92mm}
-      ]
-        \node[align=center,font=\fontsize{32}{36}\selectfont\bfseries,text=posterink]
-          (catalog) at (.45,5.35) {1M\\TRACKS};
-
-        \node[source] (audio) at (7.2,10.60) {AUDIO};
-        \node[source] (graph) at (7.2,7.10) {GRAPH};
-        \node[source] (bfs) at (7.2,3.60) {ARTIST\\DISTANCE};
-        \node[source] (tags) at (7.2,.10) {TAGS};
-
-        \node[align=center,font=\fontsize{32}{36}\selectfont\bfseries,
-          text=posterpurple!94!posterink] (shortlist) at (16.0,5.35)
-          {$\leq$1,000\\CANDIDATES};
-        \node[circle,minimum size=3.25cm,line width=1.2mm,
-          draw=posterpurple!90!posterink,fill=posterpurple!13,
-          align=center,font=\fontsize{34}{38}\selectfont\bfseries,text=posterink]
-          (topk) at (23.75,5.35) {TOP\\20};
-
-        \foreach \s in {audio,graph,bfs,tags}{
-          \draw[flow] (catalog.east) -- (\s.west);
-          \draw[flow] (\s.east) -- (shortlist.west);
-        }
-        \draw[flow,line width=1.18mm] (shortlist.east) -- (topk.west);
-      \end{tikzpicture}%
-      }
+      {\fontsize{60}{64}\selectfont\bfseries\color{posterpurple!95!posterink}+13.6\%\par}
+      \vspace{.10cm}
+      {\fontsize{27}{32}\selectfont\bfseries\color{posterink}MIXED-QUERY nDCG@20\par}
+      \vspace{.15cm}
+      {\fontsize{21}{26}\selectfont\bfseries\color{postermuted}
+        0.0078 $\longrightarrow$ 0.0089 on the confirmation benchmark\par}
     \end{center}
-    \vspace{-.40cm}
+
+    \vspace{.18cm}
     \begin{center}
-      \resizebox{.94\linewidth}{!}{%
-      \begin{tikzpicture}[x=1cm,y=1cm]
-        \draw[posterpurple!35,line width=.5mm] (8.15,-.20) -- (8.15,2.05);
-        \draw[posterpurple!35,line width=.5mm] (16.35,-.20) -- (16.35,2.05);
-        \node[align=center,font=\fontsize{41}{45}\selectfont\bfseries,
-          text=posterpurple!94!posterink] at (4.0,1.08) {128D\\AUDIO};
-        \node[align=center,font=\fontsize{41}{45}\selectfont\bfseries,
-          text=posterpurple!94!posterink] at (12.25,1.08) {10M\\WALKS};
-        \node[align=center,font=\fontsize{41}{45}\selectfont\bfseries,
-          text=posterpurple!94!posterink] at (20.5,1.08) {400M\\TOKENS};
-      \end{tikzpicture}%
-      }
-      \vspace{.58cm}
-      {\fontsize{29}{33}\selectfont\bfseries\color{postermuted}
-        SPARK ML \textbullet\ WORD2VEC \textbullet\ FAISS\par}
+      \includegraphics[width=.98\linewidth]{img/merlin_two_stage_poster.pdf}
     \end{center}
+
+    \vspace{.22cm}
+    \begin{columns}[T,onlytextwidth]
+      \column{.48\textwidth}
+      \centering
+      {\fontsize{42}{47}\selectfont\bfseries\color{posterteal}+3.9\%\par}
+      \vspace{.10cm}
+      {\fontsize{23}{28}\selectfont\bfseries\color{posterink}MACRO nDCG@20\par}
+      \vspace{.12cm}
+      {\fontsize{20}{25}\selectfont\color{postermuted}0.0095 $\longrightarrow$ 0.0099\par}
+
+      \column{.48\textwidth}
+      \centering
+      {\fontsize{42}{47}\selectfont\bfseries\color{posterteal}90.1\%\par}
+      \vspace{.10cm}
+      {\fontsize{23}{28}\selectfont\bfseries\color{posterink}ACOUSTIC BASELINE RETAINED\par}
+      \vspace{.12cm}
+      {\fontsize{20}{25}\selectfont\color{postermuted}0.0208 $\longrightarrow$ 0.0187\par}
+    \end{columns}
+
   \end{discoverycard}
 \end{textblock}
 
