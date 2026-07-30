@@ -161,23 +161,6 @@ The project deliberately preserves the tested runtime of each subsystem instead 
 
 ARM64 LightGBM requires the pinned native libraries described in the [LightGBM training guide](src/year_prediction/src/training/lightgbm/README.md). The two Spark generations should be kept in separate environments.
 
-## Evaluation boundaries
-
-- MERLIN is a catalog-level similar-track system; it does not use listening histories and does not claim personalized recommendation quality.
-- The masked C2 experiment is transductive: each query's direct artist edge is removed and the representation is rebuilt, but other catalog tracks retain their relations. Structurally unconnectable queries are counted as failures in the all-query metrics.
-- The Year Prediction test results follow the course-approved test-guided tuning protocol. They are artist-disjoint, but they are not estimates from an untouched test set.
-- Artist-distance timing is specific to the recorded YARN environment. Correctness is portable; absolute runtime and speedup depend on cluster resources.
-- Ridge batching timings are single `local[4]` runs. They support an engineering comparison under controlled resources, not a cluster-scale speedup claim.
-
-These boundaries are part of the artifact contracts and are intentionally retained in the public reports.
-
-## Data and artifact policy
-
-- Raw MSD files and generated full-scale artifacts remain external because of dataset terms and size.
-- Compact CSV/JSON results, schemas, configurations, validation logic, and presentation figures are versioned in Git.
-- Large presentation media are tracked with Git LFS.
-- Consumers validate schema order, identity coverage, finite values, hashes, and parent lineage before accepting an artifact.
-
 ## Contributors
 
 Jiang Ruiyu | Li Zhiyuan | Yao Yunxiang | Zhang Jingkai
