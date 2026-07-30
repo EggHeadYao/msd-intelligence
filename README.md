@@ -13,7 +13,7 @@
 
 </div>
 
-The [Million Song Dataset (MSD)](millionsongdataset.com) is a research collection of derived audio features and metadata for one million contemporary popular music tracks, created through a collaboration between The Echo Nest and Columbia University's LabROSA. It contains no audio recordings.
+The [Million Song Dataset (MSD)](http://millionsongdataset.com) is a research collection of derived audio features and metadata for one million contemporary popular music tracks, created through a collaboration between The Echo Nest and Columbia University's LabROSA. It contains no audio recordings.
 
 MSD Intelligence converts the source HDF5, SQLite, and auxiliary files into a shared, contract-driven Parquet foundation and builds four systems on top of it: SQL analytics with Apache Drill, distributed shortest paths with Hadoop and Spark, MERLIN catalog-level similar-track recommendation, and artist-disjoint release-year estimation.
 
@@ -112,7 +112,7 @@ cd msd-intelligence
 git lfs pull
 ```
 
-The source Million Song Dataset, generated Parquet tables, FAISS indexes, and full model artifacts are intentionally not committed. Consult the MSD project's [official data-access guidance](millionsongdataset.com/pages/getting-dataset), obtain the dataset through an authorized source, and provide explicit input/output paths to the selected stage. Start with the extraction contract in [`tools/hdf5/README.md`](tools/hdf5/README.md).
+The source Million Song Dataset, generated Parquet tables, FAISS indexes, and full model artifacts are intentionally not committed. Consult the MSD project's [official data-access guidance](http://millionsongdataset.com/pages/getting-dataset), obtain the dataset through an authorized source, and provide explicit input/output paths to the selected stage. Start with the extraction contract in [`tools/hdf5/README.md`](tools/hdf5/README.md).
 
 There is intentionally no universal one-command build: extraction, distributed graph processing, recommendation training, and year estimation have different runtime and storage requirements. Each stage documents its own fail-closed inputs, outputs, and validation command.
 
