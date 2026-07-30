@@ -169,3 +169,7 @@ ARM64 LightGBM requires the pinned native libraries described in the [LightGBM t
 - [Li Zhiyuan](https://github.com/Willmathss)
 - [Yao Yunxiang](https://github.com/EggHeadYao)
 - [Zhang Jingkai](https://github.com/Cammy107)
+
+## License
+
+This project is released under the [MIT License](LICENSE).
