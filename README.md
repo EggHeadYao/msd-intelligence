@@ -5,9 +5,12 @@
 **Million-song-scale analytics, graph intelligence, recommendation, and year estimation.**
 
 [![Release](https://img.shields.io/badge/release-P1M2-6f42c1)](CHANGELOG.md)
-![Catalog](https://img.shields.io/badge/catalog-1%2C000%2C000_tracks-0f766e)
-![Compute](https://img.shields.io/badge/compute-Spark_%7C_Hadoop-e25a1c)
-![Search](https://img.shields.io/badge/search-FAISS-2563eb)
+[![License](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/EggHeadYao/msd-intelligence)
+
+[![Catalog](https://img.shields.io/badge/catalog-1%2C000%2C000_tracks-0f766e)](http://millionsongdataset.com)
+[![Compute](https://img.shields.io/badge/compute-Spark_%7C_Hadoop-e25a1c)](#architecture)
+[![Search](https://img.shields.io/badge/search-FAISS-2563eb)](#merlin-similar-track-recommendation)
 
 [Slides](slides.pdf) | [Poster](poster.pdf) | [Changelog](CHANGELOG.md)
 
