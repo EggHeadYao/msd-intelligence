@@ -1,77 +1,180 @@
-![Build badge](https://focs.gc.sjtu.edu.cn/git/ece472/p1team02/actions/workflows/push.yaml/badge.svg?branch=master) ![Build badge](https://focs.gc.sjtu.edu.cn/git/ece472/p1team02/actions/workflows/release.yaml/badge.svg?tag=p1m2)
+<div align="center">
 
-# p1team02
+# MSD Intelligence
 
-This repository contains our Million Song Dataset pipelines for Apache Drill analytics, distributed artist-distance computation, MERLIN song recommendation, and year prediction. The implementations use Hadoop, Spark, Parquet, Avro, FAISS, Spark ML, and LightGBM over a shared million-track data foundation.
+**Million-song-scale analytics, graph intelligence, recommendation, and year estimation.**
 
-## Layout
+[![Release](https://img.shields.io/badge/release-P1M2-6f42c1)](CHANGELOG.md)
+![Catalog](https://img.shields.io/badge/catalog-1%2C000%2C000_tracks-0f766e)
+![Compute](https://img.shields.io/badge/compute-Spark_%7C_Hadoop-e25a1c)
+![Search](https://img.shields.io/badge/search-FAISS-2563eb)
 
-- `tools/hdf5/`: HDF5 and SQLite extraction utilities for producing Hadoop-friendly Parquet data.
-- `drill/`: the four required Apache Drill queries, runner, configuration, and verified CSV results.
-- `artistdistance/`: Avro and Parquet graph conversion, MapReduce and Spark BFS, validation, and YARN benchmarks.
-- `merlin/`: prepared recommendation tables, audio and graph embeddings, FAISS retrieval, ranking, inference, and evaluation.
-- `year_prediction/`: artist-disjoint datasets, feature contracts, distributed model training, evaluation, and experiment results.
-- `slides/` and `poster/`: presentation and investment-poster sources with reproducible Makefiles.
-- `.gitea/`: issue, sprint, scrum, pull-request, and CI templates.
+[Slides](slides.pdf) | [Poster](poster.pdf) | [Changelog](CHANGELOG.md)
 
-## Requirements
+</div>
 
-- Java 17, Maven, Hadoop 3.5.0, and Spark 4.1.2.
-- Python 3 with the dependencies required by the selected MERLIN or Year Prediction stage.
-- Apache Drill 1.22.0 for the analytical queries.
-- The Million Song Dataset and AdditionalFiles under `../msd` for raw-data workflows.
+MSD Intelligence turns the raw Million Song Dataset into a shared, contract-driven Parquet foundation and builds four systems on top of it: SQL analytics with Apache Drill, distributed shortest paths with Hadoop and Spark, MERLIN catalog-level similar-track recommendation, and artist-disjoint release-year estimation.
 
-## Artist Distance
+The repository is designed as an end-to-end data and ML systems project rather than a collection of isolated notebooks. Pipelines persist ordered schemas, hashes, seeds, lineage, validation reports, and stable row mappings so that large external artifacts can be rebuilt and checked independently.
 
-Build from `p1team02/artistdistance`:
+## Highlights
+
+| System | Scale and method | Recorded result |
+| --- | --- | --- |
+| **Apache Drill analytics** | Four deterministic SQL queries over Parquet | All four query outputs are published and independently inspectable |
+| **Artist distance** | Directed BFS with MapReduce/Spark over Avro/Parquet | Spark is **14.07x-14.44x faster** than MapReduce by median wall time; all 20 formal runs passed the reference verifier |
+| **MERLIN graph retrieval** | 10M typed walks, Spark Word2Vec, normalized 128D vectors, exact FAISS search | Masked-artist **Recall@20 = 0.5861** and **nDCG@20 = 0.6431**, versus 0.4305 and 0.4984 for release-only retrieval |
+| **Year prediction** | Artist-disjoint Ridge, RFF-Ridge, LightGBM, Ordinal-MoE, and model fusion | Final LightGBM ensemble: **MAE = 4.8195 years**, **RMSE = 7.2405 years** |
+
+The Ridge batching study additionally reduced total training time by about **23%** with 10% and 25% sampled updates while keeping test quality effectively unchanged.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    RAW["MSD HDF5 + SQLite"] --> ETL["Validated extraction"]
+    ETL --> PQ["Shared Parquet contracts"]
+
+    PQ --> DRILL["Apache Drill<br/>catalog analytics"]
+    PQ --> BFS["MapReduce + Spark<br/>artist-distance BFS"]
+    PQ --> MERLIN["MERLIN<br/>PCA + Word2Vec + FAISS + LR"]
+    PQ --> YEAR["Year estimation<br/>Ridge + LightGBM + MoE"]
+
+    MERLIN --> TOPK["Top-20 similar tracks"]
+    YEAR --> ERA["Predicted release year"]
+```
+
+## Systems
+
+### Apache Drill analytics
+
+The Drill module exposes the selected Parquet directory through a portable read-only workspace and runs four deterministic queries: valid release-year range, lexicographic extreme song, album with the most distinct tracks, and artist with the longest track.
+
+- Queries and execution: [`src/drill/`](src/drill/README.md)
+- Published outputs: [`src/drill/results/`](src/drill/results/)
+
+### Distributed artist distance
+
+The artist graph preserves the direction of `artist_similarity.db`. A shared level-synchronous BFS contract is implemented in four combinations: MapReduce/Avro, MapReduce/Parquet, Spark/Avro, and Spark/Parquet. Every benchmark output is compared with an independent reference BFS before it is accepted.
+
+- Implementation: [`src/artistdistance/`](src/artistdistance/)
+- Benchmark protocol: [`src/artistdistance/benchmark/`](src/artistdistance/benchmark/README.md)
+- Results: [`src/artistdistance/experiments/`](src/artistdistance/experiments/README.md)
+
+### MERLIN similar-track recommendation
+
+MERLIN is a non-personalized, multi-view retrieval and ranking pipeline:
+
+1. **C1 Audio** fits a 128D PCA encoder over cleaned segment-level audio summaries and builds an exact cosine FAISS index.
+2. **C2 Graph** generates deterministic typed meta-path walks over track, artist, release, and term relations, trains Spark Word2Vec, and builds an independent graph index.
+3. **C3 Fusion** combines Audio, Graph, artist-distance BFS, and Tag candidates, computes canonical pair features, and applies a frozen logistic ranker with guarded Top-20 selection.
+
+- Prepared contracts: [`src/merlin/prepare/`](src/merlin/prepare/README.md)
+- Audio representation: [`src/merlin/embedding/audio/`](src/merlin/embedding/audio/README.md)
+- Graph representation and masked evaluation: [`src/merlin/embedding/graph/`](src/merlin/embedding/graph/README.md)
+- Ranking and inference: [`src/merlin/inference/`](src/merlin/inference/README.md)
+
+### Artist-disjoint year prediction
+
+The year pipeline separates artists across train, validation, and test splits, then evaluates increasingly expressive models under one feature and metric contract. It moves from constant and custom Spark SGD Ridge baselines through RFF-Ridge and LightGBM to audio/metadata fusion and a validation-fitted prediction ensemble.
+
+- Dataset contracts: [`src/year_prediction/src/data/`](src/year_prediction/src/data/README.md)
+- Feature views: [`src/year_prediction/src/features/`](src/year_prediction/src/features/README.md)
+- Distributed training: [`src/year_prediction/src/training/`](src/year_prediction/src/training/README.md)
+- Model comparison: [`src/year_prediction/experiments/model_comparison/`](src/year_prediction/experiments/model_comparison/README.md)
+- Ridge batching study: [`src/year_prediction/experiments/ridge_batching/`](src/year_prediction/experiments/ridge_batching/README.md)
+
+## Repository layout
+
+```text
+msd-intelligence/
+├── tools/hdf5/                  HDF5 and SQLite extraction utilities
+├── src/drill/                   Apache Drill queries and verified results
+├── src/artistdistance/          Java BFS, converters, validators, and YARN benchmarks
+├── src/merlin/                  Preparation, embeddings, retrieval, ranking, and inference
+├── src/year_prediction/         Data, features, models, tests, and experiment reports
+├── src/slides/                  Reproducible presentation sources and figures
+├── src/poster/                  Reproducible poster sources and artwork
+├── slides.pdf                   Prebuilt project presentation
+└── poster.pdf                   Prebuilt investment poster
+```
+
+## Getting started
+
+Clone the repository with Git LFS enabled so the presentation assets are materialized:
 
 ```bash
+git lfs install
+git clone https://github.com/EggHeadYao/msd-intelligence.git
+cd msd-intelligence
+git lfs pull
+```
+
+The raw Million Song Dataset, generated Parquet tables, FAISS indexes, and full model artifacts are intentionally not committed. Obtain the dataset through an authorized source and provide explicit input/output paths to the selected stage. Start with the extraction contract in [`tools/hdf5/README.md`](tools/hdf5/README.md).
+
+There is intentionally no universal one-command build: extraction, distributed graph processing, recommendation training, and year estimation have different runtime and storage requirements. Each stage documents its own fail-closed inputs, outputs, and validation command.
+
+### Common entry points
+
+Run the Drill queries against an existing Year Prediction raw-data directory:
+
+```bash
+./src/drill/scripts/run_all.sh /absolute/path/to/year_prediction/raw
+```
+
+Build the artist-distance module and run five repetitions of all four combinations:
+
+```bash
+cd src/artistdistance
 mvn -q package dependency:copy-dependencies -DincludeScope=runtime
+ARTIST_SIMILARITY_DB=/absolute/path/to/artist_similarity.db \
+  ./benchmark/run_experiment.sh 5
 ```
 
-Convert the directed artist-similarity graph to Avro and Parquet:
+Run the Year Prediction unit and integration suite from the repository root:
 
 ```bash
-mvn exec:java -Dexec.mainClass=artistdistance.convert.ArtistGraphConverter -Dexec.args="../../msd/AdditionalFiles/artist_similarity.db ../data/artistdistance-output"
+python3 -m unittest discover -s src/year_prediction/tests -p 'test_*.py'
 ```
 
-Run all four MapReduce/Spark and Avro/Parquet combinations with five repetitions:
+Build the presentation artifacts:
 
 ```bash
-./benchmark/run_experiment.sh 5
+make -C src/slides
+make -C src/poster
 ```
 
-The benchmark records wall-clock and YARN measurements, validates every output against the reference BFS, resumes interrupted runs, and writes aggregate CSV files under `artistdistance/experiments`.
+## Runtime requirements
 
-## Drill
+The project deliberately preserves the tested runtime of each subsystem instead of forcing incompatible stacks into one environment.
 
-Run the four required queries from the repository root:
+| Subsystem | Tested stack |
+| --- | --- |
+| Extraction | Python 3, NumPy, h5py, PyArrow |
+| Drill | Apache Drill 1.22.0 |
+| Artist distance | Java 17, Maven, Hadoop 3.5.0, Spark 4.1.2, Scala 2.13 |
+| MERLIN | Python 3, Spark, NumPy, PyArrow, FAISS |
+| Year Prediction LightGBM | Java 17, Spark 3.5.x/Scala 2.12, PySpark 3.5.5, SynapseML 1.1.3 |
+| Slides and poster | LaTeX, `latexmk` |
 
-```bash
-./drill/scripts/run_all.sh
-```
+ARM64 LightGBM requires the pinned native libraries described in the [LightGBM training guide](src/year_prediction/src/training/lightgbm/README.md). The two Spark generations should be kept in separate environments.
 
-See [`drill/README.md`](drill/README.md) for the data workspace, query semantics, and verified results.
+## Evaluation boundaries
 
-## MERLIN
+- MERLIN is a catalog-level similar-track system; it does not use listening histories and does not claim personalized recommendation quality.
+- The masked C2 experiment is transductive: each query's direct artist edge is removed and the representation is rebuilt, but other catalog tracks retain their relations. Structurally unconnectable queries are counted as failures in the all-query metrics.
+- The Year Prediction test results follow the course-approved test-guided tuning protocol. They are artist-disjoint, but they are not estimates from an untouched test set.
+- Artist-distance timing is specific to the recorded YARN environment. Correctness is portable; absolute runtime and speedup depend on cluster resources.
 
-MERLIN combines 128-dimensional PCA audio embeddings, typed graph walks with Spark Word2Vec, FAISS candidate retrieval, artist-distance and tag evidence, and a learned ranking pipeline. Start with [`merlin/prepare/README.md`](merlin/prepare/README.md), then follow the audio, graph, and inference READMEs for stage-specific commands and artifact contracts.
+These boundaries are part of the artifact contracts and are intentionally retained in the public reports.
 
-## Year Prediction
+## Data and artifact policy
 
-The Year Prediction pipeline freezes an artist-disjoint dataset contract and compares constant baselines, distributed Ridge, RFF-Ridge, LightGBM, Ordinal-MoE, and prediction ensembles. Data, feature, training, evaluation, and experiment documentation is located under [`year_prediction/`](year_prediction/); the recorded ensemble reaches a test MAE of 4.82 years and RMSE of 7.24 years.
+- Raw MSD files and generated full-scale artifacts remain external because of dataset terms and size.
+- Compact CSV/JSON results, schemas, configurations, validation logic, and presentation figures are versioned in Git.
+- Large presentation media are tracked with Git LFS.
+- Consumers validate schema order, identity coverage, finite values, hashes, and parent lineage before accepting an artifact.
 
-Run the Python test suite from the repository root:
+## Contributors
 
-```bash
-python3 -m unittest discover -s year_prediction/tests -p 'test_*.py'
-```
-
-## Presentation
-
-Build the slides and poster independently:
-
-```bash
-make -C slides
-make -C poster
-```
+Jiang Ruiyu | Li Zhiyuan | Yao Yunxiang | Zhang Jingkai
