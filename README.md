@@ -163,4 +163,7 @@ ARM64 LightGBM requires the pinned native libraries described in the [LightGBM t
 
 ## Contributors
 
-Jiang Ruiyu | Li Zhiyuan | Yao Yunxiang | Zhang Jingkai
+- [Jiang Ruiyu](https://github.com/YUcxovo)
+- [Li Zhiyuan](https://github.com/Willmathss)
+- [Yao Yunxiang](https://github.com/EggHeadYao)
+- [Zhang Jingkai](https://github.com/Cammy107)
