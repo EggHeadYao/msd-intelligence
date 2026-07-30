@@ -29,7 +29,7 @@ The complete benchmark writes `results.csv`, `summary.csv`, and `comparisons.csv
 ## Generate Figure
 
 ```bash
-python3 artistdistance/experiments/scripts/plot_performance.py
+python3 src/artistdistance/experiments/scripts/plot_performance.py
 ```
 
-The script writes presentation-ready PDF and PNG versions of `artistdistance_performance` to `slides/img/`.
+The script writes presentation-ready PDF and PNG versions of `artistdistance_performance` to `src/slides/img/`.

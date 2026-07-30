@@ -12,7 +12,7 @@ This layer projects the frozen shared audio and dataset contracts into two model
 
 ```bash
 spark-submit --master 'local[1]' --driver-memory 3g \
-  year_prediction/src/features/build_features.py \
+  src/year_prediction/src/features/build_features.py \
   --output parquets/year_prediction/features \
   --shuffle-partitions 32
 ```
@@ -23,7 +23,7 @@ The builder refuses to overwrite an existing output directory.
 
 ```bash
 spark-submit --master 'local[2]' --driver-memory 3g \
-  year_prediction/src/features/validate_features.py \
+  src/year_prediction/src/features/validate_features.py \
   --features parquets/year_prediction/features \
   --shuffle-partitions 32
 ```

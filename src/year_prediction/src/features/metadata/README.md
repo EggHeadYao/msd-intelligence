@@ -11,20 +11,20 @@ This pipeline adds metadata predictors without changing the existing audio-only 
 ## Run
 
 ```bash
-p1team02/year_prediction/.synapseml-venv/bin/python \
-  p1team02/year_prediction/src/features/metadata/export.py \
+src/year_prediction/.synapseml-venv/bin/python \
+  src/year_prediction/src/features/metadata/export.py \
   --input msd/AdditionalFiles \
   --output parquets/year_prediction/raw/metadata
 
-p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
+src/year_prediction/.synapseml-venv/bin/spark-submit \
   --driver-memory 4g \
-  p1team02/year_prediction/src/features/metadata/build.py \
+  src/year_prediction/src/features/metadata/build.py \
   --metadata parquets/year_prediction/raw/metadata \
   --output parquets/year_prediction/features/metadata \
   --shuffle-partitions 32
 
-p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
+src/year_prediction/.synapseml-venv/bin/spark-submit \
   --driver-memory 4g \
-  p1team02/year_prediction/src/features/metadata/validate.py \
+  src/year_prediction/src/features/metadata/validate.py \
   --input parquets/year_prediction/features/metadata
 ```

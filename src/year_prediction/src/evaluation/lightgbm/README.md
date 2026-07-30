@@ -5,24 +5,24 @@ Use the `SYNAPSEML`, `PYSPARK_PYTHON`, and `LD_LIBRARY_PATH` exports from the tr
 Run artifact validation before opening the fixed test split:
 
 ```bash
-p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
+src/year_prediction/.synapseml-venv/bin/spark-submit \
   --master 'local[2]' \
   --driver-memory 4g \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
-  p1team02/year_prediction/src/evaluation/lightgbm/validate.py \
+  src/year_prediction/src/evaluation/lightgbm/validate.py \
   --model-root parquets/year_prediction/models/lightgbm-l2-regularized
 ```
 
 Evaluate the frozen model once on test artists:
 
 ```bash
-p1team02/year_prediction/.synapseml-venv/bin/spark-submit \
+src/year_prediction/.synapseml-venv/bin/spark-submit \
   --master 'local[2]' \
   --driver-memory 4g \
   --packages "$SYNAPSEML" \
   --conf spark.hadoop.fs.defaultFS=file:/// \
-  p1team02/year_prediction/src/evaluation/lightgbm/evaluate.py \
+  src/year_prediction/src/evaluation/lightgbm/evaluate.py \
   --model-root parquets/year_prediction/models/lightgbm-l2-regularized \
   --input parquets/year_prediction/features/full_tabular.parquet \
   --manifest parquets/year_prediction/features/manifest.json \

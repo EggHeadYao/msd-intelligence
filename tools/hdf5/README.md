@@ -61,8 +61,7 @@ The production batch size is 10,000. Each `features_NNNN.parquet` contains `trac
 
 ### `extract_chores.py`
 
-Exports supplementary MSD files (SQLite databases and delimited text
-tables) to Parquet for cross-validation and alternative data views.
+Exports supplementary MSD files (SQLite databases and delimited text tables) to Parquet for cross-validation and alternative data views.
 
 ```bash
 python extract_chores.py <AdditionalFiles_dir> <output_dir>
@@ -80,13 +79,8 @@ Output:
 
 The following files are intentionally skipped:
 
-- `artist_similarity.db` -- already converted by the Java `convert`
-  module during P1M1.
-- `unique_artists.txt`, `unique_tracks.txt`, `unique_terms.txt`,
-  `unique_mbtags.txt` -- pure identifier lists already derivable from
-  the extracted Parquet tables (e.g. `SELECT DISTINCT artist_id`
-  yields the same information).  Converting them to Parquet adds no
-  value beyond what `wc -l` provides.
+- `artist_similarity.db` -- already converted by the Java `convert` module during P1M1.
+- `unique_artists.txt`, `unique_tracks.txt`, `unique_terms.txt`, `unique_mbtags.txt` -- pure identifier lists already derivable from the extracted Parquet tables (e.g. `SELECT DISTINCT artist_id` yields the same information). Converting them to Parquet adds no value beyond what `wc -l` provides.
 
 ## Validation and Reference Performance
 

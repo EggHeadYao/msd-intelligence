@@ -9,7 +9,7 @@
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
-  year_prediction/src/evaluation/ridge/validate.py \
+  src/year_prediction/src/evaluation/ridge/validate.py \
   --model parquets/year_prediction/models/<model_id>
 ```
 
@@ -17,7 +17,7 @@ spark-submit --master 'local[*]' --driver-memory 4g \
 
 ```bash
 spark-submit --master 'local[4]' --driver-memory 3g \
-  year_prediction/src/evaluation/ridge/evaluate.py \
+  src/year_prediction/src/evaluation/ridge/evaluate.py \
   --model parquets/year_prediction/models/<model_id> \
   --prediction-partitions 8
 ```

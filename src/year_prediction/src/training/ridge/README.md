@@ -8,7 +8,7 @@ This directory prepares the T90 feature view, trains the custom Spark SGD Ridge 
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
-  year_prediction/src/training/ridge/prepare_t90.py \
+  src/year_prediction/src/training/ridge/prepare_t90.py \
   --input parquets/year_prediction/features/t90.parquet \
   --feature-manifest parquets/year_prediction/features/manifest.json \
   --output parquets/year_prediction/training/t90 \
@@ -24,7 +24,7 @@ The builder refuses to overwrite an existing output directory.
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
-  year_prediction/src/training/ridge/validate_t90_data.py \
+  src/year_prediction/src/training/ridge/validate_t90_data.py \
   --input parquets/year_prediction/training/t90 \
   --shuffle-partitions 32
 ```
@@ -42,15 +42,11 @@ The Ridge trainer consumes only this validated artifact.
 
 ```bash
 spark-submit --master 'local[4]' --driver-memory 3g \
-  year_prediction/src/training/ridge/train.py \
-  --config year_prediction/config/ridge_t90.json
+  src/year_prediction/src/training/ridge/train.py \
+  --config src/year_prediction/config/ridge_t90.json
 ```
 
-The `ridge_t90_minibatch_25.json` and `ridge_t90_minibatch_10.json`
-configurations retain the baseline model settings while using 25% and 10% of
-the training rows per update. Their `sampling_seed` makes each experiment
-reproducible. Actual batch counts and equivalent full-data passes are saved in
-`history.json` and `run_metadata.json`.
+The `ridge_t90_minibatch_25.json` and `ridge_t90_minibatch_10.json` configurations retain the baseline model settings while using 25% and 10% of the training rows per update. Their `sampling_seed` makes each experiment reproducible. Actual batch counts and equivalent full-data passes are saved in `history.json` and `run_metadata.json`.
 
 Use a new `model_id` for every immutable run. The trainer refuses to overwrite an existing model directory unless `--overwrite` is explicitly supplied.
 
@@ -60,7 +56,7 @@ Use a new `model_id` for every immutable run. The trainer refuses to overwrite a
 
 ```bash
 spark-submit --master 'local[4]' --driver-memory 3g \
-  year_prediction/src/evaluation/ridge/validate.py \
+  src/year_prediction/src/evaluation/ridge/validate.py \
   --model parquets/year_prediction/models/<model_id>
 ```
 

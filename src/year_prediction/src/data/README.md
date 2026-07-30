@@ -14,7 +14,7 @@ The builder refuses to overwrite an existing output directory. Use a staging dir
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
-  year_prediction/src/data/build_dataset.py \
+  src/year_prediction/src/data/build_dataset.py \
   --output parquets/year_prediction/dataset.staging
 ```
 
@@ -22,7 +22,7 @@ spark-submit --master 'local[*]' --driver-memory 4g \
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 4g \
-  year_prediction/src/data/validate_dataset.py \
+  src/year_prediction/src/data/validate_dataset.py \
   --dataset parquets/year_prediction/dataset.staging \
   --reference-split parquets/year_prediction/dataset/split_assignments.parquet
 ```

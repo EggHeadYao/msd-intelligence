@@ -18,11 +18,11 @@ Large model weights and prediction Parquet files are intentionally excluded.
 ## Generate Figures
 
 ```bash
-python3 year_prediction/experiments/ridge_batching/scripts/plot_convergence.py
-python3 year_prediction/experiments/ridge_batching/scripts/plot_tradeoff.py
+python3 src/year_prediction/experiments/ridge_batching/scripts/plot_convergence.py
+python3 src/year_prediction/experiments/ridge_batching/scripts/plot_tradeoff.py
 ```
 
-The scripts write presentation-ready PDF and PNG versions of `ridge_batching_convergence` and `ridge_batching_tradeoff` to `slides/img/`.
+The scripts write presentation-ready PDF and PNG versions of `ridge_batching_convergence` and `ridge_batching_tradeoff` to `src/slides/img/`.
 
 ## Findings
 

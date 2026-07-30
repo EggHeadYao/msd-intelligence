@@ -142,11 +142,7 @@ index_graph_track_ids.parquet/
 index_graph_manifest.json
 ```
 
-`index_graph_manifest.json` uses the shared C1/C2 FAISS manifest contract
-`merlin_faiss_index_v1`. It records the `graph` embedding space, frozen
-`c2_graph_version`, exact index and mapping paths, and SHA-256 lineage for the
-index, row mapping, and graph encoder metadata. C3 rejects missing, historical,
-or mismatched manifests before loading the index.
+`index_graph_manifest.json` uses the shared C1/C2 FAISS manifest contract `merlin_faiss_index_v1`. It records the `graph` embedding space, frozen `c2_graph_version`, exact index and mapping paths, and SHA-256 lineage for the index, row mapping, and graph encoder metadata. C3 rejects missing, historical, or mismatched manifests before loading the index.
 
 ## Masked-artist retrieval experiment
 
@@ -262,30 +258,36 @@ The persisted report also contains release-degree and popularity slices in `eval
 
 ## Reproducible commands
 
+Run from the repository root and expose the Python packages under `src/`:
+
+```bash
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+```
+
 Train, index, and validate an existing canonical C2 walk artifact:
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 22g \
-  merlin/embedding/graph/train_word2vec.py \
-  --walks ../parquets_new/merlin/graph/walk_sequences.parquet \
-  --output ../parquets_new/merlin/graph
+  src/merlin/embedding/graph/train_word2vec.py \
+  --walks parquets_new/merlin/graph/walk_sequences.parquet \
+  --output parquets_new/merlin/graph
 
 python3 -m merlin.embedding.graph.build_faiss \
-  --embeddings ../parquets_new/merlin/graph/song_embeddings_graph.parquet \
-  --output ../parquets_new/merlin/graph
+  --embeddings parquets_new/merlin/graph/song_embeddings_graph.parquet \
+  --output parquets_new/merlin/graph
 
 python3 -m merlin.embedding.graph.validate_artifacts \
-  --output ../parquets_new/merlin/graph
+  --output parquets_new/merlin/graph
 ```
 
 Prepare a new masked-artist experiment in an empty output namespace:
 
 ```bash
 spark-submit --master 'local[*]' --driver-memory 12g \
-  merlin/embedding/graph/prepare_masked_artist_retrieval.py \
-  --metadata ../parquets_new/prepared/songs_metadata.parquet \
-  --graph ../parquets_new/prepared/graph_edges.parquet \
-  --output ../parquets_new/merlin/masked_artist \
+  src/merlin/embedding/graph/prepare_masked_artist_retrieval.py \
+  --metadata parquets_new/prepared/songs_metadata.parquet \
+  --graph parquets_new/prepared/graph_edges.parquet \
+  --output parquets_new/merlin/masked_artist \
   --queries 10000 \
   --seed 42
 ```
@@ -294,9 +296,9 @@ Generate walks and train a separate full-catalog model from `masked_artist/prepa
 
 ```bash
 python3 -m merlin.embedding.graph.evaluate_masked_artist_retrieval \
-  --experiment ../parquets_new/merlin/masked_artist \
-  --graph-output ../parquets_new/merlin/masked_artist/graph \
-  --output ../parquets_new/merlin/masked_artist/evaluation \
+  --experiment parquets_new/merlin/masked_artist \
+  --graph-output parquets_new/merlin/masked_artist/graph \
+  --output parquets_new/merlin/masked_artist/evaluation \
   --cutoffs 10 20 50 \
   --overfetch 3 \
   --batch-size 64

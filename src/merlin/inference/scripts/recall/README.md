@@ -1,16 +1,14 @@
 # Recall commands
 
-These commands publish the frozen Stage-1 contract and export candidate pools
-for the ranker. Run them from the repository root.
+These commands publish the frozen Stage-1 contract and export candidate pools for the ranker. Run them from the repository root.
 
 ## Environment
 
-The current 9-vCPU VM should use four FAISS/OpenMP threads. Audio and Graph
-search run concurrently, so a larger value can oversubscribe the VM.
+The current 9-vCPU VM should use four FAISS/OpenMP threads. Audio and Graph search run concurrently, so a larger value can oversubscribe the VM.
 
 ```bash
-export MERLIN_ROOT=/home/zjk/p1team02
-export MERLIN_PYTHON=/home/zjk/.venvs/merlin-faiss/bin/python
+export MERLIN_ROOT="$PWD/src"
+export MERLIN_PYTHON=/absolute/path/to/merlin-faiss/bin/python
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$MERLIN_ROOT"
 export OPENBLAS_CORETYPE=generic
@@ -21,8 +19,7 @@ cd "$MERLIN_ROOT"
 
 ## Publish the recall contract
 
-Run this after the candidate-policy or Tag-IDF contract changes. `--overwrite`
-replaces both artifacts as one versioned unit.
+Run this after the candidate-policy or Tag-IDF contract changes. `--overwrite` replaces both artifacts as one versioned unit.
 
 ```bash
 "$MERLIN_PYTHON" -m merlin.inference.scripts.recall.build_recall_artifacts \
@@ -34,8 +31,7 @@ replaces both artifacts as one versioned unit.
 
 ## Export split candidate pools
 
-Set A supplies tuning pairs; Set B supplies validation groups. Output paths are
-selected automatically from `--query-split`.
+Set A supplies tuning pairs; Set B supplies validation groups. Output paths are selected automatically from `--query-split`.
 
 ```bash
 "$MERLIN_PYTHON" -m merlin.inference.scripts.recall.export_candidates \
@@ -63,6 +59,4 @@ Set C is reusable development data and requires the bound development protocol:
   --min-free-gb 8
 ```
 
-`validate_recall.py` runs deterministic four-source recall for a query list;
-`audit_candidates.py` validates a persisted pool and summarizes structural
-source coverage. Structural coverage is not relevance or ranking accuracy.
+`validate_recall.py` runs deterministic four-source recall for a query list; `audit_candidates.py` validates a persisted pool and summarizes structural source coverage. Structural coverage is not relevance or ranking accuracy.

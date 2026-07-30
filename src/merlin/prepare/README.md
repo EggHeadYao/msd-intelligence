@@ -4,7 +4,7 @@ Build the canonical tables consumed by MERLIN audio preprocessing and graph inde
 
 ## Inputs
 
-The command reads one input namespace, normally `../parquets_new`, containing:
+The command reads one input namespace, normally `parquets_new`, containing:
 
 - `songs_scalar.parquet`: the 23-column Summary HDF5 export.
 - `musics/feature_contract.json`: the frozen `shared_audio_628_v1` version, feature count, ordered columns, and order hash.
@@ -49,11 +49,12 @@ Downstream C1/C2 jobs must consume only a `valid` prepared manifest.
 
 ## Commands
 
-From the `p1team02` directory with the project environment activated:
+From the repository root with the project environment activated, expose the Python packages under `src/`:
 
 ```bash
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 python3 -m merlin.prepare.prepare \
-  --input ../parquets_new \
+  --input parquets_new \
   --output <output_dir> \
   --shuffle-partitions 64
 ```

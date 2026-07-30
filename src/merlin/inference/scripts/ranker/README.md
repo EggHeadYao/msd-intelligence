@@ -1,43 +1,33 @@
 # Ranker commands
 
-These are the canonical C3 commands after the current workflow redesign. Set A
-builds tuning data, Set B selects and confirms the guarded LR/C1 blend, and the
-retrain dataset streams Set A + Set B + Set C + Remaining. Set C is reusable
-development data, not an unbiased holdout.
+These are the canonical C3 commands after the current workflow redesign. Set A builds tuning data, Set B selects and confirms the guarded LR/C1 blend, and the retrain dataset streams Set A + Set B + Set C + Remaining. Set C is reusable development data, not an unbiased holdout.
 
 ## Recommended pipeline entry
 
 Run the complete workflow with one command:
 
 ```bash
-./merlin/inference/scripts/run_c3_pipeline.sh
+./src/merlin/inference/scripts/run_c3_pipeline.sh
 ```
 
-The script skips complete outputs and lets the streamed retrain step resume
-from its checkpoint. It never deletes or overwrites artifacts automatically.
-Limit a run to a section with `--from` and `--to`, for example:
+The script skips complete outputs and lets the streamed retrain step resume from its checkpoint. It never deletes or overwrites artifacts automatically. Limit a run to a section with `--from` and `--to`, for example:
 
 ```bash
-./merlin/inference/scripts/run_c3_pipeline.sh --to tune-model
-./merlin/inference/scripts/run_c3_pipeline.sh --from retrain-data --to ablation-model
-./merlin/inference/scripts/run_c3_pipeline.sh --from development-protocol
+./src/merlin/inference/scripts/run_c3_pipeline.sh --to tune-model
+./src/merlin/inference/scripts/run_c3_pipeline.sh --from retrain-data --to ablation-model
+./src/merlin/inference/scripts/run_c3_pipeline.sh --from development-protocol
 ```
 
-Use `--list-steps` to show valid boundaries and `--dry-run` to print commands.
-The individual commands below remain the reference for manual recovery and
-debugging.
+Use `--list-steps` to show valid boundaries and `--dry-run` to print commands. The individual commands below remain the reference for manual recovery and debugging.
 
 ## Environment
 
-Run commands from the repository root. The Spark module wrapper is deliberately
-kept outside the repository; it contains only
-`from merlin.inference.scripts.ranker.train_ranker import main` followed by the
-usual `if __name__ == "__main__": main()` call.
+Run commands from the repository root. The Spark module wrapper is deliberately kept outside the repository; it contains only `from merlin.inference.scripts.ranker.train_ranker import main` followed by the usual `if __name__ == "__main__": main()` call.
 
 ```bash
-export MERLIN_ROOT=/home/zjk/p1team02
-export MERLIN_PYTHON=/home/zjk/.venvs/merlin-faiss/bin/python
-export MERLIN_SPARK_ENTRY=/home/zjk/merlin_local_tests/c3/run_train_ranker_module.py
+export MERLIN_ROOT="$PWD/src"
+export MERLIN_PYTHON=/absolute/path/to/merlin-faiss/bin/python
+export MERLIN_SPARK_ENTRY=/absolute/path/to/run_train_ranker_module.py
 export MERLIN_RANKER_ROOT="$MERLIN_ROOT/parquets_new/merlin/ranker"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$MERLIN_ROOT"
@@ -56,16 +46,11 @@ export SPARK_LOCAL_IP=127.0.0.1
 export JAVA_TOOL_OPTIONS='-XX:UseAVX=0 -XX:UseSSE=2 -XX:-TieredCompilation'
 ```
 
-Do not remove an active `.c3-scratch` directory. Set `--min-free-gb` according
-to available disk; lowering it to zero disables only the reserve, not the
-projected-work check.
+Do not remove an active `.c3-scratch` directory. Set `--min-free-gb` according to available disk; lowering it to zero disables only the reserve, not the projected-work check.
 
 ## 1. Split and weak labels
 
-Rebuild the split whenever its artifact version or split policy changes. Before
-exporting candidates, also ensure the recall contract is current; rebuild it
-with the command in [`../recall/README.md`](../recall/README.md) only when the
-candidate-policy or Tag-IDF contract changed.
+Rebuild the split whenever its artifact version or split policy changes. Before exporting candidates, also ensure the recall contract is current; rebuild it with the command in [`../recall/README.md`](../recall/README.md) only when the candidate-policy or Tag-IDF contract changed.
 
 ```bash
 "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_split \
@@ -82,8 +67,7 @@ candidate-policy or Tag-IDF contract changed.
 
 ## 2. Set-A tuning data
 
-First export the Set-A pool with the recall command, then build pairs and raw
-features:
+First export the Set-A pool with the recall command, then build pairs and raw features:
 
 ```bash
 "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
@@ -109,15 +93,11 @@ features:
   --min-free-gb 8
 ```
 
-For a non-canonical proxy run, add `--limit-queries N` to pair construction and
-provide explicit output and manifest paths outside the formal artifact tree.
-The limited pair manifest is marked `scope=smoke`; its feature export and model
-training must therefore also use `--scope smoke`.
+For a non-canonical proxy run, add `--limit-queries N` to pair construction and provide explicit output and manifest paths outside the formal artifact tree. The limited pair manifest is marked `scope=smoke`; its feature export and model training must therefore also use `--scope smoke`.
 
 ## 3. Set-B validation data
 
-Export the Set-B pool with the recall command, then build the three frozen query
-groups with Spark:
+Export the Set-B pool with the recall command, then build the three frozen query groups with Spark:
 
 ```bash
 /opt/spark/bin/spark-submit \
@@ -154,8 +134,7 @@ groups with Spark:
 
 ## 4. Select the frozen model configuration
 
-This trains the Set-A LR grid and uses the Set-B tune/confirm folds to select
-regularization, Audio quota, and relation-evidence gate:
+This trains the Set-A LR grid and uses the Set-B tune/confirm folds to select regularization, Audio quota, and relation-evidence gate:
 
 ```bash
 /opt/spark/bin/spark-submit \
@@ -185,13 +164,11 @@ regularization, Audio quota, and relation-evidence gate:
   --parent validation_features_manifest="$MERLIN_RANKER_ROOT/validation_raw_features_manifest.json"
 ```
 
-Read `selected_reg_param` from `tuning_model/training_manifest.json` and use
-that exact value as `MERLIN_REG` below. Do not select it from Set C.
+Read `selected_reg_param` from `tuning_model/training_manifest.json` and use that exact value as `MERLIN_REG` below. Do not select it from Set C.
 
 ## 5. Full-catalog retrain data
 
-The first command is resumable and streams candidates, sampling, and features
-without publishing an all-catalog candidate pool.
+The first command is resumable and streams candidates, sampling, and features without publishing an all-catalog candidate pool.
 
 ```bash
 "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.build_training_pairs \
@@ -294,8 +271,7 @@ export MERLIN_REG='<selected_reg_param>'
 
 ## 7. Reproducible Set-C development run
 
-Only start this after both retrained model manifests exist. Freeze the protocol
-first, then export the Set-C candidate pool before building its groups.
+Only start this after both retrained model manifests exist. Freeze the protocol first, then export the Set-C candidate pool before building its groups.
 
 ```bash
 "$MERLIN_PYTHON" -m merlin.inference.scripts.ranker.prepare_development_protocol \
@@ -349,8 +325,4 @@ split -> recall contract -> weak labels
       -> development protocol -> Set-C pool/groups/features -> report
 ```
 
-Set-A artifacts live under `ranker/tuning/`; canonical retrain artifacts live
-at the ranker root and never use a `final_` filename prefix. A failed Set-B
-confirmation writes a C1-order fallback and marks fusion unpublishable. High-
-volume outputs are append/resume safe only when every manifest input and
-behavioral option still matches the checkpoint contract.
+Set-A artifacts live under `ranker/tuning/`; canonical retrain artifacts live at the ranker root and never use a `final_` filename prefix. A failed Set-B confirmation writes a C1-order fallback and marks fusion unpublishable. High-volume outputs are append/resume safe only when every manifest input and behavioral option still matches the checkpoint contract.

@@ -4,7 +4,7 @@ This directory contains the four Apache Drill queries required by the project: t
 
 ## Data
 
-The queries use `songs_scalar.parquet` and the projected `energy` column from `audio_features/features_*.parquet`. The default data directory is `../parquets/year_prediction/raw` relative to the repository workspace. Pass another directory as the first argument to the runner when the same Parquet layout is stored elsewhere.
+The queries use `songs_scalar.parquet` and the projected `energy` column from `audio_features/features_*.parquet`. The default data directory is `parquets/year_prediction/raw` under the repository root. Pass another directory as the first argument to the runner when the same Parquet layout is stored elsewhere.
 
 The Drill storage override exposes the selected directory as the read-only `dfs.msd` workspace. Query files therefore contain no machine-specific absolute paths.
 
@@ -13,13 +13,13 @@ The Drill storage override exposes the selected directory as the read-only `dfs.
 Apache Drill 1.22.0 is expected under `/usr/local/drill` unless `DRILL_HOME` is set.
 
 ```bash
-./drill/scripts/run_all.sh
+./src/drill/scripts/run_all.sh
 ```
 
 Use a different Parquet directory with:
 
 ```bash
-./drill/scripts/run_all.sh /path/to/year_prediction/raw
+./src/drill/scripts/run_all.sh /path/to/year_prediction/raw
 ```
 
 Each query starts an embedded Drill session and writes a separate CSV file under `results/`.

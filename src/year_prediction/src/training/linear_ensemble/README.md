@@ -1,17 +1,15 @@
 # Linear prediction ensemble
 
-This module fits an ordinary least-squares combination of the fused,
-metadata-only, and audio-only LightGBM predictions. The coefficients are fitted
-on artist-disjoint validation predictions and then frozen before test inference.
+This module fits an ordinary least-squares combination of the fused, metadata-only, and audio-only LightGBM predictions. The coefficients are fitted on artist-disjoint validation predictions and then frozen before test inference.
 
 Run from the repository root:
 
 ```bash
-export PYSPARK_PYTHON="$PWD/p1team02/year_prediction/.synapseml-venv/bin/python"
+export PYSPARK_PYTHON="$PWD/src/year_prediction/.synapseml-venv/bin/python"
 
-p1team02/year_prediction/.synapseml-venv/bin/spark-submit --master 'local[4]' \
+src/year_prediction/.synapseml-venv/bin/spark-submit --master 'local[4]' \
   --conf spark.hadoop.fs.defaultFS=file:/// \
-  p1team02/year_prediction/src/training/linear_ensemble/fit.py \
+  src/year_prediction/src/training/linear_ensemble/fit.py \
   --fused-validation parquets/year_prediction/models/lightgbm-audio-metadata-tags-rmse/validation_predictions.parquet \
   --fused-test parquets/year_prediction/models/lightgbm-audio-metadata-tags-rmse/test_predictions.parquet \
   --metadata-validation parquets/year_prediction/models/lightgbm-metadata-rmse/validation_predictions.parquet \
@@ -22,5 +20,4 @@ p1team02/year_prediction/.synapseml-venv/bin/spark-submit --master 'local[4]' \
   --overwrite
 ```
 
-The output contains the fitted coefficients, run arguments, validation/test
-metrics, and one prediction table for each evaluated split.
+The output contains the fitted coefficients, run arguments, validation/test metrics, and one prediction table for each evaluated split.

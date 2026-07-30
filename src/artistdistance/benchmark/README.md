@@ -1,6 +1,6 @@
 # Artist Distance Benchmark
 
-Run the commands from `p1team02/artistdistance` after Hadoop, HDFS, YARN, Spark, Java, and Maven are available.
+Run the commands from `src/artistdistance` after Hadoop, HDFS, YARN, Spark, Java, and Maven are available. From the repository root, enter the module with `cd src/artistdistance`.
 
 ## Complete Experiment
 
