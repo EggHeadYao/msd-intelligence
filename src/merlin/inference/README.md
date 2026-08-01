@@ -1,6 +1,6 @@
-# MERLIN C3 Ranking and Inference
+# MERLIN Candidate, Ranker, and Inference
 
-`merlin.inference` is the stable boundary between C1/C2 artifacts, C3 offline training and evaluation, and the production recommendation pipeline. Core contracts and online components are pure Python; high-volume preparation and training entry points may use FAISS or Spark.
+`merlin.inference` is the stable boundary between C1/C2 representations, multi-source Candidate retrieval, Ranker training and evaluation, and the online similar-track pipeline. Core contracts and online components are pure Python; high-volume preparation and training entry points may use FAISS or Spark.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ Recall nominates candidates and preserves source evidence. Unused union capacity
 | [`ranking/`](ranking/README.md) | Pair features, LR artifacts, inference, and model selection |
 | [`training/`](training/README.md) | Splits, weak labels, pair sampling, and validation groups |
 | [`evaluation/`](evaluation/README.md) | Reproducible Set-C development protocol and ranking statistics |
-| [`runtime/`](runtime/README.md) | Production assembly, validation, and recommendation APIs |
+| [`runtime/`](runtime/README.md) | Production assembly, validation, and similar-track APIs |
 | [`scripts/`](scripts/README.md) | Supported recall, training, and evaluation commands |
 
 Import public package paths such as `merlin.inference.recall`, `merlin.inference.retrieval`, and `merlin.inference.ranking.features`. Older flat modules, numbered feature modules, and compatibility scripts are not part of the supported interface.
@@ -84,7 +84,7 @@ The exact command order and stage-specific requirements are documented in [`scri
 - Recall-source flags and popularity are audit fields, not ranker features.
 - Splits are song-safe. Set C is reusable known development data and joins Set A, Set B, and Remaining during final retraining. It is not an unbiased test.
 - Set B is song-safe and split into a 1% tune fold and an independent 2% confirmation fold. Both use frozen Audio-dominant, Relation-dominant, and Mixed query groups built from cleaned pre-PCA C1 signals.
-- Positive loss mass is balanced per query between Audio-derived and relation-derived labels. Set-B tune jointly selects LR regularization, the C1 quota, and a relation-evidence gate. Confirmation failure publishes a strict C1-order fallback and marks fusion unpublishable. The fallback may still be measured on Set C for development diagnosis.
+- Positive loss mass is balanced per query between Audio-derived and relation-derived labels. Set-B tune jointly selects LR regularization, the C1 quota, and a relation-evidence gate. Confirmation failure publishes a strict C1-order fallback and marks the learned Ranker policy unpublishable. The fallback may still be measured on Set C for development diagnosis.
 - Every formal consumer validates artifact version, hashes, and parent lineage before loading data.
 - A schema, hash, lineage, or policy mismatch fails closed.
 

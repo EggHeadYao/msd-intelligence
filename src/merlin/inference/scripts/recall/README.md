@@ -1,6 +1,6 @@
 # Recall commands
 
-These commands publish the frozen Stage-1 contract and export candidate pools for the ranker. Run them from the repository root.
+These commands publish the frozen Candidate contract and export candidate pools for the Ranker. Run them from the repository root.
 
 ## Environment
 

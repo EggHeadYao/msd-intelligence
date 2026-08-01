@@ -14,7 +14,7 @@ The ranker receives features in the frozen schema order, applies Set-A fill valu
 
 Relation evidence is a list-density signal: the maximum of mean valid BFS, mean valid Tag, and same-release fraction across the recalled candidates. Missing pair signals contribute zero. This avoids a single saturated candidate forcing every query through the learned branch.
 
-Fusion is publishable only when the tune guards pass and the untouched Set-B confirmation fold improves the three-strata macro over C1 by at least 1% while retaining the Audio, Relation, and Mixed guards. Failure produces a usable C1 fallback. Set-C development evaluation can diagnose either outcome.
+The learned Ranker policy is publishable only when the tune guards pass and the untouched Set-B confirmation fold improves the three-strata macro over C1 by at least 1% while retaining the Audio, Relation, and Mixed guards. Failure produces a usable C1 fallback. Set-C development evaluation can diagnose either outcome.
 
 Training and Python inference must agree on feature values and raw margin within `1e-6`. Feature-schema, scaler, coefficient, or parent-lineage mismatch causes model loading to fail.
 

@@ -1,6 +1,6 @@
 # Production runtime
 
-Runtime modules assemble validated artifacts into the online recommendation pipeline. They do not train models or construct C1/C2 indexes.
+Runtime modules assemble validated artifacts into the online similar-track retrieval pipeline. They do not train models or construct C1/C2 indexes.
 
 ## Modules
 
@@ -16,7 +16,7 @@ query track
   -> canonical pair features
   -> frozen LR raw margins and C1 order
   -> relation gate: C1 fallback or deterministic quota interleave
-  -> top 20 recommendations
+  -> top 20 similar tracks
 ```
 
 Assembly fails closed when an index, mapping, policy, feature schema, scaler, coefficient file, model manifest, or parent hash is inconsistent.

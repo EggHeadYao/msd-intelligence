@@ -1,12 +1,12 @@
 # Supported commands
 
-This package contains the supported command-line entry points for C3. Scripts parse arguments, validate artifact lineage, configure external engines, call the reusable inference packages, and publish outputs. Core algorithms should not be duplicated here.
+This package contains the supported command-line entry points for Candidate generation, Ranker training and evaluation, and runtime validation. Scripts parse arguments, validate artifact lineage, configure external engines, call the reusable inference packages, and publish outputs. Core algorithms should not be duplicated here.
 
 `run_c3_pipeline.sh` is the resumable top-level entry point for the complete formal workflow. It orchestrates the commands below without duplicating their Python implementations.
 
 ## Command groups
 
-- [`recall/`](recall/README.md) builds, exports, validates, and audits Stage-1 candidate artifacts.
+- [`recall/`](recall/README.md) builds, exports, validates, and audits Candidate artifacts.
 - [`ranker/`](ranker/README.md) builds supervised datasets, trains models, and runs reproducible Set-C development evaluation.
 - [`support/`](support/README.md) contains shared operational helpers such as Spark scratch-space preparation.
 - `run_c3_pipeline.sh` runs the canonical sequence from split construction through Set-C development evaluation.

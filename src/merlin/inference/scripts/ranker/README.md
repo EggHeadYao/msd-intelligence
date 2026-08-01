@@ -1,6 +1,6 @@
 # Ranker commands
 
-These are the canonical C3 commands after the current workflow redesign. Set A builds tuning data, Set B selects and confirms the guarded LR/C1 blend, and the retrain dataset streams Set A + Set B + Set C + Remaining. Set C is reusable development data, not an unbiased holdout.
+These are the canonical Ranker commands. Set A builds tuning data, Set B selects and confirms the guarded LR/C1 policy, and the retrain dataset streams Set A + Set B + Set C + Remaining. Set C is reusable development data, not an unbiased holdout.
 
 ## Recommended pipeline entry
 
@@ -325,4 +325,4 @@ split -> recall contract -> weak labels
       -> development protocol -> Set-C pool/groups/features -> report
 ```
 
-Set-A artifacts live under `ranker/tuning/`; canonical retrain artifacts live at the ranker root and never use a `final_` filename prefix. A failed Set-B confirmation writes a C1-order fallback and marks fusion unpublishable. High-volume outputs are append/resume safe only when every manifest input and behavioral option still matches the checkpoint contract.
+Set-A artifacts live under `ranker/tuning/`; canonical retrain artifacts live at the ranker root and never use a `final_` filename prefix. A failed Set-B confirmation writes a C1-order fallback and marks the learned Ranker policy unpublishable. High-volume outputs are append/resume safe only when every manifest input and behavioral option still matches the checkpoint contract.

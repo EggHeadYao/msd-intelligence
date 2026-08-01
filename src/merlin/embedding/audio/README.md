@@ -17,9 +17,9 @@ This directory is a Python package. Internal and downstream code should import t
 
 ## Canonical contract
 
-The production C1 directory is `parquets_new/merlin/audio`. Formal C1 and L1-1 artifacts must fit and select exactly 128 PCA components, contain all one million tracks, and use the canonical filenames below. C3 consumes this contract alongside C2's independent graph contract, using metadata and manifests rather than producer implementation details.
+The production C1 directory is `parquets_new/merlin/audio`. Formal C1 and L1-1 artifacts must fit and select exactly 128 PCA components, contain all one million tracks, and use the canonical filenames below. Candidate and Ranker stages consume this contract alongside C2's independent graph contract, using metadata and manifests rather than producer implementation details.
 
-Limited or non-128-dimensional runs are experiments. They must use an isolated output directory and cannot be used for formal L1-1, the production FAISS loader, or C3 training/evaluation.
+Limited or non-128-dimensional runs are experiments. They must use an isolated output directory and cannot be used for formal L1-1, the production FAISS loader, or Ranker training and evaluation.
 
 ## PCA dimension selection
 
@@ -314,7 +314,7 @@ Use `--mode all` to run artifact integrity checks first and L1-1 in the same Spa
 
 The validator must use the saved preprocessing parameters, scaler, PCA model, and `selected_k`. It must not fit another model. Non-128 experiment artifacts can run `--mode artifact`, but cannot run formal `l1` or `all` validation because the frozen L1-1 contract compares pre-PCA with PCA-128.
 
-The same frozen preprocessing contract is reused by C3 when it reconstructs cleaned pre-PCA vectors for Set-B tune/confirm and Set-C development groups. Changing C1 feature order, medians, clipping, time-signature encoding, scaler statistics, or dimension metadata therefore requires the corresponding manifest contract to change; downstream code must never silently refit these values.
+The same frozen preprocessing contract is reused by the Ranker when it reconstructs cleaned pre-PCA vectors for Set-B tune/confirm and Set-C development groups. Changing C1 feature order, medians, clipping, time-signature encoding, scaler statistics, or dimension metadata therefore requires the corresponding manifest contract to change; downstream code must never silently refit these values.
 
 `validation_report.json` should include:
 
@@ -350,4 +350,4 @@ Compare at least:
 * Retrieval recall or top-K neighbor preservation.
 * FAISS index size and query latency.
 
-C3 discovers only `parquets_new/merlin/audio`. The comparison directories are isolated experiments and are not runtime candidates.
+The MERLIN Candidate and Ranker pipeline discovers only `parquets_new/merlin/audio`. The comparison directories are isolated experiments and are not runtime candidates.

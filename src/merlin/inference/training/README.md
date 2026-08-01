@@ -1,6 +1,6 @@
 # Training data construction
 
-This package contains the reusable algorithms behind C3 split, weak-label, pair-sampling, and validation-group stages. Spark and CLI orchestration remains under `scripts/ranker`.
+This package contains the reusable algorithms behind the Ranker split, weak-label, pair-sampling, and validation-group stages. Spark and CLI orchestration remains under `scripts/ranker`.
 
 ## Modules
 

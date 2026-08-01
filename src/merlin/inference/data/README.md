@@ -12,6 +12,6 @@ This package converts prepared MERLIN datasets into the typed lookup structures 
 
 - Prepared catalog metadata supplies track, song, release, year, and artist identity.
 - `graph_edges.parquet` supplies typed `artist_similarity` and `artist_term` partitions.
-- Tag inference uses artist-level terms. Expanded song-level terms are not a canonical C3 input.
+- Tag retrieval uses artist-level terms. Expanded song-level terms are not a canonical Candidate or Ranker input.
 
 All loaders preserve track/song identity so downstream stages can exclude the query itself and alternate tracks of the same song.

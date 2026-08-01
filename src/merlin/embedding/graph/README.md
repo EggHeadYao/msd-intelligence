@@ -142,7 +142,7 @@ index_graph_track_ids.parquet/
 index_graph_manifest.json
 ```
 
-`index_graph_manifest.json` uses the shared C1/C2 FAISS manifest contract `merlin_faiss_index_v1`. It records the `graph` embedding space, frozen `c2_graph_version`, exact index and mapping paths, and SHA-256 lineage for the index, row mapping, and graph encoder metadata. C3 rejects missing, historical, or mismatched manifests before loading the index.
+`index_graph_manifest.json` uses the shared C1/C2 FAISS manifest contract `merlin_faiss_index_v1`. It records the `graph` embedding space, frozen `c2_graph_version`, exact index and mapping paths, and SHA-256 lineage for the index, row mapping, and graph encoder metadata. Candidate and Ranker consumers reject missing, historical, or mismatched manifests before loading the index.
 
 ## Masked-artist retrieval experiment
 

@@ -1,6 +1,6 @@
 # Multi-source recall
 
-This package turns Audio, Graph, BFS, and Tag retrievers into the canonical Stage-1 candidate union.
+This package turns Audio, Graph, BFS, and Tag retrievers into the canonical Candidate union.
 
 ## Modules
 

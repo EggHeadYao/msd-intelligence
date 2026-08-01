@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Four Apache Drill queries with a portable Parquet workspace, automated runner, documented semantics, and verified CSV results.
 - Full artist-distance benchmark automation with repeated YARN runs, output verification, aggregate comparisons, and presentation figures.
-- MERLIN recommendation pipeline with canonical Parquet preparation, 128-dimensional PCA audio embeddings, typed graph walks, Spark Word2Vec embeddings, FAISS retrieval, learned ranking, and reproducible evaluation contracts.
+- MERLIN catalog-level similar-track retrieval pipeline with canonical Parquet preparation, 128-dimensional PCA audio embeddings, eligibility-aware typed graph walks, Spark Word2Vec embeddings, FAISS indexes, four-source Candidate recall, a 13-feature LR Ranker, guarded Top-20 selection, and reproducible evaluation contracts.
 - Artist-disjoint year-prediction data and feature contracts covering T90, full audio, and metadata views.
 - Distributed Year Prediction models and evaluations for constant baselines, Ridge, RFF-Ridge, LightGBM, Ordinal-MoE, and linear prediction ensembles.
 - Ridge full-batch and mini-batch experiments with convergence, time-to-quality, efficiency, and quality comparisons.
@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Expanded the repository from the P1M1 Artist Distance baseline into a shared million-track analytics, recommendation, and prediction project.
+- Expanded the repository from the P1M1 Artist Distance baseline into a shared million-track analytics, similar-track retrieval, and prediction project.
 - Reorganized Year Prediction around separate data, feature, training, evaluation, configuration, test, and experiment contracts.
 - Extended project documentation with stage-specific READMEs, artifact lineage rules, validation procedures, and recorded experiment results.
 
